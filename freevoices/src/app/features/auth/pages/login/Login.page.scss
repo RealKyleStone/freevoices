@@ -1,0 +1,57 @@
+.login-container {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    min-height: 100%;
+    
+    .login-card {
+      width: 100%;
+      max-width: 400px;
+      
+      .login-title {
+        font-size: 24px;
+        font-weight: bold;
+        text-align: center;
+        margin-bottom: 24px;
+      }
+    }
+  
+    ion-item {
+      margin-bottom: 16px;
+      
+      &:last-of-type {
+        margin-bottom: 24px;
+      }
+    }
+  
+    .error-message {
+      text-align: center;
+      margin-bottom: 16px;
+    }
+  
+    .links-container {
+      margin-top: 16px;
+      text-align: center;
+  
+      .forgot-password {
+        display: block;
+        margin-bottom: 12px;
+        font-size: 14px;
+        color: var(--ion-color-primary);
+      }
+  
+      .signup-link {
+        font-size: 14px;
+        
+        span {
+          color: var(--ion-color-medium);
+        }
+        
+        a {
+          color: var(--ion-color-primary);
+          text-decoration: none;
+        }
+      }
+    }
+  }

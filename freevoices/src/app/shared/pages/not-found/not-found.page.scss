@@ -1,0 +1,31 @@
+:host {
+    display: block;
+    text-align: center;
+    padding: 2rem;
+}
+
+.not-found-container {
+    max-width: 600px;
+    margin: 0 auto;
+}
+
+.not-found-title {
+    font-size: 3rem;
+    font-weight: bold;
+    margin-bottom: 1rem;
+}
+
+.not-found-message {
+    font-size: 1.5rem;
+    margin-bottom: 2rem;
+}
+
+.not-found-link {
+    font-size: 1.2rem;
+    color: #007bff;
+    text-decoration: none;
+
+    &:hover {
+        text-decoration: underline;
+    }
+}
