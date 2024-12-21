@@ -61,6 +61,11 @@ export const routes: Routes = [
       .then(m => m.RegisterPage)
   },
   {
+    path: 'verify-email',
+    loadComponent: () => import('./features/auth/pages/verify-email/verify-email.page')
+      .then(m => m.VerifyEmailPage)
+  },
+  {
     path: '**',
     loadComponent: () => import('./shared/pages/not-found/not-found.page')
       .then(m => m.NotFoundPage)

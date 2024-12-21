@@ -1,4 +1,5 @@
 require('dotenv').config();
+const EmailService = require('./src/services/email.service');
 const express = require('express');
 const path = require('path');
 const mysql = require('mysql2');
@@ -10,10 +11,21 @@ const { randomUUID } = require('crypto');
 
 const app = express();
 
+const net = require('net');
+const tls = require('tls');
+
 // Middleware
 app.use(cors());
 app.use(bodyParser.json());
 app.use(express.static(path.join(__dirname, 'dist/www')));
+
+const emailService = new EmailService({
+  SMTP_HOST: process.env.SMTP_HOST,
+  SMTP_PORT: process.env.SMTP_PORT,
+  SMTP_SECURE: process.env.SMTP_SECURE === 'true',
+  SMTP_USER: process.env.SMTP_USER,
+  SMTP_PASS: process.env.SMTP_PASS
+});
 
 // Configure Winston logger
 const logger = winston.createLogger({
@@ -119,6 +131,51 @@ const authenticateToken = async (req, res, next) => {
     res.status(500).json({ message: 'Authentication error' });
   }
 };
+
+const testEmailConfig = async () => {
+  try {
+    console.log('Testing connection...');
+    const info = await transporter.verify();
+    console.log('Connection verified:', info);
+  } catch (error) {
+    console.log('Connection failed:', {
+      code: error.code,
+      command: error.command,
+      response: error.response
+    });
+  }
+};
+
+testEmailConfig();
+
+const testConnection = () => {
+  console.log('Testing raw connection...');
+  
+  const socket = tls.connect({
+    host: 'mail.stonium.co.za',
+    port: 465,
+    rejectUnauthorized: false
+  });
+
+  socket.on('connect', () => {
+    console.log('Socket connected!');
+    socket.end();
+  });
+
+  socket.on('error', (err) => {
+    console.log('Socket error:', err);
+  });
+};
+
+testConnection();
+
+console.log('SMTP Config:', {
+  host: process.env.SMTP_HOST,
+  port: process.env.SMTP_PORT,
+  user: process.env.SMTP_USER,
+  pass: process.env.SMTP_PASS,
+  secure: process.env.SMTP_SECURE
+});
 
 // Login endpoint
 app.post('/api/auth/login', async (req, res) => {
@@ -264,6 +321,18 @@ app.post('/api/auth/register', async (req, res) => {
     // Get created user
     const user = await executeQuery('SELECT id, email, company_name FROM users WHERE id = ?', [result.insertId]);
 
+    // Generate email verification token
+    const verificationToken = randomUUID();
+    const verificationExpires = new Date();
+    verificationExpires.setHours(verificationExpires.getHours() + 24);
+
+    await executeQuery(
+      'UPDATE users SET email_verification_token = ?, email_verification_expires = ? WHERE id = ?',
+      [verificationToken, verificationExpires, result.insertId]
+    );
+
+    await emailService.sendVerificationEmail(email, verificationToken);
+
     logger.info(`User registered successfully: ${email}`);
     res.status(201).json({
       token,
@@ -273,6 +342,31 @@ app.post('/api/auth/register', async (req, res) => {
   } catch (error) {
     logger.error('Registration error:', error);
     res.status(500).json({ message: 'Registration failed' });
+  }
+});
+
+app.get('/api/verify-email', async (req, res) => {
+  try {
+    const { token } = req.query;
+    
+    const result = await executeQuery(
+      `UPDATE users 
+       SET email_verified = true, 
+           email_verification_token = NULL, 
+           email_verification_expires = NULL 
+       WHERE email_verification_token = ? 
+       AND email_verification_expires > NOW()`,
+      [token]
+    );
+
+    if (result.affectedRows === 0) {
+      return res.status(400).json({ message: 'Invalid or expired verification token' });
+    }
+
+    res.json({ message: 'Email verified successfully' });
+  } catch (error) {
+    logger.error('Email verification error:', error);
+    res.status(500).json({ message: 'Verification failed' });
   }
 });
 

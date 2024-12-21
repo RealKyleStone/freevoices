@@ -1,0 +1,30 @@
+.verify-container {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    min-height: 100%;
+    padding: 20px;
+  
+    ion-card {
+      width: 100%;
+      max-width: 400px;
+    }
+  }
+  
+  .status-container {
+    padding: 20px;
+  
+    .status-icon {
+      font-size: 48px;
+      margin-bottom: 16px;
+    }
+  
+    h2 {
+      margin: 16px 0;
+    }
+  
+    p {
+      color: var(--ion-color-medium);
+      margin-bottom: 24px;
+    }
+  }

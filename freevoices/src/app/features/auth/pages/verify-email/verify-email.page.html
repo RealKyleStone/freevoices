@@ -1,0 +1,37 @@
+<ion-content class="ion-padding">
+    <div class="verify-container">
+      <ion-card>
+        <ion-card-content class="ion-text-center">
+          <ng-container [ngSwitch]="verificationStatus">
+            
+            <!-- Verifying State -->
+            <div *ngSwitchCase="'verifying'" class="status-container">
+              <ion-spinner></ion-spinner>
+              <h2>Verifying your email...</h2>
+            </div>
+  
+            <!-- Success State -->
+            <div *ngSwitchCase="'success'" class="status-container">
+              <ion-icon name="checkmark-circle" color="success" class="status-icon"></ion-icon>
+              <h2>Email Verified!</h2>
+              <p>Your email has been successfully verified.</p>
+              <ion-button routerLink="/auth/login">
+                Continue to Login
+              </ion-button>
+            </div>
+  
+            <!-- Error State -->
+            <div *ngSwitchCase="'error'" class="status-container">
+              <ion-icon name="alert-circle" color="danger" class="status-icon"></ion-icon>
+              <h2>Verification Failed</h2>
+              <p>{{ errorMessage }}</p>
+              <ion-button routerLink="/auth/login">
+                Back to Login
+              </ion-button>
+            </div>
+  
+          </ng-container>
+        </ion-card-content>
+      </ion-card>
+    </div>
+  </ion-content>
