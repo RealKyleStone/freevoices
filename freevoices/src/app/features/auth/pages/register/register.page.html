@@ -1,0 +1,147 @@
+<ion-content class="ion-padding">
+  <div class="register-container">
+    <ion-card class="register-card">
+      <ion-card-content>
+        <h1 class="register-title">Create Account</h1>
+        
+        <form [formGroup]="registerForm" (ngSubmit)="onSubmit()">
+          <!-- Account Information -->
+          <div class="form-section">
+            <h2>Account Information</h2>
+            <ion-item>
+              <ion-label position="floating">Email</ion-label>
+              <ion-input 
+                type="email" 
+                formControlName="email"
+                [clearInput]="true"
+              ></ion-input>
+              <ion-text color="danger" *ngIf="isFieldInvalid('email')">
+                <small>{{ getErrorMessage('email') }}</small>
+              </ion-text>
+            </ion-item>
+
+            <ion-item>
+              <ion-label position="floating">Password</ion-label>
+              <ion-input 
+                type="password" 
+                formControlName="password"
+              ></ion-input>
+              <ion-text color="danger" *ngIf="isFieldInvalid('password')">
+                <small>{{ getErrorMessage('password') }}</small>
+              </ion-text>
+            </ion-item>
+
+            <ion-item>
+              <ion-label position="floating">Confirm Password</ion-label>
+              <ion-input 
+                type="password" 
+                formControlName="confirmPassword"
+              ></ion-input>
+              <ion-text color="danger" *ngIf="isFieldInvalid('confirmPassword')">
+                <small>{{ getErrorMessage('confirmPassword') }}</small>
+              </ion-text>
+            </ion-item>
+          </div>
+
+          <!-- Company Information -->
+          <div class="form-section">
+            <h2>Company Information</h2>
+            <ion-item>
+              <ion-label position="floating">Company Name</ion-label>
+              <ion-input formControlName="company_name"></ion-input>
+              <ion-text color="danger" *ngIf="isFieldInvalid('company_name')">
+                <small>{{ getErrorMessage('company_name') }}</small>
+              </ion-text>
+            </ion-item>
+
+            <ion-item>
+              <ion-label position="floating">Company Registration</ion-label>
+              <ion-input formControlName="company_registration"></ion-input>
+            </ion-item>
+
+            <ion-item>
+              <ion-label position="floating">VAT Number</ion-label>
+              <ion-input formControlName="vat_number"></ion-input>
+            </ion-item>
+          </div>
+
+          <!-- Contact Information -->
+          <div class="form-section">
+            <h2>Contact Information</h2>
+            <ion-item>
+              <ion-label position="floating">Contact Person</ion-label>
+              <ion-input formControlName="contact_person"></ion-input>
+              <ion-text color="danger" *ngIf="isFieldInvalid('contact_person')">
+                <small>{{ getErrorMessage('contact_person') }}</small>
+              </ion-text>
+            </ion-item>
+
+            <ion-item>
+              <ion-label position="floating">Phone</ion-label>
+              <ion-input 
+                type="tel" 
+                formControlName="phone"
+              ></ion-input>
+              <ion-text color="danger" *ngIf="isFieldInvalid('phone')">
+                <small>{{ getErrorMessage('phone') }}</small>
+              </ion-text>
+            </ion-item>
+
+            <ion-item>
+              <ion-label position="floating">Address</ion-label>
+              <ion-input formControlName="address"></ion-input>
+              <ion-text color="danger" *ngIf="isFieldInvalid('address')">
+                <small>{{ getErrorMessage('address') }}</small>
+              </ion-text>
+            </ion-item>
+          </div>
+
+          <!-- Banking Information -->
+          <div class="form-section">
+            <h2>Banking Information (Optional)</h2>
+            <ion-item>
+              <ion-label position="floating">Bank Name</ion-label>
+              <ion-input formControlName="bank_name"></ion-input>
+            </ion-item>
+
+            <ion-item>
+              <ion-label position="floating">Account Number</ion-label>
+              <ion-input formControlName="bank_account_number"></ion-input>
+            </ion-item>
+
+            <ion-item>
+              <ion-label position="floating">Branch Code</ion-label>
+              <ion-input formControlName="bank_branch_code"></ion-input>
+            </ion-item>
+
+            <ion-item>
+              <ion-label position="floating">Account Type</ion-label>
+              <ion-input formControlName="bank_account_type"></ion-input>
+            </ion-item>
+          </div>
+
+          <ion-text color="danger" *ngIf="errorMessage">
+            <p class="error-message">{{ errorMessage }}</p>
+          </ion-text>
+
+          <div class="form-actions">
+            <ion-button 
+              expand="block" 
+              type="submit"
+              [disabled]="registerForm.invalid || isLoading"
+            >
+              {{ isLoading ? 'Creating Account...' : 'Create Account' }}
+            </ion-button>
+
+            <div class="login-link">
+              <span>Already have an account? </span>
+              <a routerLink="/auth/login">Login</a>
+            </div>
+          </div>
+        </form>
+
+        <ion-progress-bar *ngIf="isLoading" type="indeterminate"></ion-progress-bar>
+      </ion-card-content>
+    </ion-card>
+  </div>
+</ion-content>
