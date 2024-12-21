@@ -56,6 +56,11 @@ export const routes: Routes = [
       .then(m => m.LoginPage)
   },
   {
+    path: 'register',
+    loadComponent: () => import('./features/auth/pages/register/register.page')
+      .then(m => m.RegisterPage)
+  },
+  {
     path: '**',
     loadComponent: () => import('./shared/pages/not-found/not-found.page')
       .then(m => m.NotFoundPage)

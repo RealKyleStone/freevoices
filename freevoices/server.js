@@ -43,6 +43,8 @@ const dbConfig = {
   keepAliveInitialDelay: parseInt(process.env.DB_KEEP_ALIVE_INITIAL_DELAY, 10),
 };
 
+console.log(dbConfig);
+
 let pool;
 
 function handleDisconnect() {
@@ -119,7 +121,7 @@ const authenticateToken = async (req, res, next) => {
 };
 
 // Login endpoint
-app.post('/api/login', async (req, res) => {
+app.post('/api/auth/login', async (req, res) => {
   try {
     const { email, password } = req.body;
     logger.info(`Login attempt for user: ${email}`);
@@ -207,6 +209,71 @@ process.on('SIGINT', () => {
     logger.info('Pool has ended');
     process.exit(0);
   });
+});
+
+// Registration endpoint
+app.post('/api/auth/register', async (req, res) => {
+  try {
+    const {
+      email,
+      password,
+      company_name,
+      company_registration,
+      vat_number,
+      contact_person,
+      phone,
+      address,
+      bank_name,
+      bank_account_number,
+      bank_branch_code,
+      bank_account_type
+    } = req.body;
+
+    // Check if user exists
+    const existingUser = await executeQuery('SELECT id FROM users WHERE email = ?', [email]);
+    if (existingUser.length > 0) {
+      return res.status(400).json({ message: 'Email already registered' });
+    }
+
+    // Hash password
+    const password_hash = await argon2.hash(password);
+
+    // Create user
+    const result = await executeQuery(
+      `INSERT INTO users (
+        email, password_hash, company_name, company_registration,
+        vat_number, contact_person, phone, address,
+        bank_name, bank_account_number, bank_branch_code, bank_account_type
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [
+        email, password_hash, company_name, company_registration,
+        vat_number, contact_person, phone, address,
+        bank_name, bank_account_number, bank_branch_code, bank_account_type
+      ]
+    );
+
+    // Generate session token
+    const token = randomUUID();
+    const expiresAt = new Date();
+    expiresAt.setHours(expiresAt.getHours() + 24);
+
+    // Create session
+    await executeQuery('INSERT INTO sessions (userId, token, expires) VALUES (?, ?, ?)', 
+      [result.insertId, token, expiresAt]);
+
+    // Get created user
+    const user = await executeQuery('SELECT id, email, company_name FROM users WHERE id = ?', [result.insertId]);
+
+    logger.info(`User registered successfully: ${email}`);
+    res.status(201).json({
+      token,
+      user: user[0]
+    });
+
+  } catch (error) {
+    logger.error('Registration error:', error);
+    res.status(500).json({ message: 'Registration failed' });
+  }
 });
 
 // Catch-all route for Angular app

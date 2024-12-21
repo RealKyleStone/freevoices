@@ -33,10 +33,13 @@
     "@ngrx/effects": "^18.1.1",
     "@ngrx/entity": "^18.1.1",
     "@ngrx/store": "^18.1.1",
+    "argon2": "^0.41.1",
     "date-fns": "^4.1.0",
     "ionicons": "^7.2.1",
+    "mysql2": "^3.11.5",
     "rxjs": "~7.8.0",
     "tslib": "^2.3.0",
+    "winston": "^3.17.0",
     "zone.js": "~0.14.2"
   },
   "devDependencies": {

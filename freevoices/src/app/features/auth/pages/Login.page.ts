@@ -1,11 +1,12 @@
 import { Component } from '@angular/core';
 import { FormBuilder, FormGroup, Validators, ReactiveFormsModule } from '@angular/forms';
-import { Router } from '@angular/router';
+import { Router, RouterModule } from '@angular/router';
 import { IonContent, IonHeader, IonToolbar, IonTitle, IonButton, 
          IonItem, IonLabel, IonInput, IonText, IonCard, 
          IonCardContent } from '@ionic/angular/standalone';
 import { AuthService } from '../../../core/auth/services/auth.service';
 import { CommonModule } from '@angular/common';
+import { DatabaseService } from 'src/services/database.service';
 
 @Component({
     selector: 'app-login',
@@ -15,6 +16,7 @@ import { CommonModule } from '@angular/common';
     imports: [
       CommonModule,
       ReactiveFormsModule,
+      RouterModule,
       IonContent,
       IonHeader,
       IonToolbar,
@@ -33,7 +35,7 @@ import { CommonModule } from '@angular/common';
   isLoading = false;
   errorMessage = '';
 
-  constructor(private fb: FormBuilder, private authService: AuthService, private router: Router) {
+  constructor(private dbService: DatabaseService, private fb: FormBuilder, private authService: AuthService, private router: Router) {
     this.loginForm = this.fb.group({
       email: ['', [Validators.required, Validators.email]],
       password: ['', [Validators.required]]
@@ -51,11 +53,12 @@ import { CommonModule } from '@angular/common';
       this.errorMessage = '';
 
       try {
-        await this.authService.login(
-          this.loginForm.value.email,
-          this.loginForm.value.password
-        ).toPromise();
-        
+        const loginData = await this.dbService.create('auth/login', {
+          email: this.loginForm.value.email,
+          password: this.loginForm.value.password
+        }).toPromise();
+
+        await this.authService.handleLoginSuccess(loginData);
         this.router.navigate(['/dashboard']);
       } catch (error: any) {
         this.errorMessage = error.error?.message || 'Login failed. Please try again.';
