@@ -1,17 +1,119 @@
-<div class="dashboard">
-    <h1>Dashboard</h1>
-    <div class="stats">
-        <div class="stat-item">
-            <h2>Users</h2>
-            <p>100</p>
-        </div>
-        <div class="stat-item">
-            <h2>Posts</h2>
-            <p>50</p>
-        </div>
-        <div class="stat-item">
-            <h2>Comments</h2>
-            <p>200</p>
-        </div>
+<script type="module" src="https://unpkg.com/ionicons@7.2.1/dist/ionicons/ionicons.esm.js"></script>
+
+<ion-header>
+    <ion-toolbar>
+      <ion-buttons slot="end">
+        <ion-button>
+          <ion-icon slot="icon-only" name="notifications-outline"></ion-icon>
+          <ion-badge color="danger">3</ion-badge>
+        </ion-button>
+        <ion-button>
+          <ion-icon slot="icon-only" name="person-circle-outline"></ion-icon>
+        </ion-button>
+      </ion-buttons>
+    </ion-toolbar>
+  </ion-header>
+  
+  <ion-content>
+    <div class="dashboard-container">
+      <!-- Quick Actions -->
+      <div class="quick-actions">
+        <ion-button color="primary" class="new-invoice-btn">
+          <ion-icon name="add-circle-outline" slot="start"></ion-icon>
+          New Invoice
+        </ion-button>
+        <ion-button fill="outline">
+          <ion-icon name="person-add-outline" slot="start"></ion-icon>
+          Add Customer
+        </ion-button>
+      </div>
+  
+      <!-- Stats Cards -->
+      <ion-grid>
+        <ion-row>
+          <ion-col size="12" size-md="6" size-lg="3">
+            <ion-card class="stat-card">
+              <ion-card-content>
+                <div class="stat-icon revenue">
+                  <ion-icon name="wallet-outline"></ion-icon>
+                </div>
+                <div class="stat-info">
+                  <h3>Total Revenue</h3>
+                  <p>{{ stats.totalRevenue | currency:selectedCurrency }}</p>
+                </div>
+              </ion-card-content>
+            </ion-card>
+          </ion-col>
+  
+          <ion-col size="12" size-md="6" size-lg="3">
+            <ion-card class="stat-card">
+              <ion-card-content>
+                <div class="stat-icon customers">
+                  <ion-icon name="people-outline"></ion-icon>
+                </div>
+                <div class="stat-info">
+                  <h3>Total Customers</h3>
+                  <p>{{ stats.totalCustomers }}</p>
+                </div>
+              </ion-card-content>
+            </ion-card>
+          </ion-col>
+  
+          <ion-col size="12" size-md="6" size-lg="3">
+            <ion-card class="stat-card">
+              <ion-card-content>
+                <div class="stat-icon pending">
+                  <ion-icon name="document-text-outline"></ion-icon>
+                </div>
+                <div class="stat-info">
+                  <h3>Pending Invoices</h3>
+                  <p>{{ stats.pendingInvoices }}</p>
+                </div>
+              </ion-card-content>
+            </ion-card>
+          </ion-col>
+  
+          <ion-col size="12" size-md="6" size-lg="3">
+            <ion-card class="stat-card">
+              <ion-card-content>
+                <div class="stat-icon overdue">
+                  <ion-icon name="alert-circle-outline"></ion-icon>
+                </div>
+                <div class="stat-info">
+                  <h3>Overdue</h3>
+                  <p>{{ stats.overdueinvoices }}</p>
+                </div>
+              </ion-card-content>
+            </ion-card>
+          </ion-col>
+        </ion-row>
+      </ion-grid>
+  
+      <!-- Charts Section -->
+      <ion-grid>
+        <ion-row>
+          <ion-col size="12" size-lg="8">
+            <ion-card class="chart-card">
+              <ion-card-header>
+                <ion-card-title>Revenue Overview</ion-card-title>
+              </ion-card-header>
+              <ion-card-content>
+                <div class="chart-placeholder"></div>
+              </ion-card-content>
+            </ion-card>
+          </ion-col>
+  
+          <ion-col size="12" size-lg="4">
+            <ion-card class="recent-activity">
+              <ion-card-header>
+                <ion-card-title>Recent Activity</ion-card-title>
+              </ion-card-header>
+              <ion-card-content>
+                <div class="activity-placeholder"></div>
+              </ion-card-content>
+            </ion-card>
+          </ion-col>
+        </ion-row>
+      </ion-grid>
     </div>
-</div>
+  </ion-content>

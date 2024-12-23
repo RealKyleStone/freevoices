@@ -1,3 +1,47 @@
+<!-- app.component.html -->
 <ion-app>
-  <ion-router-outlet></ion-router-outlet>
+  <ion-split-pane contentId="main-content">
+    <ion-menu contentId="main-content">
+      <ion-content>
+        <div class="menu-header">
+          <h1>FreeVoices</h1>
+        </div>
+        
+        <ion-list>
+          <ion-menu-toggle auto-hide="false">
+            <ion-item routerLink="/dashboard" routerLinkActive="selected" detail="false">
+              <ion-icon name="grid-outline" slot="start"></ion-icon>
+              <ion-label>Dashboard</ion-label>
+            </ion-item>
+
+            <ion-item routerLink="/sales" routerLinkActive="selected" detail="false">
+              <ion-icon name="cash-outline" slot="start"></ion-icon>
+              <ion-label>Sales & Payments</ion-label>
+            </ion-item>
+
+            <ion-item routerLink="/profile" routerLinkActive="selected" detail="false">
+              <ion-icon name="business-outline" slot="start"></ion-icon>
+              <ion-label>Company Profile</ion-label>
+            </ion-item>
+
+            <ion-item routerLink="/reports" routerLinkActive="selected" detail="false">
+              <ion-icon name="bar-chart-outline" slot="start"></ion-icon>
+              <ion-label>Reports</ion-label>
+            </ion-item>
+          </ion-menu-toggle>
+        </ion-list>
+      </ion-content>
+
+      <ion-footer>
+        <ion-item button (click)="logout()">
+          <ion-icon name="log-out-outline" slot="start"></ion-icon>
+          <ion-label>Logout</ion-label>
+        </ion-item>
+      </ion-footer>
+    </ion-menu>
+
+    <div class="ion-page" id="main-content">
+      <ion-router-outlet></ion-router-outlet>
+    </div>
+  </ion-split-pane>
 </ion-app>

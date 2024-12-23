@@ -1,41 +1,144 @@
+// src/app/features/dashboard/pages/dashboard/dashboard.page.scss
 :host {
     display: block;
-    padding: 16px;
-}
-
-.dashboard-container {
+    --padding-top: 1rem;
+    --padding-bottom: 1rem;
+    --padding-start: 1rem;
+    --padding-end: 1rem;
+  }
+  
+  .dashboard-container {
+    padding: var(--padding-top) var(--padding-end) var(--padding-bottom) var(--padding-start);
+  }
+  
+  .header {
     display: flex;
-    flex-direction: column;
+    justify-content: space-between;
     align-items: center;
-    justify-content: center;
-    min-height: 100vh;
-    background-color: #f5f5f5;
-}
-
-.dashboard-header {
-    width: 100%;
-    padding: 16px;
-    background-color: #007bff;
-    color: #fff;
-    text-align: center;
-    font-size: 24px;
-    font-weight: bold;
-}
-
-.dashboard-content {
-    width: 100%;
-    max-width: 1200px;
-    padding: 16px;
-    background-color: #fff;
-    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+    margin-bottom: 2rem;
+  }
+  
+  .logo-container {
+    .logo {
+      height: 40px;
+      width: auto;
+    }
+  }
+  
+  .actions {
+    display: flex;
+    gap: 0.5rem;
+  
+    ion-badge {
+      position: absolute;
+      top: 0;
+      right: 0;
+      transform: translate(25%, -25%);
+    }
+  }
+  
+  .quick-actions {
+    display: flex;
+    gap: 1rem;
+    margin: 2rem 1.5rem;
+    flex-wrap: wrap;
+  
+    .new-invoice-btn {
+      --background: var(--ion-color-primary);
+      --color: var(--ion-color-primary-contrast);
+    }
+  }
+  
+  .stat-card {
+    height: 100%;
+    margin: 0;
+    
+    ion-card-content {
+      display: flex;
+      align-items: center;
+      padding: 1.5rem;
+    }
+  
+    .stat-icon {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      width: 48px;
+      height: 48px;
+      border-radius: 12px;
+      margin-right: 1rem;
+  
+      ion-icon {
+        font-size: 24px;
+        color: white;
+      }
+  
+      &.revenue {
+        background: var(--ion-color-success);
+      }
+  
+      &.customers {
+        background: var(--ion-color-primary);
+      }
+  
+      &.pending {
+        background: var(--ion-color-warning);
+      }
+  
+      &.overdue {
+        background: var(--ion-color-danger);
+      }
+    }
+  
+    .stat-info {
+      h3 {
+        margin: 0;
+        font-size: 0.875rem;
+        color: var(--ion-color-medium);
+      }
+  
+      p {
+        margin: 0.25rem 0 0;
+        font-size: 1.5rem;
+        font-weight: 600;
+        color: var(--ion-color-dark);
+      }
+    }
+  }
+  
+  .chart-card, .recent-activity {
+    height: 100%;
+    margin: 0;
+  
+    ion-card-header {
+      padding: 1rem;
+    }
+  
+    ion-card-content {
+      padding: 1rem;
+    }
+  }
+  
+  .chart-placeholder {
+    background: var(--ion-color-light);
+    height: 300px;
     border-radius: 8px;
-}
-
-.dashboard-footer {
-    width: 100%;
-    padding: 16px;
-    background-color: #007bff;
-    color: #fff;
-    text-align: center;
-    font-size: 14px;
-}
+  }
+  
+  .activity-placeholder {
+    background: var(--ion-color-light);
+    height: 300px;
+    border-radius: 8px;
+  }
+  
+  // Dark mode adjustments
+  :host-context(.dark-theme) {
+    .stat-info p {
+      color: var(--ion-color-light);
+    }
+  
+    .chart-placeholder,
+    .activity-placeholder {
+      background: var(--ion-color-medium);
+    }
+  }

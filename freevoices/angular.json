@@ -29,6 +29,16 @@
                 "glob": "**/*",
                 "input": "src/assets",
                 "output": "assets"
+              },
+              {
+                "glob": "**/*",
+                "input": "node_modules/ionicons/dist/ionicons/svg",
+                "output": "./svg"
+              },
+              {
+                "glob": "**/*",
+                "input": "resources",
+                "output": "./resources"
               }
             ],
             "styles": ["src/global.scss", "src/theme/variables.scss"],
@@ -104,6 +114,16 @@
                 "glob": "**/*",
                 "input": "src/assets",
                 "output": "assets"
+              },
+              {
+                "glob": "**/*",
+                "input": "node_modules/ionicons/dist/ionicons/svg",
+                "output": "./svg"
+              },
+              {
+                "glob": "**/*",
+                "input": "resources",
+                "output": "./resources"
               }
             ],
             "styles": ["src/global.scss", "src/theme/variables.scss"],

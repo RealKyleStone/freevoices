@@ -1,0 +1,52 @@
+/* app.component.scss */
+ion-menu {
+    --width: 100px;
+    
+    .menu-header {
+        padding: 1rem 0.5rem;
+        text-align: center;
+        
+        h1 {
+          margin: 0;
+          font-size: 1rem;
+          font-weight: 600;
+          background: linear-gradient(45deg, var(--ion-color-primary), var(--ion-color-secondary));
+          -webkit-background-clip: text;
+          background-clip: text;
+          -webkit-text-fill-color: transparent;
+        }
+      }
+  
+    ion-list {
+      padding-top: 1rem;
+      background: none;
+      
+      ion-item {
+        --padding-start: 1rem;
+        margin-bottom: 0.5rem;
+        
+        &.selected {
+          --background: var(--ion-color-primary-tint);
+          --color: var(--ion-color-primary);
+          
+          ion-icon {
+            color: var(--ion-color-primary);
+          }
+        }
+        
+        ion-icon {
+          margin-right: 0.75rem;
+          font-size: 1.25rem;
+        }
+      }
+    }
+  }
+  
+  // Hide menu toggle button on larger screens
+  @media (min-width: 992px) {
+    ion-menu {
+      ion-menu-toggle {
+        display: none;
+      }
+    }
+  }

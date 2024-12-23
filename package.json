@@ -1,6 +1,9 @@
 {
   "dependencies": {
+    "@ionic/angular": "^8.4.1",
     "dotenv": "^16.4.7",
-    "express": "^4.21.2"
+    "express": "^4.21.2",
+    "ionicons": "^7.4.0",
+    "lucide-angular": "^0.469.0"
   }
 }
