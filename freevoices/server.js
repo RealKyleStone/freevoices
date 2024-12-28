@@ -1,4 +1,6 @@
 require('dotenv').config();
+const axios = require('axios');
+
 const EmailService = require('./src/services/email.service');
 const express = require('express');
 const path = require('path');
@@ -14,6 +16,8 @@ const app = express();
 const net = require('net');
 const tls = require('tls');
 
+RECAPTCHA_SECRET_KEY="6LecjacqAAAAAFG-2MsglDJzKcvfYBvEw4zkYepg"
+
 // Middleware
 app.use(cors());
 app.use(bodyParser.json());
@@ -21,10 +25,15 @@ app.use(express.static(path.join(__dirname, 'dist/www')));
 
 const emailService = new EmailService({
   SMTP_HOST: process.env.SMTP_HOST,
-  SMTP_PORT: process.env.SMTP_PORT,
+  SMTP_PORT: parseInt(process.env.SMTP_PORT),
   SMTP_SECURE: process.env.SMTP_SECURE === 'true',
   SMTP_USER: process.env.SMTP_USER,
-  SMTP_PASS: process.env.SMTP_PASS
+  SMTP_PASS: process.env.SMTP_PASS,
+  tls: {
+    rejectUnauthorized: true,
+    minVersion: 'TLSv1.2',
+    maxVersion: 'TLSv1.3'
+  }
 });
 
 // Configure Winston logger
@@ -132,6 +141,46 @@ const authenticateToken = async (req, res, next) => {
   }
 };
 
+
+
+// Verify CAPTCHA token
+async function verifyCaptcha(token) {
+  try {
+    if (!token) {
+      console.log('No CAPTCHA token provided');
+      return false;
+    }
+
+    console.log('Verifying CAPTCHA token:', token);
+
+    const params = new URLSearchParams();
+    params.append('secret', process.env.RECAPTCHA_SECRET_KEY);
+    params.append('response', token);
+
+    const response = await axios.post(
+      'https://www.google.com/recaptcha/api/siteverify',
+      params,
+      {
+        headers: {
+          'Content-Type': 'application/x-www-form-urlencoded'
+        }
+      }
+    );
+
+    console.log('CAPTCHA verification response:', response.data);
+
+    if (!response.data.success) {
+      console.log('CAPTCHA verification failed:', response.data['error-codes']);
+    }
+
+    return response.data.success;
+  } catch (error) {
+    console.error('CAPTCHA verification error:', error);
+    return false;
+  }
+}
+
+
 const testEmailConfig = async () => {
   try {
     console.log('Testing connection...');
@@ -149,23 +198,71 @@ const testEmailConfig = async () => {
 testEmailConfig();
 
 const testConnection = () => {
-  console.log('Testing raw connection...');
+  console.log('Testing SMTP connection...');
   
-  const socket = tls.connect({
-    host: 'mail.stonium.co.za',
-    port: 465,
-    rejectUnauthorized: false
+  // First try plain socket connection
+  const socket = new net.Socket();
+  
+  socket.connect({
+    host: process.env.SMTP_HOST,
+    port: parseInt(process.env.SMTP_PORT)
   });
 
   socket.on('connect', () => {
-    console.log('Socket connected!');
-    socket.end();
+    console.log('Connected to server');
+    
+    // Wait for server greeting
+    socket.once('data', (data) => {
+      console.log('Server greeting:', data.toString());
+      
+      // Send EHLO
+      socket.write('EHLO ' + process.env.SMTP_HOST + '\r\n');
+      
+      // Wait for EHLO response
+      socket.once('data', (data) => {
+        console.log('EHLO response:', data.toString());
+        
+        // Start TLS
+        socket.write('STARTTLS\r\n');
+        
+        socket.once('data', (data) => {
+          console.log('STARTTLS response:', data.toString());
+          
+          // Upgrade to TLS
+          const tlsSocket = tls.connect({
+            socket: socket,
+            host: process.env.SMTP_HOST,
+            rejectUnauthorized: false,
+            servername: process.env.SMTP_HOST
+          });
+          
+          tlsSocket.on('secure', () => {
+            console.log('TLS connection established');
+            console.log('Protocol:', tlsSocket.getProtocol());
+            console.log('Cipher:', tlsSocket.getCipher());
+            tlsSocket.end();
+          });
+          
+          tlsSocket.on('error', (err) => {
+            console.log('TLS error:', {
+              message: err.message,
+              code: err.code,
+              library: err.library,
+              reason: err.reason
+            });
+          });
+        });
+      });
+    });
   });
 
   socket.on('error', (err) => {
     console.log('Socket error:', err);
   });
 };
+
+console.log('Supported TLS versions:', tls.getCiphers());
+
 
 testConnection();
 
@@ -180,8 +277,19 @@ console.log('SMTP Config:', {
 // Login endpoint
 app.post('/api/auth/login', async (req, res) => {
   try {
-    const { email, password } = req.body;
+    const { email, password, captchaToken } = req.body;
     logger.info(`Login attempt for user: ${email}`);
+    logger.info(`Captcha token: ${captchaToken}`);
+
+    // Skip CAPTCHA verification for mobile devices
+    if (!req.headers['user-agent']?.includes('Mobile')) {
+      // Verify CAPTCHA
+      const captchaValid = await verifyCaptcha(captchaToken);
+      if (!captchaValid) {
+        logger.warn(`CAPTCHA verification failed for user: ${email}`);
+        return res.status(400).json({ message: 'Security verification failed. Please try again.' });
+      }
+    }
 
     // Get user from database
     const sql = 'SELECT * FROM users WHERE email = ?';
@@ -216,14 +324,12 @@ app.post('/api/auth/login', async (req, res) => {
       user: {
         id: user.id,
         email: user.email,
-        role: user.role,
-        organizationId: user.organizationID,
-        organizationName: user.organizationName
+        company_name: user.company_name
       }
     });
   } catch (error) {
     logger.error('Login error:', error);
-    res.status(500).json({ message: 'Login error' });
+    res.status(500).json({ message: 'Login failed. Please try again.' });
   }
 });
 

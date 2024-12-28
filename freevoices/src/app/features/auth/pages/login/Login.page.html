@@ -1,58 +1,62 @@
 <ion-content class="ion-padding">
-    <div class="login-container">
-      <ion-card class="login-card">
-        <ion-card-content>
-          <h1 class="login-title">Welcome Back</h1>
-          
-          <form [formGroup]="loginForm" (ngSubmit)="onSubmit()">
-            <ion-item>
-              <ion-label position="floating">Email</ion-label>
-              <ion-input 
-                type="email" 
-                formControlName="email"
-                [clearInput]="true"
-              ></ion-input>
-              <ion-text color="danger" *ngIf="isFieldInvalid('email')">
-                <small>Please enter a valid email address</small>
-              </ion-text>
-            </ion-item>
-  
-            <ion-item>
-              <ion-label position="floating">Password</ion-label>
-              <ion-input 
-                type="password" 
-                formControlName="password"
-              ></ion-input>
-              <ion-text color="danger" *ngIf="isFieldInvalid('password')">
-                <small>Password is required</small>
-              </ion-text>
-            </ion-item>
-  
-            <ion-text color="danger" *ngIf="errorMessage">
-              <p class="error-message">{{ errorMessage }}</p>
+  <div class="login-container">
+    <ion-card class="login-card">
+      <ion-card-content>
+        <h1 class="login-title">Welcome Back</h1>
+        
+        <!-- Changed (ngSubmit) to use validateAndSubmit -->
+        <form [formGroup]="loginForm" (ngSubmit)="validateAndSubmit($event)">
+          <ion-item>
+            <ion-label position="floating">Email</ion-label>
+            <ion-input 
+              type="email" 
+              formControlName="email"
+              [clearInput]="true"
+            ></ion-input>
+            <ion-text color="danger" *ngIf="isFieldInvalid('email')">
+              <small>{{ getFieldError('email') }}</small>
             </ion-text>
-  
-            <ion-button 
-              expand="block" 
-              type="submit"
-              [disabled]="loginForm.invalid || isLoading"
-            >
-              {{ isLoading ? 'Logging in...' : 'Login' }}
-            </ion-button>
-  
-            <div class="links-container">
-              <a routerLink="/auth/forgot-password" class="forgot-password">
-                Forgot your password?
-              </a>
-  
-              <div class="signup-link">
-                <span>Don't have an account? </span>
-                <a routerLink="/register">Sign up</a>
-              </div>
+          </ion-item>
+
+          <ion-item>
+            <ion-label position="floating">Password</ion-label>
+            <ion-input 
+              type="password" 
+              formControlName="password"
+            ></ion-input>
+            <ion-text color="danger" *ngIf="isFieldInvalid('password')">
+              <small>{{ getFieldError('password') }}</small>
+            </ion-text>
+          </ion-item>
+
+          <!-- Invisible reCAPTCHA container -->
+          <div *ngIf="!isMobile" #recaptcha class="g-recaptcha" data-size="invisible"></div>
+
+          <ion-text color="danger" *ngIf="errorMessage">
+            <p class="error-message">{{ errorMessage }}</p>
+          </ion-text>
+
+          <ion-button 
+            expand="block" 
+            type="submit"
+            [disabled]="loginForm.invalid || isLoading"
+          >
+            <ion-spinner *ngIf="isLoading" name="crescent"></ion-spinner>
+            <span *ngIf="!isLoading">Login</span>
+          </ion-button>
+
+          <div class="links-container">
+            <a routerLink="/auth/forgot-password" class="forgot-password">
+              Forgot your password?
+            </a>
+
+            <div class="signup-link">
+              <span>Don't have an account? </span>
+              <a routerLink="/register">Sign up</a>
             </div>
-          </form>
-        </ion-card-content>
-      </ion-card>
-    </div>
-  </ion-content>
-  
+          </div>
+        </form>
+      </ion-card-content>
+    </ion-card>
+  </div>
+</ion-content>

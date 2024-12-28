@@ -6,6 +6,7 @@ export const environment = {
   production: false,
   apiUrl: 'http://localhost:3000/api',
   version: '1.0.0',
+  recaptchaSiteKey: '6LecjacqAAAAAH-qxIbyNMeNnvU4fwYcuIxKNKnC',
 };
 /*
  * For easier debugging in development mode, you can import the following file

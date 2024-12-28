@@ -1,6 +1,7 @@
 import { Injectable } from '@angular/core';
-import { BehaviorSubject, Observable } from 'rxjs';
+import { BehaviorSubject, Observable, from } from 'rxjs';
 import { DatabaseService } from 'src/services/database.service';
+import { tap } from 'rxjs/operators';
 
 interface User {
   id: number;
@@ -20,6 +21,16 @@ export class AuthService {
     if (user) {
       this.currentUserSubject.next(JSON.parse(user));
     }
+  }
+
+  login(email: string, password: string, captchaToken?: string): Observable<any> {
+    return this.dbService.create('auth/login', {
+      email,
+      password,
+      captchaToken
+    }).pipe(
+      tap(response => this.handleLoginSuccess(response))
+    );
   }
 
   async handleLoginSuccess(response: any): Promise<void> {

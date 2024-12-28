@@ -34,6 +34,7 @@
     "@ngrx/entity": "^18.1.1",
     "@ngrx/store": "^18.1.1",
     "argon2": "^0.41.1",
+    "axios": "^1.7.9",
     "date-fns": "^4.1.0",
     "ionicons": "^7.2.1",
     "mysql2": "^3.11.5",
