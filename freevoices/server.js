@@ -493,6 +493,19 @@ app.get('/api/verify-email', async (req, res) => {
   }
 });
 
+// Banks endpoint
+app.get('/api/banks', async (req, res) => {
+  try {
+    const activeOnly = req.query.active === 'true';
+    const sql = 'SELECT * FROM banks WHERE 1=1' + (activeOnly ? ' AND is_active = true' : '') + ' ORDER BY name';
+    const banks = await executeQuery(sql);
+    res.json(banks);
+  } catch (error) {
+    logger.error('Error fetching banks:', error);
+    res.status(500).json({ message: 'Failed to fetch banks' });
+  }
+});
+
 // Catch-all route for Angular app
 app.get('*', (req, res) => {
   res.sendFile(path.join(__dirname, 'dist/www/index.html'));

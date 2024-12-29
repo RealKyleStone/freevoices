@@ -17,30 +17,30 @@
               <ion-text color="danger" *ngIf="isFieldInvalid('email')">
                 <small>{{ getFieldError('email') }}</small>
               </ion-text>
-            </ion-item>
+              </ion-item>
+            </div>
 
             <ion-item>
               <ion-label position="floating">Password</ion-label>
               <ion-input 
                 type="password" 
-                formControlName="password"
-              ></ion-input>
+                formControlName="password">
+              </ion-input>
               <ion-text color="danger" *ngIf="isFieldInvalid('password')">
-                <small>{{ getFieldError('password') }}</small>
+                <small>{{getPasswordErrorMessage()}}</small>
               </ion-text>
             </ion-item>
-
+            
             <ion-item>
               <ion-label position="floating">Confirm Password</ion-label>
               <ion-input 
                 type="password" 
-                formControlName="confirmPassword"
-              ></ion-input>
-              <ion-text color="danger" *ngIf="isFieldInvalid('confirmPassword')">
-                <small>{{ getFieldError('confirmPassword') }}</small>
+                formControlName="confirmPassword">
+              </ion-input>
+              <ion-text color="danger" *ngIf="registerForm.hasError('mismatch') && registerForm.get('confirmPassword')?.touched">
+                <small>Passwords do not match</small>
               </ion-text>
             </ion-item>
-          </div>
 
           <div class="form-section">
             <h2>Company Information</h2>
@@ -75,9 +75,13 @@
 
             <ion-item>
               <ion-label position="floating">Phone</ion-label>
-              <ion-input type="tel" formControlName="phone"></ion-input>
+              <ion-input 
+                type="tel" 
+                formControlName="phone"
+                placeholder="e.g. 0821234567">
+              </ion-input>
               <ion-text color="danger" *ngIf="isFieldInvalid('phone')">
-                <small>{{ getFieldError('phone') }}</small>
+                <small>Please enter a valid phone number</small>
               </ion-text>
             </ion-item>
 
@@ -93,23 +97,42 @@
           <div class="form-section">
             <h2>Banking Details (Optional)</h2>
             <ion-item>
-              <ion-label position="floating">Bank Name</ion-label>
-              <ion-input formControlName="bank_name"></ion-input>
+              <ion-label position="floating">Bank</ion-label>
+              <ion-select formControlName="bank_name" (ionChange)="onBankSelect($event)">
+                <ion-select-option *ngFor="let bank of banks" [value]="bank.id">
+                  {{bank.name}}
+                </ion-select-option>
+              </ion-select>
             </ion-item>
-
+          
             <ion-item>
               <ion-label position="floating">Account Number</ion-label>
-              <ion-input formControlName="bank_account_number"></ion-input>
+              <ion-input 
+                formControlName="bank_account_number"
+                type="number"
+                maxlength="12">
+              </ion-input>
+              <ion-text color="danger" *ngIf="isFieldInvalid('bank_account_number')">
+                <small>Please enter a valid account number (9-12 digits)</small>
+              </ion-text>
             </ion-item>
-
+          
             <ion-item>
               <ion-label position="floating">Branch Code</ion-label>
-              <ion-input formControlName="bank_branch_code"></ion-input>
+              <ion-input 
+                formControlName="bank_branch_code"
+                type="text"
+                readonly>
+              </ion-input>
             </ion-item>
-
+          
             <ion-item>
               <ion-label position="floating">Account Type</ion-label>
-              <ion-input formControlName="bank_account_type"></ion-input>
+              <ion-select formControlName="bank_account_type">
+                <ion-select-option *ngFor="let type of accountTypes" [value]="type.value">
+                  {{type.label}}
+                </ion-select-option>
+              </ion-select>
             </ion-item>
           </div>
 
