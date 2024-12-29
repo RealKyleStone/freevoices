@@ -266,13 +266,13 @@ console.log('Supported TLS versions:', tls.getCiphers());
 
 testConnection();
 
-console.log('SMTP Config:', {
+/*console.log('SMTP Config:', {
   host: process.env.SMTP_HOST,
   port: process.env.SMTP_PORT,
   user: process.env.SMTP_USER,
   pass: process.env.SMTP_PASS,
   secure: process.env.SMTP_SECURE
-});
+});*/ //needed this for testing leaving it here for now
 
 // Login endpoint
 app.post('/api/auth/login', async (req, res) => {
@@ -389,8 +389,19 @@ app.post('/api/auth/register', async (req, res) => {
       bank_name,
       bank_account_number,
       bank_branch_code,
-      bank_account_type
+      bank_account_type,
+      captchaToken
     } = req.body;
+
+    // Skip CAPTCHA verification for mobile devices
+    if (!req.headers['user-agent']?.includes('Mobile')) {
+      // Verify CAPTCHA
+      const captchaValid = await verifyCaptcha(captchaToken);
+      if (!captchaValid) {
+        logger.warn(`CAPTCHA verification failed for registration: ${email}`);
+        return res.status(400).json({ message: 'Security verification failed. Please try again.' });
+      }
+    }
 
     // Check if user exists
     const existingUser = await executeQuery('SELECT id FROM users WHERE email = ?', [email]);
@@ -437,7 +448,13 @@ app.post('/api/auth/register', async (req, res) => {
       [verificationToken, verificationExpires, result.insertId]
     );
 
-    await emailService.sendVerificationEmail(email, verificationToken);
+    // Send verification email
+    try {
+      await emailService.sendVerificationEmail(email, verificationToken);
+    } catch (emailError) {
+      logger.error('Failed to send verification email:', emailError);
+      // Continue with registration even if email fails
+    }
 
     logger.info(`User registered successfully: ${email}`);
     res.status(201).json({
@@ -447,7 +464,7 @@ app.post('/api/auth/register', async (req, res) => {
 
   } catch (error) {
     logger.error('Registration error:', error);
-    res.status(500).json({ message: 'Registration failed' });
+    res.status(500).json({ message: 'Registration failed. Please try again.' });
   }
 });
 
