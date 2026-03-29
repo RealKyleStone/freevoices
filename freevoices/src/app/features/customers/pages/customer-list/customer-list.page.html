@@ -19,35 +19,24 @@
 
 <ion-content>
   <ion-list *ngIf="!isLoading && customers.length > 0">
-    <ion-item-sliding *ngFor="let customer of customers">
-      <ion-item [routerLink]="['/customers', customer.id]" detail="false" button>
-        <ion-avatar slot="start">
-          <div class="avatar-initials">{{ customer.name.charAt(0).toUpperCase() }}</div>
-        </ion-avatar>
-        <ion-label>
-          <h2>{{ customer.name }}</h2>
-          <p>{{ customer.email }}</p>
-          <p *ngIf="customer.phone">{{ customer.phone }}</p>
-        </ion-label>
-        <div slot="end" class="row-actions">
-          <ion-button fill="clear" [routerLink]="['/customers', customer.id, 'edit']" (click)="$event.stopPropagation()">
-            <ion-icon slot="icon-only" name="create-outline"></ion-icon>
-          </ion-button>
-          <ion-button fill="clear" color="danger" (click)="$event.stopPropagation(); confirmDelete(customer)">
-            <ion-icon slot="icon-only" name="trash-outline"></ion-icon>
-          </ion-button>
-        </div>
-      </ion-item>
-
-      <ion-item-options side="end">
-        <ion-item-option [routerLink]="['/customers', customer.id, 'edit']" color="primary">
+    <ion-item *ngFor="let customer of customers" [routerLink]="['/customers', customer.id]" detail="false" button>
+      <ion-avatar slot="start">
+        <div class="avatar-initials">{{ customer.name.charAt(0).toUpperCase() }}</div>
+      </ion-avatar>
+      <ion-label>
+        <h2>{{ customer.name }}</h2>
+        <p>{{ customer.email }}</p>
+        <p *ngIf="customer.phone">{{ customer.phone }}</p>
+      </ion-label>
+      <div slot="end" class="row-actions">
+        <ion-button fill="clear" [routerLink]="['/customers', customer.id, 'edit']" (click)="$event.stopPropagation()">
           <ion-icon slot="icon-only" name="create-outline"></ion-icon>
-        </ion-item-option>
-        <ion-item-option (click)="confirmDelete(customer)" color="danger">
+        </ion-button>
+        <ion-button fill="clear" color="danger" (click)="$event.stopPropagation(); confirmDelete(customer)">
           <ion-icon slot="icon-only" name="trash-outline"></ion-icon>
-        </ion-item-option>
-      </ion-item-options>
-    </ion-item-sliding>
+        </ion-button>
+      </div>
+    </ion-item>
   </ion-list>
 
   <div class="empty-state" *ngIf="!isLoading && customers.length === 0">
