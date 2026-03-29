@@ -1,0 +1,96 @@
+<ion-header>
+  <ion-toolbar>
+    <ion-buttons slot="start">
+      <ion-back-button defaultHref="/customers"></ion-back-button>
+    </ion-buttons>
+    <ion-title>{{ customer?.name || 'Customer' }}</ion-title>
+    <ion-buttons slot="end">
+      <ion-button [routerLink]="['/customers', customerId, 'edit']">
+        <ion-icon slot="icon-only" name="create-outline"></ion-icon>
+      </ion-button>
+      <ion-button (click)="confirmDelete()" color="danger">
+        <ion-icon slot="icon-only" name="trash-outline"></ion-icon>
+      </ion-button>
+    </ion-buttons>
+  </ion-toolbar>
+</ion-header>
+
+<ion-content>
+  <div class="loading-state" *ngIf="isLoading">
+    <ion-spinner></ion-spinner>
+  </div>
+
+  <ng-container *ngIf="!isLoading && customer">
+
+    <!-- Contact card -->
+    <ion-card>
+      <ion-card-content>
+        <div class="customer-header">
+          <div class="avatar">{{ customer.name.charAt(0).toUpperCase() }}</div>
+          <div>
+            <h2>{{ customer.name }}</h2>
+            <p *ngIf="customer.vat_number" class="vat">VAT: {{ customer.vat_number }}</p>
+          </div>
+        </div>
+      </ion-card-content>
+    </ion-card>
+
+    <!-- Details -->
+    <ion-card>
+      <ion-card-header>
+        <ion-card-title>Contact</ion-card-title>
+      </ion-card-header>
+      <ion-card-content>
+        <ion-list lines="none">
+          <ion-item>
+            <ion-icon name="mail-outline" slot="start" color="medium"></ion-icon>
+            <ion-label>{{ customer.email }}</ion-label>
+          </ion-item>
+          <ion-item *ngIf="customer.phone">
+            <ion-icon name="call-outline" slot="start" color="medium"></ion-icon>
+            <ion-label>{{ customer.phone }}</ion-label>
+          </ion-item>
+          <ion-item>
+            <ion-icon name="location-outline" slot="start" color="medium"></ion-icon>
+            <ion-label class="ion-text-wrap">{{ customer.billing_address }}</ion-label>
+          </ion-item>
+          <ion-item *ngIf="customer.shipping_address">
+            <ion-icon name="navigate-outline" slot="start" color="medium"></ion-icon>
+            <ion-label class="ion-text-wrap">{{ customer.shipping_address }}</ion-label>
+          </ion-item>
+          <ion-item *ngIf="customer.payment_terms != null">
+            <ion-icon name="time-outline" slot="start" color="medium"></ion-icon>
+            <ion-label>Payment terms: {{ customer.payment_terms }} days</ion-label>
+          </ion-item>
+          <ion-item *ngIf="customer.notes">
+            <ion-icon name="document-text-outline" slot="start" color="medium"></ion-icon>
+            <ion-label class="ion-text-wrap">{{ customer.notes }}</ion-label>
+          </ion-item>
+        </ion-list>
+      </ion-card-content>
+    </ion-card>
+
+    <!-- Document history -->
+    <ion-card>
+      <ion-card-header>
+        <ion-card-title>Invoice History</ion-card-title>
+      </ion-card-header>
+      <ion-card-content *ngIf="customer.documents && customer.documents.length > 0">
+        <ion-list lines="full">
+          <ion-item *ngFor="let doc of customer.documents" [routerLink]="['/invoices', doc.id]" button detail="true">
+            <ion-label>
+              <h3>{{ doc.document_number }}</h3>
+              <p>{{ doc.issue_date | date:'mediumDate' }} &mdash; Due {{ doc.due_date | date:'mediumDate' }}</p>
+            </ion-label>
+            <ion-badge slot="end" [color]="getStatusColor(doc.status)">{{ doc.status }}</ion-badge>
+            <ion-note slot="end" class="amount">R {{ doc.total | number:'1.2-2' }}</ion-note>
+          </ion-item>
+        </ion-list>
+      </ion-card-content>
+      <ion-card-content *ngIf="!customer.documents || customer.documents.length === 0">
+        <p class="no-docs">No invoices for this customer yet.</p>
+      </ion-card-content>
+    </ion-card>
+
+  </ng-container>
+</ion-content>

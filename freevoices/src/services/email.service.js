@@ -48,7 +48,7 @@ class EmailService {
       
       const mailOptions = {
         from: {
-          name: process.env.SMTP_FROM_NAME || 'Your Application',
+          name: process.env.SMTP_FROM_NAME || 'Freevoices',
           address: process.env.SMTP_FROM_ADDRESS || this.transporter.options.auth.user
         },
         to: email,

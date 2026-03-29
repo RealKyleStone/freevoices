@@ -1,0 +1,48 @@
+.loading-state {
+  display: flex;
+  justify-content: center;
+  padding: 3rem;
+}
+
+.customer-header {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+
+  .avatar {
+    width: 3.5rem;
+    height: 3.5rem;
+    border-radius: 50%;
+    background: var(--ion-color-primary);
+    color: white;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 1.5rem;
+    font-weight: 600;
+    flex-shrink: 0;
+  }
+
+  h2 {
+    margin: 0 0 0.25rem;
+    font-size: 1.25rem;
+    font-weight: 600;
+  }
+
+  .vat {
+    margin: 0;
+    color: var(--ion-color-medium);
+    font-size: 0.85rem;
+  }
+}
+
+.amount {
+  margin-left: 0.5rem;
+  font-weight: 600;
+}
+
+.no-docs {
+  text-align: center;
+  color: var(--ion-color-medium);
+  padding: 1rem 0;
+}

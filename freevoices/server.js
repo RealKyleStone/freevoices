@@ -13,9 +13,6 @@ const { randomUUID } = require('crypto');
 
 const app = express();
 
-const net = require('net');
-const tls = require('tls');
-
 RECAPTCHA_SECRET_KEY="6LecjacqAAAAAFG-2MsglDJzKcvfYBvEw4zkYepg"
 
 // Middleware
@@ -181,98 +178,6 @@ async function verifyCaptcha(token) {
 }
 
 
-const testEmailConfig = async () => {
-  try {
-    console.log('Testing connection...');
-    const info = await transporter.verify();
-    console.log('Connection verified:', info);
-  } catch (error) {
-    console.log('Connection failed:', {
-      code: error.code,
-      command: error.command,
-      response: error.response
-    });
-  }
-};
-
-testEmailConfig();
-
-const testConnection = () => {
-  console.log('Testing SMTP connection...');
-  
-  // First try plain socket connection
-  const socket = new net.Socket();
-  
-  socket.connect({
-    host: process.env.SMTP_HOST,
-    port: parseInt(process.env.SMTP_PORT)
-  });
-
-  socket.on('connect', () => {
-    console.log('Connected to server');
-    
-    // Wait for server greeting
-    socket.once('data', (data) => {
-      console.log('Server greeting:', data.toString());
-      
-      // Send EHLO
-      socket.write('EHLO ' + process.env.SMTP_HOST + '\r\n');
-      
-      // Wait for EHLO response
-      socket.once('data', (data) => {
-        console.log('EHLO response:', data.toString());
-        
-        // Start TLS
-        socket.write('STARTTLS\r\n');
-        
-        socket.once('data', (data) => {
-          console.log('STARTTLS response:', data.toString());
-          
-          // Upgrade to TLS
-          const tlsSocket = tls.connect({
-            socket: socket,
-            host: process.env.SMTP_HOST,
-            rejectUnauthorized: false,
-            servername: process.env.SMTP_HOST
-          });
-          
-          tlsSocket.on('secure', () => {
-            console.log('TLS connection established');
-            console.log('Protocol:', tlsSocket.getProtocol());
-            console.log('Cipher:', tlsSocket.getCipher());
-            tlsSocket.end();
-          });
-          
-          tlsSocket.on('error', (err) => {
-            console.log('TLS error:', {
-              message: err.message,
-              code: err.code,
-              library: err.library,
-              reason: err.reason
-            });
-          });
-        });
-      });
-    });
-  });
-
-  socket.on('error', (err) => {
-    console.log('Socket error:', err);
-  });
-};
-
-console.log('Supported TLS versions:', tls.getCiphers());
-
-
-testConnection();
-
-/*console.log('SMTP Config:', {
-  host: process.env.SMTP_HOST,
-  port: process.env.SMTP_PORT,
-  user: process.env.SMTP_USER,
-  pass: process.env.SMTP_PASS,
-  secure: process.env.SMTP_SECURE
-});*/ //needed this for testing leaving it here for now
 
 // Login endpoint
 app.post('/api/auth/login', async (req, res) => {
@@ -281,9 +186,9 @@ app.post('/api/auth/login', async (req, res) => {
     logger.info(`Login attempt for user: ${email}`);
     logger.info(`Captcha token: ${captchaToken}`);
 
-    // Skip CAPTCHA verification for mobile devices
-    if (!req.headers['user-agent']?.includes('Mobile')) {
-      // Verify CAPTCHA
+    // Skip CAPTCHA in development or for mobile devices
+    const isDev = process.env.NODE_ENV !== 'production';
+    if (!isDev && !req.headers['user-agent']?.includes('Mobile')) {
       const captchaValid = await verifyCaptcha(captchaToken);
       if (!captchaValid) {
         logger.warn(`CAPTCHA verification failed for user: ${email}`);
@@ -393,9 +298,9 @@ app.post('/api/auth/register', async (req, res) => {
       captchaToken
     } = req.body;
 
-    // Skip CAPTCHA verification for mobile devices
-    if (!req.headers['user-agent']?.includes('Mobile')) {
-      // Verify CAPTCHA
+    // Skip CAPTCHA in development or for mobile devices
+    const isDev = process.env.NODE_ENV !== 'production';
+    if (!isDev && !req.headers['user-agent']?.includes('Mobile')) {
       const captchaValid = await verifyCaptcha(captchaToken);
       if (!captchaValid) {
         logger.warn(`CAPTCHA verification failed for registration: ${email}`);
@@ -505,6 +410,152 @@ app.get('/api/banks', async (req, res) => {
     res.status(500).json({ message: 'Failed to fetch banks' });
   }
 });
+
+// ─── Customer endpoints ───────────────────────────────────────────────────────
+
+// GET /api/customers — paginated list with optional search
+app.get('/api/customers', authenticateToken, async (req, res) => {
+  try {
+    const search = req.query.search || '';
+    const page   = Math.max(1, parseInt(req.query.page)  || 1);
+    const limit  = Math.min(100, parseInt(req.query.limit) || 20);
+    const offset = (page - 1) * limit;
+
+    let sql    = 'SELECT * FROM customers WHERE user_id = ? AND active = 1';
+    let cntSql = 'SELECT COUNT(*) AS total FROM customers WHERE user_id = ? AND active = 1';
+    const params    = [req.user.id];
+    const cntParams = [req.user.id];
+
+    if (search) {
+      const clause = ' AND (name LIKE ? OR email LIKE ?)';
+      sql    += clause;
+      cntSql += clause;
+      params.push(`%${search}%`, `%${search}%`);
+      cntParams.push(`%${search}%`, `%${search}%`);
+    }
+
+    sql += ' ORDER BY name ASC LIMIT ? OFFSET ?';
+    params.push(limit, offset);
+
+    const [customers, countResult] = await Promise.all([
+      executeQuery(sql, params),
+      executeQuery(cntSql, cntParams)
+    ]);
+
+    res.json({ data: customers, total: countResult[0].total, page, limit });
+  } catch (error) {
+    logger.error('Error fetching customers:', error);
+    res.status(500).json({ message: 'Failed to fetch customers' });
+  }
+});
+
+// POST /api/customers — create
+app.post('/api/customers', authenticateToken, async (req, res) => {
+  try {
+    const { name, email, phone, vat_number, billing_address, shipping_address, payment_terms, notes } = req.body;
+
+    if (!name || !email || !billing_address) {
+      return res.status(400).json({ message: 'Name, email, and billing address are required' });
+    }
+
+    const result = await executeQuery(
+      `INSERT INTO customers (user_id, name, email, phone, vat_number, billing_address, shipping_address, payment_terms, notes)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [req.user.id, name, email, phone || null, vat_number || null, billing_address, shipping_address || null, payment_terms || null, notes || null]
+    );
+
+    const customer = await executeQuery('SELECT * FROM customers WHERE id = ?', [result.insertId]);
+    res.status(201).json(customer[0]);
+  } catch (error) {
+    logger.error('Error creating customer:', error);
+    res.status(500).json({ message: 'Failed to create customer' });
+  }
+});
+
+// GET /api/customers/:id — single customer with document history
+app.get('/api/customers/:id', authenticateToken, async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    const customers = await executeQuery(
+      'SELECT * FROM customers WHERE id = ? AND user_id = ? AND active = 1',
+      [id, req.user.id]
+    );
+
+    if (customers.length === 0) {
+      return res.status(404).json({ message: 'Customer not found' });
+    }
+
+    const documents = await executeQuery(
+      'SELECT * FROM documents WHERE customer_id = ? AND user_id = ? ORDER BY created_at DESC',
+      [id, req.user.id]
+    );
+
+    res.json({ ...customers[0], documents });
+  } catch (error) {
+    logger.error('Error fetching customer:', error);
+    res.status(500).json({ message: 'Failed to fetch customer' });
+  }
+});
+
+// PUT /api/customers/:id — update
+app.put('/api/customers/:id', authenticateToken, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { name, email, phone, vat_number, billing_address, shipping_address, payment_terms, notes } = req.body;
+
+    if (!name || !email || !billing_address) {
+      return res.status(400).json({ message: 'Name, email, and billing address are required' });
+    }
+
+    const existing = await executeQuery(
+      'SELECT id FROM customers WHERE id = ? AND user_id = ? AND active = 1',
+      [id, req.user.id]
+    );
+    if (existing.length === 0) {
+      return res.status(404).json({ message: 'Customer not found' });
+    }
+
+    await executeQuery(
+      `UPDATE customers
+       SET name=?, email=?, phone=?, vat_number=?, billing_address=?, shipping_address=?, payment_terms=?, notes=?, updated_at=NOW()
+       WHERE id = ? AND user_id = ?`,
+      [name, email, phone || null, vat_number || null, billing_address, shipping_address || null, payment_terms || null, notes || null, id, req.user.id]
+    );
+
+    const customer = await executeQuery('SELECT * FROM customers WHERE id = ?', [id]);
+    res.json(customer[0]);
+  } catch (error) {
+    logger.error('Error updating customer:', error);
+    res.status(500).json({ message: 'Failed to update customer' });
+  }
+});
+
+// DELETE /api/customers/:id — soft delete
+app.delete('/api/customers/:id', authenticateToken, async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    const existing = await executeQuery(
+      'SELECT id FROM customers WHERE id = ? AND user_id = ? AND active = 1',
+      [id, req.user.id]
+    );
+    if (existing.length === 0) {
+      return res.status(404).json({ message: 'Customer not found' });
+    }
+
+    await executeQuery(
+      'UPDATE customers SET active = 0, updated_at = NOW() WHERE id = ? AND user_id = ?',
+      [id, req.user.id]
+    );
+    res.json({ message: 'Customer deleted successfully' });
+  } catch (error) {
+    logger.error('Error deleting customer:', error);
+    res.status(500).json({ message: 'Failed to delete customer' });
+  }
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
 
 // Catch-all route for Angular app
 app.get('*', (req, res) => {

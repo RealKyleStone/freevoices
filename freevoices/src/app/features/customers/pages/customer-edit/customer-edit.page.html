@@ -1,0 +1,95 @@
+<ion-header>
+  <ion-toolbar>
+    <ion-buttons slot="start">
+      <ion-back-button [defaultHref]="'/customers/' + customerId"></ion-back-button>
+    </ion-buttons>
+    <ion-title>Edit Customer</ion-title>
+  </ion-toolbar>
+</ion-header>
+
+<ion-content class="ion-padding">
+  <div class="loading-state" *ngIf="isFetching">
+    <ion-spinner></ion-spinner>
+  </div>
+
+  <form [formGroup]="form" (ngSubmit)="onSubmit()" *ngIf="!isFetching">
+
+    <ion-card>
+      <ion-card-header>
+        <ion-card-title>Contact Details</ion-card-title>
+      </ion-card-header>
+      <ion-card-content>
+
+        <ion-item [class.ion-invalid]="isInvalid('name')" fill="outline">
+          <ion-label position="floating">Name <ion-text color="danger">*</ion-text></ion-label>
+          <ion-input formControlName="name" type="text"></ion-input>
+          <ion-note slot="error">Name is required (min 2 characters)</ion-note>
+        </ion-item>
+
+        <ion-item [class.ion-invalid]="isInvalid('email')" fill="outline">
+          <ion-label position="floating">Email <ion-text color="danger">*</ion-text></ion-label>
+          <ion-input formControlName="email" type="email"></ion-input>
+          <ion-note slot="error">Valid email is required</ion-note>
+        </ion-item>
+
+        <ion-item fill="outline">
+          <ion-label position="floating">Phone</ion-label>
+          <ion-input formControlName="phone" type="tel"></ion-input>
+        </ion-item>
+
+        <ion-item fill="outline">
+          <ion-label position="floating">VAT Number</ion-label>
+          <ion-input formControlName="vat_number" type="text"></ion-input>
+        </ion-item>
+
+      </ion-card-content>
+    </ion-card>
+
+    <ion-card>
+      <ion-card-header>
+        <ion-card-title>Addresses</ion-card-title>
+      </ion-card-header>
+      <ion-card-content>
+
+        <ion-item [class.ion-invalid]="isInvalid('billing_address')" fill="outline">
+          <ion-label position="floating">Billing Address <ion-text color="danger">*</ion-text></ion-label>
+          <ion-textarea formControlName="billing_address" rows="3"></ion-textarea>
+          <ion-note slot="error">Billing address is required</ion-note>
+        </ion-item>
+
+        <ion-item fill="outline">
+          <ion-label position="floating">Shipping Address</ion-label>
+          <ion-textarea formControlName="shipping_address" rows="3"></ion-textarea>
+        </ion-item>
+
+      </ion-card-content>
+    </ion-card>
+
+    <ion-card>
+      <ion-card-header>
+        <ion-card-title>Terms</ion-card-title>
+      </ion-card-header>
+      <ion-card-content>
+
+        <ion-item fill="outline">
+          <ion-label position="floating">Payment Terms (days)</ion-label>
+          <ion-input formControlName="payment_terms" type="number" min="0"></ion-input>
+        </ion-item>
+
+        <ion-item fill="outline">
+          <ion-label position="floating">Notes</ion-label>
+          <ion-textarea formControlName="notes" rows="3"></ion-textarea>
+        </ion-item>
+
+      </ion-card-content>
+    </ion-card>
+
+    <div class="form-actions">
+      <ion-button expand="block" type="submit" [disabled]="isLoading">
+        <ion-spinner *ngIf="isLoading" slot="start" name="crescent"></ion-spinner>
+        {{ isLoading ? 'Saving...' : 'Save Changes' }}
+      </ion-button>
+    </div>
+
+  </form>
+</ion-content>

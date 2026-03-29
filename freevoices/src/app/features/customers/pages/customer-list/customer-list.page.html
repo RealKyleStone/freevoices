@@ -1,0 +1,79 @@
+<ion-header>
+  <ion-toolbar>
+    <ion-title>Customers</ion-title>
+    <ion-buttons slot="end">
+      <ion-button routerLink="/customers/new" color="primary">
+        <ion-icon slot="icon-only" name="add-outline"></ion-icon>
+      </ion-button>
+    </ion-buttons>
+  </ion-toolbar>
+  <ion-toolbar>
+    <ion-searchbar
+      [(ngModel)]="searchTerm"
+      (ionInput)="onSearchChange()"
+      placeholder="Search by name or email"
+      debounce="0">
+    </ion-searchbar>
+  </ion-toolbar>
+</ion-header>
+
+<ion-content>
+  <ion-list *ngIf="!isLoading && customers.length > 0">
+    <ion-item-sliding *ngFor="let customer of customers">
+      <ion-item [routerLink]="['/customers', customer.id]" detail="false" button>
+        <ion-avatar slot="start">
+          <div class="avatar-initials">{{ customer.name.charAt(0).toUpperCase() }}</div>
+        </ion-avatar>
+        <ion-label>
+          <h2>{{ customer.name }}</h2>
+          <p>{{ customer.email }}</p>
+          <p *ngIf="customer.phone">{{ customer.phone }}</p>
+        </ion-label>
+        <div slot="end" class="row-actions">
+          <ion-button fill="clear" [routerLink]="['/customers', customer.id, 'edit']" (click)="$event.stopPropagation()">
+            <ion-icon slot="icon-only" name="create-outline"></ion-icon>
+          </ion-button>
+          <ion-button fill="clear" color="danger" (click)="$event.stopPropagation(); confirmDelete(customer)">
+            <ion-icon slot="icon-only" name="trash-outline"></ion-icon>
+          </ion-button>
+        </div>
+      </ion-item>
+
+      <ion-item-options side="end">
+        <ion-item-option [routerLink]="['/customers', customer.id, 'edit']" color="primary">
+          <ion-icon slot="icon-only" name="create-outline"></ion-icon>
+        </ion-item-option>
+        <ion-item-option (click)="confirmDelete(customer)" color="danger">
+          <ion-icon slot="icon-only" name="trash-outline"></ion-icon>
+        </ion-item-option>
+      </ion-item-options>
+    </ion-item-sliding>
+  </ion-list>
+
+  <div class="empty-state" *ngIf="!isLoading && customers.length === 0">
+    <ion-icon name="people-outline"></ion-icon>
+    <p *ngIf="searchTerm">No customers match "{{ searchTerm }}"</p>
+    <p *ngIf="!searchTerm">No customers yet. Add your first one!</p>
+    <ion-button routerLink="/customers/new" fill="outline">Add Customer</ion-button>
+  </div>
+
+  <div class="loading-state" *ngIf="isLoading">
+    <ion-spinner></ion-spinner>
+  </div>
+
+  <div class="pagination" *ngIf="!isLoading && totalPages > 1">
+    <ion-button fill="clear" [disabled]="page === 1" (click)="prevPage()">
+      <ion-icon slot="icon-only" name="chevron-back-outline"></ion-icon>
+    </ion-button>
+    <span>{{ page }} / {{ totalPages }}</span>
+    <ion-button fill="clear" [disabled]="page === totalPages" (click)="nextPage()">
+      <ion-icon slot="icon-only" name="chevron-forward-outline"></ion-icon>
+    </ion-button>
+  </div>
+
+  <ion-fab vertical="bottom" horizontal="end" slot="fixed">
+    <ion-fab-button routerLink="/customers/new" color="primary">
+      <ion-icon name="add"></ion-icon>
+    </ion-fab-button>
+  </ion-fab>
+</ion-content>

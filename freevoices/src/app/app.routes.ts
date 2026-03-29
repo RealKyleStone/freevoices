@@ -20,8 +20,13 @@ export const routes: Routes = [
         path: 'dashboard',
         loadComponent: () => import('./features/dashboard/pages/dashboard/dashboard.page')
           .then(m => m.DashboardPage)
-      }     
-      
+      },
+      {
+        path: 'customers',
+        loadChildren: () => import('./features/customers/customers.routes')
+          .then(m => m.CUSTOMER_ROUTES)
+      }
+
       /*,
       {
         path: 'invoices',
@@ -32,11 +37,6 @@ export const routes: Routes = [
         path: 'quotes',
         loadChildren: () => import('./features/quotes/quotes.routes')
           .then(m => m.QUOTE_ROUTES)
-      },
-      {
-        path: 'customers',
-        loadChildren: () => import('./features/customers/customers.routes')
-          .then(m => m.CUSTOMER_ROUTES)
       },
       {
         path: 'products',

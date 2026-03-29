@@ -42,15 +42,16 @@ export interface Customer extends BaseModel {
   shipping_address?: string;
   payment_terms?: number;
   notes?: string;
+  active?: boolean;
 }
 
 export interface Document extends BaseModel {
   user_id: number;
   customer_id: number;
-  type: 'invoice' | 'quote';
+  type: 'INVOICE' | 'QUOTE';
   document_number: string;
   currency_id: number;
-  status: 'draft' | 'sent' | 'viewed' | 'paid' | 'cancelled';
+  status: 'DRAFT' | 'SENT' | 'PAID' | 'OVERDUE' | 'CANCELLED';
   issue_date: string;
   due_date: string;
   valid_until?: string;
@@ -76,7 +77,7 @@ export interface DocumentItem extends BaseModel {
 
 export interface DocumentTracking extends BaseModel {
   document_id: number;
-  event_type: 'sent' | 'viewed' | 'paid';
+  event_type: 'CREATED' | 'SENT' | 'VIEWED' | 'DOWNLOADED' | 'PAID' | 'CANCELLED';
   event_date: string;
   ip_address?: string;
   user_agent?: string;
@@ -86,8 +87,8 @@ export interface EmailLog extends BaseModel {
   document_id: number;
   recipient_email: string;
   subject: string;
-  email_type: 'invoice' | 'quote' | 'reminder';
-  status: 'sent' | 'failed';
+  email_type: 'INVOICE' | 'QUOTE' | 'REMINDER' | 'RECEIPT';
+  status: 'PENDING' | 'SENT' | 'FAILED';
   error_message?: string;
   sent_at?: string;
 }
@@ -96,7 +97,7 @@ export interface Payment extends BaseModel {
   document_id: number;
   amount: number;
   payment_date: string;
-  payment_method: 'bank_transfer' | 'cash' | 'card' | 'other';
+  payment_method: 'PAYFLEX' | 'PAYFAST' | 'CARDANO' | 'BANK_TRANSFER' | 'OTHER';
   transaction_reference?: string;
   notes?: string;
 }

@@ -1,0 +1,8 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(grep -r \"TODO\\\\|FIXME\\\\|XXX\\\\|HACK\" /e/github/freevoices/freevoices/src --include=*.ts --include=*.js)",
+      "Bash(xargs ls:*)"
+    ]
+  }
+}
