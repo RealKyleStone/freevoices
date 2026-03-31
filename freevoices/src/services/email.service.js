@@ -84,6 +84,27 @@ class EmailService {
       throw error;
     }
   }
+  async sendPasswordResetEmail(email, token) {
+    const resetUrl = `${process.env.APP_URL}/auth/reset-password?token=${token}`;
+
+    const mailOptions = {
+      from: {
+        name: process.env.SMTP_FROM_NAME || 'Freevoices',
+        address: process.env.SMTP_FROM_ADDRESS || this.transporter.options.auth.user
+      },
+      to: email,
+      subject: 'Reset Your Password',
+      html: `
+        <h1>Password Reset</h1>
+        <p>You requested a password reset for your Freevoices account.</p>
+        <p>Click the link below to set a new password. This link expires in 1 hour.</p>
+        <a href="${resetUrl}">${resetUrl}</a>
+        <p>If you did not request this, you can safely ignore this email.</p>
+      `
+    };
+
+    return this.transporter.sendMail(mailOptions);
+  }
 }
 
 module.exports = EmailService;

@@ -32,22 +32,33 @@ The core value proposition: give small businesses a simple, no-cost way to creat
 | 404 not-found page | `src/app/shared/` |
 | Winston logging to file (error.log, combined.log) | `server.js` |
 | Argon2 password hashing | `server.js` |
-| **Customer CRUD API** — list (paginated + search), create, get, update, delete | `server.js` |
-| **Customer list page** — searchable, paginated, swipe-to-delete | `src/app/features/customers/pages/customer-list/` |
+| **Customer CRUD API** — list (paginated + search), create, get, update, soft-delete | `server.js` |
+| **Customer list page** — searchable, paginated, edit/delete actions | `src/app/features/customers/pages/customer-list/` |
 | **Customer create/edit form** — reactive form, full validation | `src/app/features/customers/pages/customer-create/`, `customer-edit/` |
 | **Customer detail page** — contact info + invoice history | `src/app/features/customers/pages/customer-detail/` |
+| **Product CRUD API** — list (paginated + search), create, get, update, soft-delete | `server.js` |
+| **Product list page** — searchable, paginated, edit/delete actions | `src/app/features/products/pages/product-list/` |
+| **Product create/edit form** — name, description, price, VAT inclusive toggle | `src/app/features/products/pages/product-create/`, `product-edit/` |
+| **Product detail page** | `src/app/features/products/pages/product-detail/` |
+| **Invoice API** — list (paginated, status filter), create with line items (transaction), get, update (DRAFT only), mark sent, record payment | `server.js` |
+| **Invoice list page** — status tabs (All/Draft/Sent/Paid/Overdue), search | `src/app/features/invoices/pages/invoice-list/` |
+| **Invoice builder** — customer picker, dynamic line items with product catalogue integration, live VAT/total calculation, auto-generated number | `src/app/features/invoices/pages/invoice-create/`, `invoice-edit/` |
+| **Invoice detail page** — items table, tracking timeline, payment history, inline payment form, action buttons | `src/app/features/invoices/pages/invoice-detail/` |
+| **Quote API** — list (paginated, status filter), create with line items (transaction), get, update (DRAFT only), mark sent, convert to invoice | `server.js` |
+| **Quote list page** — status tabs, search | `src/app/features/quotes/pages/quote-list/` |
+| **Quote builder** — same as invoice builder, `valid_until` expiry date | `src/app/features/quotes/pages/quote-create/`, `quote-edit/` |
+| **Quote detail page** — items, tracking timeline, "Convert to Invoice" action | `src/app/features/quotes/pages/quote-detail/` |
 | **Database schema documented** | `database/schema.sql` |
+| **Migrations applied** — soft-delete on customers (`001`), currencies seeded ZAR default (`002`), password reset tokens table (`003`) | All applied; `database/migrations/` folder is now empty |
+| **Dashboard live data** — `GET /api/dashboard/summary`, DashboardService, live stats + recent activity | `server.js` + `src/app/features/dashboard/` |
+| **Forgot / Reset Password** — token generation, email link, secure reset with Argon2 | `server.js` + `src/app/features/auth/pages/forgot-password/`, `reset-password/` |
 
 ### What Is Scaffolded but Not Built
 
 These routes and folder structures exist but have no working UI components or backend endpoints yet:
 
-- `features/invoices/` — list, create, edit, detail views
-- `features/quotes/` — list, create, edit, detail views
-- `features/products/` — list, create, edit, detail views
 - `features/settings/` — profile, company, invoice, payment, notifications sub-pages
 - `features/reports/` — reporting section
-- Forgot password / Reset password flows
 
 ### Data Models Already Defined
 
@@ -180,12 +191,14 @@ The email infrastructure already exists (`src/services/email.service.js`). This 
 - Building a clean HTML email template
 - Calling it from the `POST /api/invoices/:id/send` endpoint
 
-#### 2.3 Dashboard — Live Data
+#### 2.3 Dashboard — Live Data ✅ COMPLETE
 
-Replace the hardcoded placeholder values in [src/app/features/dashboard/pages/dashboard/dashboard.page.ts](src/app/features/dashboard/pages/dashboard/dashboard.page.ts) with real API data.
+**Backend endpoint (live in `server.js`):**
+- `GET /api/dashboard/summary` — returns: revenue this month, active customer count, open invoice count, overdue count, last 5 tracking events ✅
 
-**New endpoint:**
-- `GET /api/dashboard/summary` — returns: total revenue (month/year), open invoices count, overdue count, recent activity
+**Frontend (live in `src/app/features/dashboard/`):**
+- `DashboardService` calls the summary endpoint ✅
+- Dashboard page replaced with live stats, skeleton loaders, and real recent-activity list ✅
 
 #### 2.4 Settings Pages
 
@@ -197,12 +210,16 @@ Build out `src/app/features/settings/` sub-pages:
 - **Payment details** — bank account displayed on invoices
 - **Notifications** — email notification preferences
 
-#### 2.5 Forgot Password / Reset Password
+#### 2.5 Forgot Password / Reset Password ✅ COMPLETE
 
-The routes are commented out in `app.routes.ts`. Standard flow:
-1. `POST /api/auth/forgot-password` — generate a reset token, email a link
-2. `GET /api/auth/reset-password?token=...` — validate token, serve the reset form
-3. `POST /api/auth/reset-password` — update password, invalidate the token
+**Backend endpoints (live in `server.js`):**
+- `POST /api/auth/forgot-password` — generates a UUID reset token, stores it with a 1-hour expiry in `password_reset_tokens`, emails a reset link ✅
+- `POST /api/auth/reset-password` — validates token (expiry + used flag), hashes new password with Argon2, marks token used ✅
+
+**Frontend pages (live in `src/app/features/auth/pages/`):**
+- Forgot-password page — email form, success/error messaging, email-enumeration-safe response ✅
+- Reset-password page — reads token from URL query param, password + confirm fields with match validation, redirects to login on success ✅
+- Routes wired in `auth.routes.ts` ✅
 
 ---
 
@@ -270,12 +287,12 @@ These should be addressed before or alongside Phase 2:
 | CAPTCHA secret key hardcoded | `server.js:19` | Move to `.env` |
 | SMTP `rejectUnauthorized: false` | `src/services/email.service.js` | Enable in production, handle self-signed certs properly |
 | Mobile CAPTCHA bypass via User-Agent | `server.js` | User-Agent can be spoofed; use a more robust mobile detection or disable CAPTCHA for authenticated requests only |
-| Dashboard uses hardcoded placeholder data | `dashboard.page.ts` | Replace with `/api/dashboard/summary` |
+| Dashboard uses hardcoded placeholder data | `dashboard.page.ts` | ✅ Fixed — wired to `/api/dashboard/summary` |
 | NgRx installed but completely unused | `package.json` | Either use it or remove it to keep bundle size down |
 | No global frontend error handler | — | Add an Angular `ErrorHandler` or an HTTP interceptor to catch and display API errors consistently |
 | No input validation middleware | `server.js` | Add `express-validator` to validate and sanitise all POST/PUT request bodies |
-| Database migrations | `database/migrations/` | Folder created; first migration (`001_add_customers_active.sql`) adds soft-delete to customers. Add a runner tool like `db-migrate` or `Knex` to manage these properly. |
-| Customer delete is hard-delete | `server.js` | Run `database/migrations/001_add_customers_active.sql` then switch to soft-delete |
+| Database migrations | `database/migrations/` | All three migrations applied and files removed. Consider adding a runner tool like `db-migrate` or `Knex` for future migrations. |
+| Customer delete is hard-delete | `server.js` | ✅ Fixed — migration `001` applied, soft-delete now in place |
 | Profile API selects non-existent columns | `server.js` | `GET /api/profile` selects `username`, `role`, `organizationID`, `organizationName` — none of these columns exist in the `users` table. Fix the SELECT to match the actual schema. |
 | `.env` committed? | `.env` | Verify `.env` is in `.gitignore`. It should never be committed. |
 
@@ -298,10 +315,14 @@ These should be addressed before or alongside Phase 2:
 
 ## Suggested First PR for a New Contributor
 
-**Customer CRUD is done** — the next best self-contained starting point is **Product / Service Catalogue** (Phase 1.2):
-1. Add the 4 product endpoints to `server.js`
-2. Build the product list page in `src/app/features/products/`
-3. Build the create/edit product form
-4. Wire the routes back in `app.routes.ts`
+**Phase 1 (Core Business Logic) is complete.** The entire CRUD pipeline — customers → products → invoices → quotes — is live and wired.
 
-This follows the exact same pattern as the customer CRUD and directly unblocks invoice line-item selection.
+**Phase 2.3 (Dashboard Live Data) and Phase 2.5 (Forgot/Reset Password) are now complete.**
+
+The next best self-contained starting points are:
+
+1. **Settings Pages** (Phase 2.4) — build out profile, company, invoice defaults, payment details, and notifications sub-pages in `src/app/features/settings/`
+2. **PDF Generation** (Phase 2.1) — add `GET /api/invoices/:id/pdf` using Puppeteer or PDFKit so users can download professional invoices
+3. **Email Invoice to Customer** (Phase 2.2) — attach the PDF to the existing `POST /api/invoices/:id/send` endpoint via `email.service.js`
+
+Settings Pages (2.4) is the most self-contained. PDF + Email (2.1 + 2.2) pair naturally together and deliver the highest user value.

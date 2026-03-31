@@ -1,11 +1,16 @@
 /* app.component.scss */
 ion-menu {
-    --width: 100px;
+    --width: 240px;
     
     .menu-header {
         padding: 1rem 0.5rem;
         text-align: center;
-        
+        cursor: pointer;
+
+        &:hover {
+          opacity: 0.8;
+        }
+
         h1 {
           margin: 0;
           font-size: 1rem;
@@ -42,11 +47,3 @@ ion-menu {
     }
   }
   
-  // Hide menu toggle button on larger screens
-  @media (min-width: 992px) {
-    ion-menu {
-      ion-menu-toggle {
-        display: none;
-      }
-    }
-  }

@@ -3,10 +3,10 @@
   <ion-split-pane contentId="main-content">
     <ion-menu contentId="main-content">
       <ion-content>
-        <div class="menu-header">
+        <div class="menu-header" routerLink="/dashboard" (click)="closeMenu()">
           <h1>FreeVoices</h1>
         </div>
-        
+
         <ion-list>
           <ion-menu-toggle auto-hide="false">
             <ion-item routerLink="/dashboard" routerLinkActive="selected" detail="false">
@@ -14,19 +14,24 @@
               <ion-label>Dashboard</ion-label>
             </ion-item>
 
-            <ion-item routerLink="/sales" routerLinkActive="selected" detail="false">
-              <ion-icon name="cash-outline" slot="start"></ion-icon>
-              <ion-label>Sales & Payments</ion-label>
+            <ion-item routerLink="/customers" routerLinkActive="selected" detail="false">
+              <ion-icon name="people-outline" slot="start"></ion-icon>
+              <ion-label>Customers</ion-label>
             </ion-item>
 
-            <ion-item routerLink="/profile" routerLinkActive="selected" detail="false">
-              <ion-icon name="business-outline" slot="start"></ion-icon>
-              <ion-label>Company Profile</ion-label>
+            <ion-item routerLink="/invoices" routerLinkActive="selected" detail="false">
+              <ion-icon name="document-text-outline" slot="start"></ion-icon>
+              <ion-label>Invoices</ion-label>
             </ion-item>
 
-            <ion-item routerLink="/reports" routerLinkActive="selected" detail="false">
-              <ion-icon name="bar-chart-outline" slot="start"></ion-icon>
-              <ion-label>Reports</ion-label>
+            <ion-item routerLink="/quotes" routerLinkActive="selected" detail="false">
+              <ion-icon name="receipt-outline" slot="start"></ion-icon>
+              <ion-label>Quotes</ion-label>
+            </ion-item>
+
+            <ion-item routerLink="/products" routerLinkActive="selected" detail="false">
+              <ion-icon name="cube-outline" slot="start"></ion-icon>
+              <ion-label>Products</ion-label>
             </ion-item>
           </ion-menu-toggle>
         </ion-list>

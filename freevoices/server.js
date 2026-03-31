@@ -398,6 +398,74 @@ app.get('/api/verify-email', async (req, res) => {
   }
 });
 
+// Forgot password — generate reset token and email link
+app.post('/api/auth/forgot-password', async (req, res) => {
+  try {
+    const { email } = req.body;
+    if (!email) {
+      return res.status(400).json({ message: 'Email is required' });
+    }
+
+    const users = await executeQuery(
+      'SELECT id FROM users WHERE email = ? AND email_verified = 1',
+      [email]
+    );
+
+    // Always respond with success to prevent email enumeration
+    if (users.length === 0) {
+      return res.json({ message: 'If that email is registered you will receive a reset link shortly.' });
+    }
+
+    const token = randomUUID();
+    await executeQuery(
+      `INSERT INTO password_reset_tokens (user_id, token, expires_at)
+       VALUES (?, ?, DATE_ADD(NOW(), INTERVAL 1 HOUR))`,
+      [users[0].id, token]
+    );
+
+    await emailService.sendPasswordResetEmail(email, token);
+    res.json({ message: 'If that email is registered you will receive a reset link shortly.' });
+  } catch (error) {
+    logger.error('Forgot password error:', error);
+    res.status(500).json({ message: 'Failed to process request' });
+  }
+});
+
+// Reset password — validate token and update password
+app.post('/api/auth/reset-password', async (req, res) => {
+  try {
+    const { token, password } = req.body;
+    if (!token || !password) {
+      return res.status(400).json({ message: 'Token and new password are required' });
+    }
+
+    if (password.length < 8) {
+      return res.status(400).json({ message: 'Password must be at least 8 characters' });
+    }
+
+    const tokens = await executeQuery(
+      `SELECT id, user_id FROM password_reset_tokens
+       WHERE token = ? AND expires_at > NOW() AND used = 0`,
+      [token]
+    );
+
+    if (tokens.length === 0) {
+      return res.status(400).json({ message: 'Invalid or expired reset token' });
+    }
+
+    const { id: tokenId, user_id } = tokens[0];
+    const passwordHash = await argon2.hash(password);
+
+    await executeQuery('UPDATE users SET password_hash = ? WHERE id = ?', [passwordHash, user_id]);
+    await executeQuery('UPDATE password_reset_tokens SET used = 1 WHERE id = ?', [tokenId]);
+
+    res.json({ message: 'Password updated successfully' });
+  } catch (error) {
+    logger.error('Reset password error:', error);
+    res.status(500).json({ message: 'Failed to reset password' });
+  }
+});
+
 // Banks endpoint
 app.get('/api/banks', async (req, res) => {
   try {
@@ -1424,6 +1492,64 @@ app.delete('/api/products/:id', authenticateToken, async (req, res) => {
   } catch (error) {
     logger.error('Error deleting product:', error);
     res.status(500).json({ message: 'Failed to delete product' });
+  }
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+
+// Dashboard summary
+app.get('/api/dashboard/summary', authenticateToken, async (req, res) => {
+  try {
+    const userId = req.user.id;
+
+    const [revenueRows, customersRows, openRows, overdueRows, recentRows] = await Promise.all([
+      // Total revenue from paid invoices (current calendar month)
+      executeQuery(
+        `SELECT COALESCE(SUM(total), 0) AS monthRevenue,
+                COALESCE(SUM(CASE WHEN YEAR(issue_date) = YEAR(CURDATE()) THEN total ELSE 0 END), 0) AS yearRevenue
+         FROM documents
+         WHERE user_id = ? AND type = 'INVOICE' AND status = 'PAID'
+           AND YEAR(issue_date) = YEAR(CURDATE()) AND MONTH(issue_date) = MONTH(CURDATE())`,
+        [userId]
+      ),
+      // Total active customers
+      executeQuery(
+        `SELECT COUNT(*) AS total FROM customers WHERE user_id = ? AND is_active = 1`,
+        [userId]
+      ),
+      // Open (sent but not yet paid) invoices
+      executeQuery(
+        `SELECT COUNT(*) AS total FROM documents WHERE user_id = ? AND type = 'INVOICE' AND status = 'SENT'`,
+        [userId]
+      ),
+      // Overdue invoices
+      executeQuery(
+        `SELECT COUNT(*) AS total FROM documents WHERE user_id = ? AND type = 'INVOICE' AND status = 'OVERDUE'`,
+        [userId]
+      ),
+      // Recent tracking activity (last 5 events across all documents)
+      executeQuery(
+        `SELECT dt.event_type, dt.event_date, d.document_number, d.type AS document_type, c.company_name AS customer_name
+         FROM document_tracking dt
+         JOIN documents d ON dt.document_id = d.id
+         JOIN customers c ON d.customer_id = c.id
+         WHERE d.user_id = ?
+         ORDER BY dt.event_date DESC
+         LIMIT 5`,
+        [userId]
+      )
+    ]);
+
+    res.json({
+      monthRevenue: parseFloat(revenueRows[0].monthRevenue),
+      totalCustomers: customersRows[0].total,
+      openInvoices: openRows[0].total,
+      overdueInvoices: overdueRows[0].total,
+      recentActivity: recentRows
+    });
+  } catch (error) {
+    logger.error('Error fetching dashboard summary:', error);
+    res.status(500).json({ message: 'Failed to fetch dashboard summary' });
   }
 });
 

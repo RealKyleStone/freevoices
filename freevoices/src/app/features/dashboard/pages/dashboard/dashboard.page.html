@@ -1,11 +1,8 @@
-<script type="module" src="https://unpkg.com/ionicons@7.2.1/dist/ionicons/ionicons.esm.js"></script>
-
 <ion-header>
     <ion-toolbar>
       <ion-buttons slot="end">
         <ion-button>
           <ion-icon slot="icon-only" name="notifications-outline"></ion-icon>
-          <ion-badge color="danger">3</ion-badge>
         </ion-button>
         <ion-button>
           <ion-icon slot="icon-only" name="person-circle-outline"></ion-icon>
@@ -13,12 +10,12 @@
       </ion-buttons>
     </ion-toolbar>
   </ion-header>
-  
+
   <ion-content>
     <div class="dashboard-container">
       <!-- Quick Actions -->
       <div class="quick-actions">
-        <ion-button color="primary" class="new-invoice-btn">
+        <ion-button color="primary" class="new-invoice-btn" routerLink="/invoices/new">
           <ion-icon name="add-circle-outline" slot="start"></ion-icon>
           New Invoice
         </ion-button>
@@ -27,7 +24,7 @@
           Add Customer
         </ion-button>
       </div>
-  
+
       <!-- Stats Cards -->
       <ion-grid>
         <ion-row>
@@ -38,13 +35,14 @@
                   <ion-icon name="wallet-outline"></ion-icon>
                 </div>
                 <div class="stat-info">
-                  <h3>Total Revenue</h3>
-                  <p>{{ stats.totalRevenue | currency:selectedCurrency }}</p>
+                  <h3>Revenue This Month</h3>
+                  <p *ngIf="!isLoading">{{ summary.monthRevenue | currency:selectedCurrency }}</p>
+                  <ion-skeleton-text *ngIf="isLoading" animated class="skeleton-stat"></ion-skeleton-text>
                 </div>
               </ion-card-content>
             </ion-card>
           </ion-col>
-  
+
           <ion-col size="12" size-md="6" size-lg="3">
             <ion-card class="stat-card">
               <ion-card-content>
@@ -53,12 +51,13 @@
                 </div>
                 <div class="stat-info">
                   <h3>Total Customers</h3>
-                  <p>{{ stats.totalCustomers }}</p>
+                  <p *ngIf="!isLoading">{{ summary.totalCustomers }}</p>
+                  <ion-skeleton-text *ngIf="isLoading" animated class="skeleton-stat-sm"></ion-skeleton-text>
                 </div>
               </ion-card-content>
             </ion-card>
           </ion-col>
-  
+
           <ion-col size="12" size-md="6" size-lg="3">
             <ion-card class="stat-card">
               <ion-card-content>
@@ -66,13 +65,14 @@
                   <ion-icon name="document-text-outline"></ion-icon>
                 </div>
                 <div class="stat-info">
-                  <h3>Pending Invoices</h3>
-                  <p>{{ stats.pendingInvoices }}</p>
+                  <h3>Open Invoices</h3>
+                  <p *ngIf="!isLoading">{{ summary.openInvoices }}</p>
+                  <ion-skeleton-text *ngIf="isLoading" animated class="skeleton-stat-sm"></ion-skeleton-text>
                 </div>
               </ion-card-content>
             </ion-card>
           </ion-col>
-  
+
           <ion-col size="12" size-md="6" size-lg="3">
             <ion-card class="stat-card">
               <ion-card-content>
@@ -81,39 +81,48 @@
                 </div>
                 <div class="stat-info">
                   <h3>Overdue</h3>
-                  <p>{{ stats.overdueinvoices }}</p>
+                  <p *ngIf="!isLoading">{{ summary.overdueInvoices }}</p>
+                  <ion-skeleton-text *ngIf="isLoading" animated class="skeleton-stat-sm"></ion-skeleton-text>
                 </div>
               </ion-card-content>
             </ion-card>
           </ion-col>
         </ion-row>
       </ion-grid>
-  
-      <!-- Charts Section -->
-      <ion-grid>
-        <ion-row>
-          <ion-col size="12" size-lg="8">
-            <ion-card class="chart-card">
-              <ion-card-header>
-                <ion-card-title>Revenue Overview</ion-card-title>
-              </ion-card-header>
-              <ion-card-content>
-                <div class="chart-placeholder"></div>
-              </ion-card-content>
-            </ion-card>
-          </ion-col>
-  
-          <ion-col size="12" size-lg="4">
-            <ion-card class="recent-activity">
-              <ion-card-header>
-                <ion-card-title>Recent Activity</ion-card-title>
-              </ion-card-header>
-              <ion-card-content>
-                <div class="activity-placeholder"></div>
-              </ion-card-content>
-            </ion-card>
-          </ion-col>
-        </ion-row>
-      </ion-grid>
+
+      <!-- Recent Activity -->
+      <ion-card class="recent-activity">
+        <ion-card-header>
+          <ion-card-title>Recent Activity</ion-card-title>
+        </ion-card-header>
+        <ion-card-content>
+          <ng-container *ngIf="!isLoading">
+            <ion-list *ngIf="summary.recentActivity.length > 0" lines="none">
+              <ion-item *ngFor="let item of summary.recentActivity">
+                <ion-icon
+                  slot="start"
+                  [name]="item.event_type === 'PAID' ? 'checkmark-circle-outline' :
+                          item.event_type === 'SENT' ? 'send-outline' :
+                          item.event_type === 'CANCELLED' ? 'close-circle-outline' :
+                          'document-outline'"
+                  [color]="item.event_type === 'PAID' ? 'success' :
+                           item.event_type === 'OVERDUE' ? 'danger' :
+                           item.event_type === 'CANCELLED' ? 'medium' : 'primary'">
+                </ion-icon>
+                <ion-label>
+                  <h3>{{ item.document_number }} — {{ item.customer_name }}</h3>
+                  <p>{{ formatEventType(item.event_type) }} · {{ item.event_date | date:'d MMM y, HH:mm' }}</p>
+                </ion-label>
+              </ion-item>
+            </ion-list>
+            <p *ngIf="summary.recentActivity.length === 0" class="no-activity">No recent activity yet.</p>
+          </ng-container>
+          <ng-container *ngIf="isLoading">
+            <ion-item *ngFor="let _ of [1,2,3]">
+              <ion-skeleton-text animated class="skeleton-row"></ion-skeleton-text>
+            </ion-item>
+          </ng-container>
+        </ion-card-content>
+      </ion-card>
     </div>
   </ion-content>

@@ -130,7 +130,28 @@
     height: 300px;
     border-radius: 8px;
   }
-  
+
+  .skeleton-stat {
+    width: 80px;
+    height: 20px;
+  }
+
+  .skeleton-stat-sm {
+    width: 40px;
+    height: 20px;
+  }
+
+  .skeleton-row {
+    width: 100%;
+    height: 40px;
+  }
+
+  .no-activity {
+    color: var(--ion-color-medium);
+    text-align: center;
+    padding: 1rem 0;
+  }
+
   // Dark mode adjustments
   :host-context(.dark-theme) {
     .stat-info p {

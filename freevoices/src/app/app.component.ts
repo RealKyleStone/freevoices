@@ -1,13 +1,13 @@
 import { Component } from '@angular/core';
-import { Router } from '@angular/router';
-import { IonApp, IonSplitPane, IonMenu, IonContent, IonList, 
-         IonMenuToggle, IonItem, IonIcon, IonLabel, IonFooter, 
-         IonRouterOutlet } from '@ionic/angular/standalone';
+import { Router, RouterModule } from '@angular/router';
+import { IonApp, IonSplitPane, IonMenu, IonContent, IonList,
+         IonMenuToggle, IonItem, IonIcon, IonLabel, IonFooter,
+         IonRouterOutlet, MenuController } from '@ionic/angular/standalone';
 import { AuthService } from './core/auth/services/auth.service';
-import { 
-  walletOutline, 
+import {
+  walletOutline,
   gridOutline,
-  cashOutline, 
+  cashOutline,
   businessOutline,
   barChartOutline,
   logOutOutline,
@@ -17,7 +17,9 @@ import {
   personAddOutline,
   documentTextOutline,
   alertCircleOutline,
-  peopleOutline
+  peopleOutline,
+  receiptOutline,
+  cubeOutline
 } from 'ionicons/icons';
 import { addIcons } from 'ionicons';
 
@@ -27,6 +29,7 @@ import { addIcons } from 'ionicons';
   styleUrls: ['./app.component.scss'],
   standalone: true,
   imports: [
+    RouterModule,
     IonApp,
     IonSplitPane,
     IonMenu,
@@ -43,9 +46,9 @@ import { addIcons } from 'ionicons';
 export class AppComponent {
   constructor(
     private authService: AuthService,
-    private router: Router
+    private router: Router,
+    private menuCtrl: MenuController
   ) {
-
     addIcons({
       'wallet-outline': walletOutline,
       'grid-outline': gridOutline,
@@ -59,9 +62,14 @@ export class AppComponent {
       'person-add-outline': personAddOutline,
       'document-text-outline': documentTextOutline,
       'alert-circle-outline': alertCircleOutline,
-      'people-outline': peopleOutline
+      'people-outline': peopleOutline,
+      'receipt-outline': receiptOutline,
+      'cube-outline': cubeOutline
     });
-    
+  }
+
+  async closeMenu() {
+    await this.menuCtrl.close();
   }
 
   async logout() {
