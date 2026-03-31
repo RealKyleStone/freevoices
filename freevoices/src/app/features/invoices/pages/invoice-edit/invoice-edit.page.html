@@ -1,0 +1,143 @@
+<ion-header>
+  <ion-toolbar>
+    <ion-buttons slot="start">
+      <ion-back-button [defaultHref]="'/invoices/' + invoiceId"></ion-back-button>
+    </ion-buttons>
+    <ion-title>Edit Invoice</ion-title>
+  </ion-toolbar>
+</ion-header>
+
+<ion-content class="ion-padding">
+  <div class="loading-state" *ngIf="isFetching">
+    <ion-spinner></ion-spinner>
+  </div>
+
+  <form [formGroup]="form" (ngSubmit)="onSubmit()" *ngIf="!isFetching">
+
+    <!-- Header details -->
+    <ion-card>
+      <ion-card-header><ion-card-title>Invoice Details</ion-card-title></ion-card-header>
+      <ion-card-content>
+
+        <ion-item [class.ion-invalid]="isInvalid('customer_id')" fill="outline">
+          <ion-label position="floating">Customer <ion-text color="danger">*</ion-text></ion-label>
+          <ion-select formControlName="customer_id" interface="action-sheet" placeholder="Select customer">
+            <ion-select-option *ngFor="let c of customers" [value]="c.id">{{ c.name }}</ion-select-option>
+          </ion-select>
+          <ion-note slot="error">Customer is required</ion-note>
+        </ion-item>
+
+        <ion-item [class.ion-invalid]="isInvalid('issue_date')" fill="outline">
+          <ion-label position="floating">Issue Date <ion-text color="danger">*</ion-text></ion-label>
+          <ion-input formControlName="issue_date" type="date"></ion-input>
+          <ion-note slot="error">Issue date is required</ion-note>
+        </ion-item>
+
+        <ion-item fill="outline">
+          <ion-label position="floating">Due Date</ion-label>
+          <ion-input formControlName="due_date" type="date"></ion-input>
+        </ion-item>
+
+        <ion-item fill="outline">
+          <ion-label position="floating">Payment Terms (days)</ion-label>
+          <ion-input formControlName="payment_terms" type="number" min="0"></ion-input>
+        </ion-item>
+
+      </ion-card-content>
+    </ion-card>
+
+    <!-- Line items -->
+    <ion-card>
+      <ion-card-header><ion-card-title>Line Items</ion-card-title></ion-card-header>
+      <ion-card-content formArrayName="items">
+
+        <div *ngFor="let item of items.controls; let i = index" [formGroupName]="i" class="line-item">
+          <div class="line-item-header">
+            <span class="line-item-num">Item {{ i + 1 }}</span>
+            <ion-button fill="clear" color="danger" size="small" (click)="removeItem(i)" [disabled]="items.length === 1">
+              <ion-icon slot="icon-only" name="trash-outline"></ion-icon>
+            </ion-button>
+          </div>
+
+          <ion-item fill="outline" *ngIf="products.length > 0">
+            <ion-label position="floating">Product (optional)</ion-label>
+            <ion-select formControlName="product_id" interface="action-sheet" placeholder="Custom / ad-hoc"
+                        (ionChange)="onProductChange(i)">
+              <ion-select-option [value]="null">Custom / ad-hoc</ion-select-option>
+              <ion-select-option *ngFor="let p of products" [value]="p.id">{{ p.name }}</ion-select-option>
+            </ion-select>
+          </ion-item>
+
+          <ion-item [class.ion-invalid]="isItemInvalid(i, 'description')" fill="outline">
+            <ion-label position="floating">Description <ion-text color="danger">*</ion-text></ion-label>
+            <ion-input formControlName="description" type="text"></ion-input>
+            <ion-note slot="error">Description is required</ion-note>
+          </ion-item>
+
+          <div class="item-row">
+            <ion-item [class.ion-invalid]="isItemInvalid(i, 'quantity')" fill="outline" class="flex-1">
+              <ion-label position="floating">Qty <ion-text color="danger">*</ion-text></ion-label>
+              <ion-input formControlName="quantity" type="number" min="0.01" step="0.01"></ion-input>
+            </ion-item>
+
+            <ion-item [class.ion-invalid]="isItemInvalid(i, 'unit_price')" fill="outline" class="flex-2">
+              <ion-label position="floating">Unit Price <ion-text color="danger">*</ion-text></ion-label>
+              <ion-input formControlName="unit_price" type="number" min="0" step="0.01"></ion-input>
+            </ion-item>
+
+            <ion-item fill="outline" class="flex-1">
+              <ion-label position="floating">VAT %</ion-label>
+              <ion-input formControlName="vat_rate" type="number" min="0" step="0.5"></ion-input>
+            </ion-item>
+          </div>
+
+          <div class="item-totals">
+            <span>Subtotal: R {{ itemSubtotal(i) | number:'1.2-2' }}</span>
+            <span>VAT: R {{ itemVat(i) | number:'1.2-2' }}</span>
+            <strong>Total: R {{ itemTotal(i) | number:'1.2-2' }}</strong>
+          </div>
+        </div>
+
+        <ion-button expand="block" fill="outline" (click)="addItem()" type="button">
+          <ion-icon slot="start" name="add-outline"></ion-icon>
+          Add Line Item
+        </ion-button>
+
+      </ion-card-content>
+    </ion-card>
+
+    <!-- Totals -->
+    <ion-card>
+      <ion-card-content>
+        <div class="totals">
+          <div class="totals-row"><span>Subtotal</span><span>R {{ docSubtotal | number:'1.2-2' }}</span></div>
+          <div class="totals-row"><span>VAT</span><span>R {{ docVat | number:'1.2-2' }}</span></div>
+          <div class="totals-row total-row"><strong>Total</strong><strong>R {{ docTotal | number:'1.2-2' }}</strong></div>
+        </div>
+      </ion-card-content>
+    </ion-card>
+
+    <!-- Notes -->
+    <ion-card>
+      <ion-card-header><ion-card-title>Additional Info</ion-card-title></ion-card-header>
+      <ion-card-content>
+        <ion-item fill="outline">
+          <ion-label position="floating">Notes</ion-label>
+          <ion-textarea formControlName="notes" rows="3"></ion-textarea>
+        </ion-item>
+        <ion-item fill="outline">
+          <ion-label position="floating">Terms & Conditions</ion-label>
+          <ion-textarea formControlName="terms_conditions" rows="3"></ion-textarea>
+        </ion-item>
+      </ion-card-content>
+    </ion-card>
+
+    <div class="form-actions">
+      <ion-button expand="block" type="submit" [disabled]="isLoading">
+        <ion-spinner *ngIf="isLoading" slot="start" name="crescent"></ion-spinner>
+        {{ isLoading ? 'Saving...' : 'Save Changes' }}
+      </ion-button>
+    </div>
+
+  </form>
+</ion-content>

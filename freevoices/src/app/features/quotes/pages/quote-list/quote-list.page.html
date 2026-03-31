@@ -1,0 +1,73 @@
+<ion-header>
+  <ion-toolbar>
+    <ion-title>Quotes</ion-title>
+    <ion-buttons slot="end">
+      <ion-button routerLink="/quotes/new" color="primary">
+        <ion-icon slot="icon-only" name="add-outline"></ion-icon>
+      </ion-button>
+    </ion-buttons>
+  </ion-toolbar>
+  <ion-toolbar>
+    <ion-searchbar
+      [(ngModel)]="searchTerm"
+      (ionInput)="onSearchChange()"
+      placeholder="Search by number or customer"
+      debounce="0">
+    </ion-searchbar>
+  </ion-toolbar>
+  <ion-toolbar>
+    <ion-segment [(ngModel)]="selectedStatus" (ionChange)="onStatusChange()">
+      <ion-segment-button value="">All</ion-segment-button>
+      <ion-segment-button value="DRAFT">Draft</ion-segment-button>
+      <ion-segment-button value="SENT">Sent</ion-segment-button>
+      <ion-segment-button value="OVERDUE">Expired</ion-segment-button>
+      <ion-segment-button value="CANCELLED">Cancelled</ion-segment-button>
+    </ion-segment>
+  </ion-toolbar>
+</ion-header>
+
+<ion-content>
+  <ion-list *ngIf="!isLoading && quotes.length > 0">
+    <ion-item *ngFor="let quote of quotes" [routerLink]="['/quotes', quote.id]" button detail="true">
+      <ion-label>
+        <h2>{{ quote.document_number }}</h2>
+        <p>{{ quote.customer_name }}</p>
+        <p>
+          Issued {{ quote.issue_date | date:'mediumDate' }}
+          <ng-container *ngIf="quote.valid_until"> &mdash; Valid until {{ quote.valid_until | date:'mediumDate' }}</ng-container>
+        </p>
+      </ion-label>
+      <div slot="end" class="quote-end">
+        <ion-badge [color]="getStatusColor(quote.status)">{{ quote.status }}</ion-badge>
+        <p class="amount">R {{ quote.total | number:'1.2-2' }}</p>
+      </div>
+    </ion-item>
+  </ion-list>
+
+  <div class="empty-state" *ngIf="!isLoading && quotes.length === 0">
+    <ion-icon name="document-outline"></ion-icon>
+    <p *ngIf="searchTerm || selectedStatus">No quotes match your filter.</p>
+    <p *ngIf="!searchTerm && !selectedStatus">No quotes yet. Create your first one!</p>
+    <ion-button routerLink="/quotes/new" fill="outline">New Quote</ion-button>
+  </div>
+
+  <div class="loading-state" *ngIf="isLoading">
+    <ion-spinner></ion-spinner>
+  </div>
+
+  <div class="pagination" *ngIf="!isLoading && totalPages > 1">
+    <ion-button fill="clear" [disabled]="page === 1" (click)="prevPage()">
+      <ion-icon slot="icon-only" name="chevron-back-outline"></ion-icon>
+    </ion-button>
+    <span>{{ page }} / {{ totalPages }}</span>
+    <ion-button fill="clear" [disabled]="page === totalPages" (click)="nextPage()">
+      <ion-icon slot="icon-only" name="chevron-forward-outline"></ion-icon>
+    </ion-button>
+  </div>
+
+  <ion-fab vertical="bottom" horizontal="end" slot="fixed">
+    <ion-fab-button routerLink="/quotes/new" color="primary">
+      <ion-icon name="add"></ion-icon>
+    </ion-fab-button>
+  </ion-fab>
+</ion-content>

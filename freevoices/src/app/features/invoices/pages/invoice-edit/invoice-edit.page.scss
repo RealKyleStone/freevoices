@@ -1,0 +1,57 @@
+.loading-state {
+  display: flex;
+  justify-content: center;
+  padding: 3rem;
+}
+
+.line-item {
+  border: 1px solid var(--ion-color-light-shade);
+  border-radius: 8px;
+  padding: 0.75rem;
+  margin-bottom: 1rem;
+
+  .line-item-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 0.5rem;
+
+    .line-item-num {
+      font-weight: 600;
+      color: var(--ion-color-medium);
+      font-size: 0.85rem;
+    }
+  }
+
+  .item-row {
+    display: flex;
+    gap: 0.5rem;
+    .flex-1 { flex: 1; }
+    .flex-2 { flex: 2; }
+  }
+
+  .item-totals {
+    display: flex;
+    justify-content: flex-end;
+    gap: 1.5rem;
+    margin-top: 0.5rem;
+    font-size: 0.85rem;
+    color: var(--ion-color-medium);
+    strong { color: var(--ion-color-dark); }
+  }
+}
+
+ion-item { margin-bottom: 0.75rem; }
+
+.totals {
+  .totals-row {
+    display: flex;
+    justify-content: space-between;
+    padding: 0.4rem 0;
+    font-size: 0.95rem;
+    border-bottom: 1px solid var(--ion-color-light);
+  }
+  .total-row { border-bottom: none; font-size: 1.1rem; padding-top: 0.75rem; }
+}
+
+.form-actions { padding: 1rem 0 2rem; }

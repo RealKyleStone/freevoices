@@ -556,6 +556,750 @@ app.delete('/api/customers/:id', authenticateToken, async (req, res) => {
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
+// Invoices
+
+async function getNextDocumentNumber(userId, type) {
+  const prefix = type === 'INVOICE' ? 'INV' : 'QUO';
+  const year = new Date().getFullYear();
+  const rows = await executeQuery(
+    `SELECT document_number FROM documents WHERE user_id = ? AND type = ? AND document_number LIKE ? ORDER BY id DESC LIMIT 1`,
+    [userId, type, `${prefix}-${year}-%`]
+  );
+  if (rows.length === 0) return `${prefix}-${year}-0001`;
+  const seq = parseInt(rows[0].document_number.split('-')[2], 10) + 1;
+  return `${prefix}-${year}-${String(seq).padStart(4, '0')}`;
+}
+
+app.get('/api/invoices', authenticateToken, async (req, res) => {
+  try {
+    const search = req.query.search || '';
+    const status = req.query.status || '';
+    const page   = Math.max(1, parseInt(req.query.page)  || 1);
+    const limit  = Math.min(100, parseInt(req.query.limit) || 20);
+    const offset = (page - 1) * limit;
+
+    let sql = `SELECT d.id, d.document_number, d.status, d.issue_date, d.due_date,
+                      d.subtotal, d.vat_amount, d.total, d.created_at,
+                      c.name AS customer_name
+               FROM documents d
+               JOIN customers c ON c.id = d.customer_id
+               WHERE d.user_id = ? AND d.type = 'INVOICE'`;
+    let cntSql = `SELECT COUNT(*) AS total
+                  FROM documents d
+                  JOIN customers c ON c.id = d.customer_id
+                  WHERE d.user_id = ? AND d.type = 'INVOICE'`;
+    const params    = [req.user.id];
+    const cntParams = [req.user.id];
+
+    if (status) {
+      sql    += ' AND d.status = ?';
+      cntSql += ' AND d.status = ?';
+      params.push(status);
+      cntParams.push(status);
+    }
+
+    if (search) {
+      const clause = ' AND (d.document_number LIKE ? OR c.name LIKE ?)';
+      sql    += clause;
+      cntSql += clause;
+      params.push(`%${search}%`, `%${search}%`);
+      cntParams.push(`%${search}%`, `%${search}%`);
+    }
+
+    sql += ' ORDER BY d.created_at DESC LIMIT ? OFFSET ?';
+    params.push(limit, offset);
+
+    const [invoices, countResult] = await Promise.all([
+      executeQuery(sql, params),
+      executeQuery(cntSql, cntParams)
+    ]);
+
+    res.json({ data: invoices, total: countResult[0].total, page, limit });
+  } catch (error) {
+    logger.error('Error fetching invoices:', error);
+    res.status(500).json({ message: 'Failed to fetch invoices' });
+  }
+});
+
+app.post('/api/invoices', authenticateToken, async (req, res) => {
+  try {
+    const { customer_id, issue_date, due_date, payment_terms, notes, terms_conditions, items } = req.body;
+
+    if (!customer_id || !issue_date || !items || items.length === 0) {
+      return res.status(400).json({ message: 'Customer, issue date, and at least one line item are required' });
+    }
+
+    const customers = await executeQuery(
+      'SELECT id FROM customers WHERE id = ? AND user_id = ? AND active = 1',
+      [customer_id, req.user.id]
+    );
+    if (customers.length === 0) return res.status(400).json({ message: 'Invalid customer' });
+
+    let subtotal = 0, vat_amount = 0, total = 0;
+    const lineItems = items.map(item => {
+      const qty   = parseFloat(item.quantity)   || 0;
+      const price = parseFloat(item.unit_price)  || 0;
+      const rate  = parseFloat(item.vat_rate)    ?? 15;
+      const itemSubtotal = qty * price;
+      const itemVat      = itemSubtotal * rate / 100;
+      const itemTotal    = itemSubtotal + itemVat;
+      subtotal   += itemSubtotal;
+      vat_amount += itemVat;
+      total      += itemTotal;
+      return { ...item, quantity: qty, unit_price: price, vat_rate: rate,
+               subtotal: itemSubtotal, vat_amount: itemVat, total: itemTotal };
+    });
+
+    const document_number = await getNextDocumentNumber(req.user.id, 'INVOICE');
+    const currency_id = 1; // Default ZAR — Phase 3.3 adds multi-currency
+
+    const conn = await new Promise((resolve, reject) =>
+      pool.getConnection((err, c) => err ? reject(err) : resolve(c))
+    );
+    try {
+      await new Promise((resolve, reject) =>
+        conn.beginTransaction(err => err ? reject(err) : resolve())
+      );
+
+      const docResult = await new Promise((resolve, reject) =>
+        conn.query(
+          `INSERT INTO documents (user_id, customer_id, type, document_number, currency_id, status,
+            issue_date, due_date, payment_terms, subtotal, vat_amount, total, notes, terms_conditions)
+           VALUES (?, ?, 'INVOICE', ?, ?, 'DRAFT', ?, ?, ?, ?, ?, ?, ?, ?)`,
+          [req.user.id, customer_id, document_number, currency_id,
+           issue_date, due_date || null, payment_terms || null,
+           subtotal.toFixed(2), vat_amount.toFixed(2), total.toFixed(2),
+           notes || null, terms_conditions || null],
+          (err, result) => err ? reject(err) : resolve(result)
+        )
+      );
+      const docId = docResult.insertId;
+
+      for (const item of lineItems) {
+        await new Promise((resolve, reject) =>
+          conn.query(
+            `INSERT INTO document_items (document_id, product_id, description, quantity,
+              unit_price, vat_rate, vat_amount, subtotal, total)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+            [docId, item.product_id || null, item.description,
+             item.quantity, item.unit_price, item.vat_rate,
+             item.vat_amount.toFixed(2), item.subtotal.toFixed(2), item.total.toFixed(2)],
+            (err, r) => err ? reject(err) : resolve(r)
+          )
+        );
+      }
+
+      await new Promise((resolve, reject) =>
+        conn.query(
+          `INSERT INTO document_tracking (document_id, event_type) VALUES (?, 'CREATED')`,
+          [docId],
+          (err, r) => err ? reject(err) : resolve(r)
+        )
+      );
+
+      await new Promise((resolve, reject) => conn.commit(err => err ? reject(err) : resolve()));
+      conn.release();
+
+      const invoice   = await executeQuery(
+        `SELECT d.*, c.name AS customer_name FROM documents d
+         JOIN customers c ON c.id = d.customer_id WHERE d.id = ?`, [docId]
+      );
+      const itemsResult = await executeQuery(
+        'SELECT * FROM document_items WHERE document_id = ? ORDER BY id ASC', [docId]
+      );
+      res.status(201).json({ ...invoice[0], items: itemsResult });
+    } catch (txError) {
+      await new Promise(resolve => conn.rollback(resolve));
+      conn.release();
+      throw txError;
+    }
+  } catch (error) {
+    logger.error('Error creating invoice:', error);
+    res.status(500).json({ message: 'Failed to create invoice' });
+  }
+});
+
+app.get('/api/invoices/:id', authenticateToken, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const [invoices, items, tracking, payments] = await Promise.all([
+      executeQuery(
+        `SELECT d.*, c.name AS customer_name, c.email AS customer_email,
+                c.billing_address AS customer_billing_address,
+                c.vat_number AS customer_vat_number
+         FROM documents d
+         JOIN customers c ON c.id = d.customer_id
+         WHERE d.id = ? AND d.user_id = ? AND d.type = 'INVOICE'`,
+        [id, req.user.id]
+      ),
+      executeQuery('SELECT * FROM document_items WHERE document_id = ? ORDER BY id ASC', [id]),
+      executeQuery('SELECT * FROM document_tracking WHERE document_id = ? ORDER BY event_date ASC', [id]),
+      executeQuery('SELECT * FROM payments WHERE document_id = ? ORDER BY payment_date DESC', [id])
+    ]);
+
+    if (invoices.length === 0) return res.status(404).json({ message: 'Invoice not found' });
+    res.json({ ...invoices[0], items, tracking, payments });
+  } catch (error) {
+    logger.error('Error fetching invoice:', error);
+    res.status(500).json({ message: 'Failed to fetch invoice' });
+  }
+});
+
+app.put('/api/invoices/:id', authenticateToken, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { customer_id, issue_date, due_date, payment_terms, notes, terms_conditions, items } = req.body;
+
+    const existing = await executeQuery(
+      `SELECT id, status FROM documents WHERE id = ? AND user_id = ? AND type = 'INVOICE'`,
+      [id, req.user.id]
+    );
+    if (existing.length === 0) return res.status(404).json({ message: 'Invoice not found' });
+    if (existing[0].status !== 'DRAFT') {
+      return res.status(400).json({ message: 'Only DRAFT invoices can be edited' });
+    }
+
+    if (!customer_id || !issue_date || !items || items.length === 0) {
+      return res.status(400).json({ message: 'Customer, issue date, and at least one line item are required' });
+    }
+
+    const customers = await executeQuery(
+      'SELECT id FROM customers WHERE id = ? AND user_id = ? AND active = 1', [customer_id, req.user.id]
+    );
+    if (customers.length === 0) return res.status(400).json({ message: 'Invalid customer' });
+
+    let subtotal = 0, vat_amount = 0, total = 0;
+    const lineItems = items.map(item => {
+      const qty   = parseFloat(item.quantity)  || 0;
+      const price = parseFloat(item.unit_price) || 0;
+      const rate  = parseFloat(item.vat_rate)   ?? 15;
+      const itemSubtotal = qty * price;
+      const itemVat      = itemSubtotal * rate / 100;
+      const itemTotal    = itemSubtotal + itemVat;
+      subtotal   += itemSubtotal;
+      vat_amount += itemVat;
+      total      += itemTotal;
+      return { ...item, quantity: qty, unit_price: price, vat_rate: rate,
+               subtotal: itemSubtotal, vat_amount: itemVat, total: itemTotal };
+    });
+
+    const conn = await new Promise((resolve, reject) =>
+      pool.getConnection((err, c) => err ? reject(err) : resolve(c))
+    );
+    try {
+      await new Promise((resolve, reject) =>
+        conn.beginTransaction(err => err ? reject(err) : resolve())
+      );
+
+      await new Promise((resolve, reject) =>
+        conn.query(
+          `UPDATE documents SET customer_id=?, issue_date=?, due_date=?, payment_terms=?,
+            subtotal=?, vat_amount=?, total=?, notes=?, terms_conditions=?, updated_at=NOW()
+           WHERE id=? AND user_id=?`,
+          [customer_id, issue_date, due_date || null, payment_terms || null,
+           subtotal.toFixed(2), vat_amount.toFixed(2), total.toFixed(2),
+           notes || null, terms_conditions || null, id, req.user.id],
+          (err, r) => err ? reject(err) : resolve(r)
+        )
+      );
+
+      await new Promise((resolve, reject) =>
+        conn.query('DELETE FROM document_items WHERE document_id = ?', [id],
+          (err, r) => err ? reject(err) : resolve(r))
+      );
+
+      for (const item of lineItems) {
+        await new Promise((resolve, reject) =>
+          conn.query(
+            `INSERT INTO document_items (document_id, product_id, description, quantity,
+              unit_price, vat_rate, vat_amount, subtotal, total)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+            [id, item.product_id || null, item.description,
+             item.quantity, item.unit_price, item.vat_rate,
+             item.vat_amount.toFixed(2), item.subtotal.toFixed(2), item.total.toFixed(2)],
+            (err, r) => err ? reject(err) : resolve(r)
+          )
+        );
+      }
+
+      await new Promise((resolve, reject) => conn.commit(err => err ? reject(err) : resolve()));
+      conn.release();
+
+      const invoice = await executeQuery(
+        `SELECT d.*, c.name AS customer_name FROM documents d
+         JOIN customers c ON c.id = d.customer_id WHERE d.id = ?`, [id]
+      );
+      const itemsResult = await executeQuery(
+        'SELECT * FROM document_items WHERE document_id = ? ORDER BY id ASC', [id]
+      );
+      res.json({ ...invoice[0], items: itemsResult });
+    } catch (txError) {
+      await new Promise(resolve => conn.rollback(resolve));
+      conn.release();
+      throw txError;
+    }
+  } catch (error) {
+    logger.error('Error updating invoice:', error);
+    res.status(500).json({ message: 'Failed to update invoice' });
+  }
+});
+
+app.post('/api/invoices/:id/send', authenticateToken, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const existing = await executeQuery(
+      `SELECT id, status FROM documents WHERE id = ? AND user_id = ? AND type = 'INVOICE'`,
+      [id, req.user.id]
+    );
+    if (existing.length === 0) return res.status(404).json({ message: 'Invoice not found' });
+    if (!['DRAFT', 'SENT'].includes(existing[0].status)) {
+      return res.status(400).json({ message: `Cannot send an invoice with status ${existing[0].status}` });
+    }
+
+    await executeQuery(
+      `UPDATE documents SET status = 'SENT', updated_at = NOW() WHERE id = ? AND user_id = ?`,
+      [id, req.user.id]
+    );
+    await executeQuery(
+      `INSERT INTO document_tracking (document_id, event_type) VALUES (?, 'SENT')`, [id]
+    );
+    res.json({ message: 'Invoice marked as sent' });
+  } catch (error) {
+    logger.error('Error sending invoice:', error);
+    res.status(500).json({ message: 'Failed to send invoice' });
+  }
+});
+
+app.post('/api/invoices/:id/mark-paid', authenticateToken, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { amount, payment_date, payment_method, transaction_reference, notes } = req.body;
+
+    if (!amount || !payment_date || !payment_method) {
+      return res.status(400).json({ message: 'Amount, payment date, and payment method are required' });
+    }
+
+    const invoices = await executeQuery(
+      `SELECT id, total, status FROM documents WHERE id = ? AND user_id = ? AND type = 'INVOICE'`,
+      [id, req.user.id]
+    );
+    if (invoices.length === 0) return res.status(404).json({ message: 'Invoice not found' });
+    if (invoices[0].status === 'CANCELLED') {
+      return res.status(400).json({ message: 'Cannot record payment on a cancelled invoice' });
+    }
+
+    await executeQuery(
+      `INSERT INTO payments (document_id, amount, payment_date, payment_method, transaction_reference, notes)
+       VALUES (?, ?, ?, ?, ?, ?)`,
+      [id, amount, payment_date, payment_method, transaction_reference || null, notes || null]
+    );
+    await executeQuery(
+      `UPDATE documents SET status = 'PAID', updated_at = NOW() WHERE id = ? AND user_id = ?`,
+      [id, req.user.id]
+    );
+    await executeQuery(
+      `INSERT INTO document_tracking (document_id, event_type) VALUES (?, 'PAID')`, [id]
+    );
+    res.status(201).json({ message: 'Payment recorded successfully' });
+  } catch (error) {
+    logger.error('Error recording payment:', error);
+    res.status(500).json({ message: 'Failed to record payment' });
+  }
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Quotes
+
+app.get('/api/quotes', authenticateToken, async (req, res) => {
+  try {
+    const search = req.query.search || '';
+    const status = req.query.status || '';
+    const page   = Math.max(1, parseInt(req.query.page)  || 1);
+    const limit  = Math.min(100, parseInt(req.query.limit) || 20);
+    const offset = (page - 1) * limit;
+
+    let sql = `SELECT d.id, d.document_number, d.status, d.issue_date, d.due_date, d.valid_until,
+                      d.subtotal, d.vat_amount, d.total, d.created_at,
+                      c.name AS customer_name
+               FROM documents d
+               JOIN customers c ON c.id = d.customer_id
+               WHERE d.user_id = ? AND d.type = 'QUOTE'`;
+    let cntSql = `SELECT COUNT(*) AS total
+                  FROM documents d
+                  JOIN customers c ON c.id = d.customer_id
+                  WHERE d.user_id = ? AND d.type = 'QUOTE'`;
+    const params    = [req.user.id];
+    const cntParams = [req.user.id];
+
+    if (status) {
+      sql    += ' AND d.status = ?';
+      cntSql += ' AND d.status = ?';
+      params.push(status);
+      cntParams.push(status);
+    }
+
+    if (search) {
+      const clause = ' AND (d.document_number LIKE ? OR c.name LIKE ?)';
+      sql    += clause;
+      cntSql += clause;
+      params.push(`%${search}%`, `%${search}%`);
+      cntParams.push(`%${search}%`, `%${search}%`);
+    }
+
+    sql += ' ORDER BY d.created_at DESC LIMIT ? OFFSET ?';
+    params.push(limit, offset);
+
+    const [quotes, countResult] = await Promise.all([
+      executeQuery(sql, params),
+      executeQuery(cntSql, cntParams)
+    ]);
+
+    res.json({ data: quotes, total: countResult[0].total, page, limit });
+  } catch (error) {
+    logger.error('Error fetching quotes:', error);
+    res.status(500).json({ message: 'Failed to fetch quotes' });
+  }
+});
+
+app.post('/api/quotes', authenticateToken, async (req, res) => {
+  try {
+    const { customer_id, issue_date, valid_until, payment_terms, notes, terms_conditions, items } = req.body;
+
+    if (!customer_id || !issue_date || !items || items.length === 0) {
+      return res.status(400).json({ message: 'Customer, issue date, and at least one line item are required' });
+    }
+
+    const customers = await executeQuery(
+      'SELECT id FROM customers WHERE id = ? AND user_id = ? AND active = 1',
+      [customer_id, req.user.id]
+    );
+    if (customers.length === 0) return res.status(400).json({ message: 'Invalid customer' });
+
+    let subtotal = 0, vat_amount = 0, total = 0;
+    const lineItems = items.map(item => {
+      const qty   = parseFloat(item.quantity)  || 0;
+      const price = parseFloat(item.unit_price) || 0;
+      const rate  = parseFloat(item.vat_rate)   ?? 15;
+      const itemSubtotal = qty * price;
+      const itemVat      = itemSubtotal * rate / 100;
+      const itemTotal    = itemSubtotal + itemVat;
+      subtotal   += itemSubtotal;
+      vat_amount += itemVat;
+      total      += itemTotal;
+      return { ...item, quantity: qty, unit_price: price, vat_rate: rate,
+               subtotal: itemSubtotal, vat_amount: itemVat, total: itemTotal };
+    });
+
+    const document_number = await getNextDocumentNumber(req.user.id, 'QUOTE');
+    const currency_id = 1;
+
+    const conn = await new Promise((resolve, reject) =>
+      pool.getConnection((err, c) => err ? reject(err) : resolve(c))
+    );
+    try {
+      await new Promise((resolve, reject) =>
+        conn.beginTransaction(err => err ? reject(err) : resolve())
+      );
+
+      const docResult = await new Promise((resolve, reject) =>
+        conn.query(
+          `INSERT INTO documents (user_id, customer_id, type, document_number, currency_id, status,
+            issue_date, valid_until, payment_terms, subtotal, vat_amount, total, notes, terms_conditions)
+           VALUES (?, ?, 'QUOTE', ?, ?, 'DRAFT', ?, ?, ?, ?, ?, ?, ?, ?)`,
+          [req.user.id, customer_id, document_number, currency_id,
+           issue_date, valid_until || null, payment_terms || null,
+           subtotal.toFixed(2), vat_amount.toFixed(2), total.toFixed(2),
+           notes || null, terms_conditions || null],
+          (err, result) => err ? reject(err) : resolve(result)
+        )
+      );
+      const docId = docResult.insertId;
+
+      for (const item of lineItems) {
+        await new Promise((resolve, reject) =>
+          conn.query(
+            `INSERT INTO document_items (document_id, product_id, description, quantity,
+              unit_price, vat_rate, vat_amount, subtotal, total)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+            [docId, item.product_id || null, item.description,
+             item.quantity, item.unit_price, item.vat_rate,
+             item.vat_amount.toFixed(2), item.subtotal.toFixed(2), item.total.toFixed(2)],
+            (err, r) => err ? reject(err) : resolve(r)
+          )
+        );
+      }
+
+      await new Promise((resolve, reject) =>
+        conn.query(
+          `INSERT INTO document_tracking (document_id, event_type) VALUES (?, 'CREATED')`,
+          [docId],
+          (err, r) => err ? reject(err) : resolve(r)
+        )
+      );
+
+      await new Promise((resolve, reject) => conn.commit(err => err ? reject(err) : resolve()));
+      conn.release();
+
+      const quote     = await executeQuery(
+        `SELECT d.*, c.name AS customer_name FROM documents d
+         JOIN customers c ON c.id = d.customer_id WHERE d.id = ?`, [docId]
+      );
+      const itemsResult = await executeQuery(
+        'SELECT * FROM document_items WHERE document_id = ? ORDER BY id ASC', [docId]
+      );
+      res.status(201).json({ ...quote[0], items: itemsResult });
+    } catch (txError) {
+      await new Promise(resolve => conn.rollback(resolve));
+      conn.release();
+      throw txError;
+    }
+  } catch (error) {
+    logger.error('Error creating quote:', error);
+    res.status(500).json({ message: 'Failed to create quote' });
+  }
+});
+
+app.get('/api/quotes/:id', authenticateToken, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const [quotes, items, tracking] = await Promise.all([
+      executeQuery(
+        `SELECT d.*, c.name AS customer_name, c.email AS customer_email,
+                c.billing_address AS customer_billing_address,
+                c.vat_number AS customer_vat_number
+         FROM documents d
+         JOIN customers c ON c.id = d.customer_id
+         WHERE d.id = ? AND d.user_id = ? AND d.type = 'QUOTE'`,
+        [id, req.user.id]
+      ),
+      executeQuery('SELECT * FROM document_items WHERE document_id = ? ORDER BY id ASC', [id]),
+      executeQuery('SELECT * FROM document_tracking WHERE document_id = ? ORDER BY event_date ASC', [id])
+    ]);
+
+    if (quotes.length === 0) return res.status(404).json({ message: 'Quote not found' });
+    res.json({ ...quotes[0], items, tracking });
+  } catch (error) {
+    logger.error('Error fetching quote:', error);
+    res.status(500).json({ message: 'Failed to fetch quote' });
+  }
+});
+
+app.put('/api/quotes/:id', authenticateToken, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { customer_id, issue_date, valid_until, payment_terms, notes, terms_conditions, items } = req.body;
+
+    const existing = await executeQuery(
+      `SELECT id, status FROM documents WHERE id = ? AND user_id = ? AND type = 'QUOTE'`,
+      [id, req.user.id]
+    );
+    if (existing.length === 0) return res.status(404).json({ message: 'Quote not found' });
+    if (existing[0].status !== 'DRAFT') {
+      return res.status(400).json({ message: 'Only DRAFT quotes can be edited' });
+    }
+
+    if (!customer_id || !issue_date || !items || items.length === 0) {
+      return res.status(400).json({ message: 'Customer, issue date, and at least one line item are required' });
+    }
+
+    const customers = await executeQuery(
+      'SELECT id FROM customers WHERE id = ? AND user_id = ? AND active = 1', [customer_id, req.user.id]
+    );
+    if (customers.length === 0) return res.status(400).json({ message: 'Invalid customer' });
+
+    let subtotal = 0, vat_amount = 0, total = 0;
+    const lineItems = items.map(item => {
+      const qty   = parseFloat(item.quantity)  || 0;
+      const price = parseFloat(item.unit_price) || 0;
+      const rate  = parseFloat(item.vat_rate)   ?? 15;
+      const itemSubtotal = qty * price;
+      const itemVat      = itemSubtotal * rate / 100;
+      const itemTotal    = itemSubtotal + itemVat;
+      subtotal   += itemSubtotal;
+      vat_amount += itemVat;
+      total      += itemTotal;
+      return { ...item, quantity: qty, unit_price: price, vat_rate: rate,
+               subtotal: itemSubtotal, vat_amount: itemVat, total: itemTotal };
+    });
+
+    const conn = await new Promise((resolve, reject) =>
+      pool.getConnection((err, c) => err ? reject(err) : resolve(c))
+    );
+    try {
+      await new Promise((resolve, reject) =>
+        conn.beginTransaction(err => err ? reject(err) : resolve())
+      );
+
+      await new Promise((resolve, reject) =>
+        conn.query(
+          `UPDATE documents SET customer_id=?, issue_date=?, valid_until=?, payment_terms=?,
+            subtotal=?, vat_amount=?, total=?, notes=?, terms_conditions=?, updated_at=NOW()
+           WHERE id=? AND user_id=?`,
+          [customer_id, issue_date, valid_until || null, payment_terms || null,
+           subtotal.toFixed(2), vat_amount.toFixed(2), total.toFixed(2),
+           notes || null, terms_conditions || null, id, req.user.id],
+          (err, r) => err ? reject(err) : resolve(r)
+        )
+      );
+
+      await new Promise((resolve, reject) =>
+        conn.query('DELETE FROM document_items WHERE document_id = ?', [id],
+          (err, r) => err ? reject(err) : resolve(r))
+      );
+
+      for (const item of lineItems) {
+        await new Promise((resolve, reject) =>
+          conn.query(
+            `INSERT INTO document_items (document_id, product_id, description, quantity,
+              unit_price, vat_rate, vat_amount, subtotal, total)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+            [id, item.product_id || null, item.description,
+             item.quantity, item.unit_price, item.vat_rate,
+             item.vat_amount.toFixed(2), item.subtotal.toFixed(2), item.total.toFixed(2)],
+            (err, r) => err ? reject(err) : resolve(r)
+          )
+        );
+      }
+
+      await new Promise((resolve, reject) => conn.commit(err => err ? reject(err) : resolve()));
+      conn.release();
+
+      const quote = await executeQuery(
+        `SELECT d.*, c.name AS customer_name FROM documents d
+         JOIN customers c ON c.id = d.customer_id WHERE d.id = ?`, [id]
+      );
+      const itemsResult = await executeQuery(
+        'SELECT * FROM document_items WHERE document_id = ? ORDER BY id ASC', [id]
+      );
+      res.json({ ...quote[0], items: itemsResult });
+    } catch (txError) {
+      await new Promise(resolve => conn.rollback(resolve));
+      conn.release();
+      throw txError;
+    }
+  } catch (error) {
+    logger.error('Error updating quote:', error);
+    res.status(500).json({ message: 'Failed to update quote' });
+  }
+});
+
+app.post('/api/quotes/:id/send', authenticateToken, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const existing = await executeQuery(
+      `SELECT id, status FROM documents WHERE id = ? AND user_id = ? AND type = 'QUOTE'`,
+      [id, req.user.id]
+    );
+    if (existing.length === 0) return res.status(404).json({ message: 'Quote not found' });
+    if (!['DRAFT', 'SENT'].includes(existing[0].status)) {
+      return res.status(400).json({ message: `Cannot send a quote with status ${existing[0].status}` });
+    }
+
+    await executeQuery(
+      `UPDATE documents SET status = 'SENT', updated_at = NOW() WHERE id = ? AND user_id = ?`,
+      [id, req.user.id]
+    );
+    await executeQuery(
+      `INSERT INTO document_tracking (document_id, event_type) VALUES (?, 'SENT')`, [id]
+    );
+    res.json({ message: 'Quote marked as sent' });
+  } catch (error) {
+    logger.error('Error sending quote:', error);
+    res.status(500).json({ message: 'Failed to send quote' });
+  }
+});
+
+app.post('/api/quotes/:id/convert-to-invoice', authenticateToken, async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    const quotes = await executeQuery(
+      `SELECT d.*, c.id AS cust_id FROM documents d
+       JOIN customers c ON c.id = d.customer_id
+       WHERE d.id = ? AND d.user_id = ? AND d.type = 'QUOTE'`,
+      [id, req.user.id]
+    );
+    if (quotes.length === 0) return res.status(404).json({ message: 'Quote not found' });
+    if (quotes[0].status === 'CANCELLED') {
+      return res.status(400).json({ message: 'Cannot convert a cancelled quote' });
+    }
+
+    const quoteItems = await executeQuery(
+      'SELECT * FROM document_items WHERE document_id = ? ORDER BY id ASC', [id]
+    );
+
+    const invoice_number = await getNextDocumentNumber(req.user.id, 'INVOICE');
+    const today = new Date().toISOString().split('T')[0];
+
+    const conn = await new Promise((resolve, reject) =>
+      pool.getConnection((err, c) => err ? reject(err) : resolve(c))
+    );
+    try {
+      await new Promise((resolve, reject) =>
+        conn.beginTransaction(err => err ? reject(err) : resolve())
+      );
+
+      const docResult = await new Promise((resolve, reject) =>
+        conn.query(
+          `INSERT INTO documents (user_id, customer_id, type, document_number, currency_id, status,
+            issue_date, payment_terms, subtotal, vat_amount, total, notes, terms_conditions)
+           VALUES (?, ?, 'INVOICE', ?, ?, 'DRAFT', ?, ?, ?, ?, ?, ?, ?)`,
+          [req.user.id, quotes[0].customer_id, invoice_number, quotes[0].currency_id,
+           today, quotes[0].payment_terms,
+           quotes[0].subtotal, quotes[0].vat_amount, quotes[0].total,
+           quotes[0].notes || null, quotes[0].terms_conditions || null],
+          (err, result) => err ? reject(err) : resolve(result)
+        )
+      );
+      const invoiceId = docResult.insertId;
+
+      for (const item of quoteItems) {
+        await new Promise((resolve, reject) =>
+          conn.query(
+            `INSERT INTO document_items (document_id, product_id, description, quantity,
+              unit_price, vat_rate, vat_amount, subtotal, total)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+            [invoiceId, item.product_id || null, item.description,
+             item.quantity, item.unit_price, item.vat_rate,
+             item.vat_amount, item.subtotal, item.total],
+            (err, r) => err ? reject(err) : resolve(r)
+          )
+        );
+      }
+
+      await new Promise((resolve, reject) =>
+        conn.query(
+          `INSERT INTO document_tracking (document_id, event_type) VALUES (?, 'CREATED')`,
+          [invoiceId],
+          (err, r) => err ? reject(err) : resolve(r)
+        )
+      );
+
+      // Mark the source quote as sent/accepted if it was a draft
+      await new Promise((resolve, reject) =>
+        conn.query(
+          `UPDATE documents SET status = 'SENT', updated_at = NOW() WHERE id = ? AND status = 'DRAFT'`,
+          [id],
+          (err, r) => err ? reject(err) : resolve(r)
+        )
+      );
+
+      await new Promise((resolve, reject) => conn.commit(err => err ? reject(err) : resolve()));
+      conn.release();
+
+      res.status(201).json({ message: 'Quote converted to invoice', invoice_id: invoiceId });
+    } catch (txError) {
+      await new Promise(resolve => conn.rollback(resolve));
+      conn.release();
+      throw txError;
+    }
+  } catch (error) {
+    logger.error('Error converting quote to invoice:', error);
+    res.status(500).json({ message: 'Failed to convert quote to invoice' });
+  }
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
 // Products
 
 app.get('/api/products', authenticateToken, async (req, res) => {

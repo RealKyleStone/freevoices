@@ -107,46 +107,55 @@ These features are the entire point of the app. Nothing else matters until these
 - Create/edit customer form (name, email, phone, billing address, shipping address, payment terms) ✅
 - Customer detail page showing contact info and invoice history ✅
 
-#### 1.2 Product / Service Catalogue
+#### 1.2 Product / Service Catalogue ✅ COMPLETE
 
-**Backend endpoints:**
-- `GET /api/products` — list, search
-- `POST /api/products` — create
-- `PUT /api/products/:id` — update
-- `DELETE /api/products/:id` — soft-delete
+**Backend endpoints (live in `server.js`):**
+- `GET /api/products` — paginated list, search by name/description ✅
+- `POST /api/products` — create product ✅
+- `PUT /api/products/:id` — update product ✅
+- `DELETE /api/products/:id` — soft-delete (`is_active = 0`) ✅
+- `GET /api/products/:id` — single product ✅
 
-**Frontend pages in `src/app/features/products/`:**
-- Product list with search
-- Create/edit form (name, description, unit price, VAT rate, currency)
+**Frontend pages (live in `src/app/features/products/`):**
+- Product list with search/filter and edit/delete actions ✅
+- Create/edit product form (name, description, price, VAT inclusive toggle) ✅
+- Product detail page showing pricing info ✅
 
-#### 1.3 Invoice Creation & Management
+#### 1.3 Invoice Creation & Management ✅ COMPLETE
 
 This is the core feature. The `Document` model supports both invoices and quotes via a `type` field.
 
-**Backend endpoints:**
-- `GET /api/invoices` — list with status filters (draft/sent/paid/overdue)
-- `POST /api/invoices` — create with line items
-- `PUT /api/invoices/:id` — update (only allowed when in `draft`)
-- `GET /api/invoices/:id` — full invoice with items and tracking history
-- `POST /api/invoices/:id/send` — mark as sent + email PDF to customer
-- `POST /api/invoices/:id/mark-paid` — record a payment
+**Backend endpoints (live in `server.js`):**
+- `GET /api/invoices` — paginated list with search, status filter ✅
+- `POST /api/invoices` — create with line items (DB transaction) ✅
+- `PUT /api/invoices/:id` — update (DRAFT only, replaces line items) ✅
+- `GET /api/invoices/:id` — full invoice with items, tracking history, payments ✅
+- `POST /api/invoices/:id/send` — mark as SENT + tracking event ✅
+- `POST /api/invoices/:id/mark-paid` — record payment, mark PAID + tracking event ✅
 
-**Frontend pages in `src/app/features/invoices/`:**
-- Invoice list with tabs: All / Draft / Sent / Paid / Overdue
-- Invoice builder form:
-  - Select customer (or quick-add inline)
-  - Add line items (pick from products catalogue or type ad-hoc)
-  - Auto-calculate subtotal, VAT, total
-  - Invoice number, issue date, due date, payment terms, notes
-- Invoice detail / preview page
-- PDF generation (see Phase 2)
+**Frontend pages (live in `src/app/features/invoices/`):**
+- Invoice list with segment tabs: All / Draft / Sent / Paid / Overdue, search ✅
+- Invoice builder form: customer picker, line items with product catalogue integration, auto-calculate subtotal/VAT/total, invoice number auto-generated server-side ✅
+- Invoice detail page: line items, totals, tracking timeline, payment history, action buttons ✅
+- Invoice edit page: same builder pre-populated (DRAFT only, redirects otherwise) ✅
+- PDF generation — see Phase 2
 
-#### 1.4 Quote Management
+#### 1.4 Quote Management ✅ COMPLETE
 
-Structurally identical to invoices. Shares the `Document` model.
+Structurally identical to invoices. Shares the `Document` model. Key differences: `valid_until` expiry date, `QUO-` number prefix, convert-to-invoice action.
 
-**Additional endpoint:**
-- `POST /api/quotes/:id/convert-to-invoice` — convert accepted quote to invoice
+**Backend endpoints (live in `server.js`):**
+- `GET /api/quotes` — paginated list with search, status filter ✅
+- `POST /api/quotes` — create with line items (DB transaction) ✅
+- `GET /api/quotes/:id` — full quote with items and tracking history ✅
+- `PUT /api/quotes/:id` — update (DRAFT only) ✅
+- `POST /api/quotes/:id/send` — mark as SENT + tracking event ✅
+- `POST /api/quotes/:id/convert-to-invoice` — copies quote into a new DRAFT invoice ✅
+
+**Frontend pages (live in `src/app/features/quotes/`):**
+- Quote list with segment tabs and search ✅
+- Create/edit quote form (same builder as invoices, `valid_until` instead of `due_date`) ✅
+- Quote detail page with "Convert to Invoice" action button ✅
 
 ---
 

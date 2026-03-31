@@ -1,0 +1,185 @@
+<ion-header>
+  <ion-toolbar>
+    <ion-buttons slot="start">
+      <ion-back-button defaultHref="/invoices"></ion-back-button>
+    </ion-buttons>
+    <ion-title>{{ invoice?.document_number || 'Invoice' }}</ion-title>
+    <ion-buttons slot="end">
+      <ion-button *ngIf="canEdit" [routerLink]="['/invoices', invoiceId, 'edit']">
+        <ion-icon slot="icon-only" name="create-outline"></ion-icon>
+      </ion-button>
+    </ion-buttons>
+  </ion-toolbar>
+</ion-header>
+
+<ion-content>
+  <div class="loading-state" *ngIf="isLoading">
+    <ion-spinner></ion-spinner>
+  </div>
+
+  <ng-container *ngIf="!isLoading && invoice">
+
+    <!-- Status + Customer -->
+    <ion-card>
+      <ion-card-content>
+        <div class="invoice-header">
+          <div class="header-left">
+            <h2>{{ invoice.document_number }}</h2>
+            <p class="customer">{{ invoice.customer_name }}</p>
+            <p class="sub" *ngIf="invoice.customer_billing_address">{{ invoice.customer_billing_address }}</p>
+          </div>
+          <ion-badge [color]="getStatusColor(invoice.status)" class="status-badge">{{ invoice.status }}</ion-badge>
+        </div>
+      </ion-card-content>
+    </ion-card>
+
+    <!-- Dates -->
+    <ion-card>
+      <ion-card-content>
+        <ion-list lines="none">
+          <ion-item>
+            <ion-icon name="calendar-outline" slot="start" color="medium"></ion-icon>
+            <ion-label><h3>Issued</h3><p>{{ invoice.issue_date | date:'mediumDate' }}</p></ion-label>
+          </ion-item>
+          <ion-item *ngIf="invoice.due_date">
+            <ion-icon name="alarm-outline" slot="start" color="medium"></ion-icon>
+            <ion-label><h3>Due</h3><p>{{ invoice.due_date | date:'mediumDate' }}</p></ion-label>
+          </ion-item>
+          <ion-item *ngIf="invoice.payment_terms != null">
+            <ion-icon name="time-outline" slot="start" color="medium"></ion-icon>
+            <ion-label><h3>Payment Terms</h3><p>{{ invoice.payment_terms }} days</p></ion-label>
+          </ion-item>
+        </ion-list>
+      </ion-card-content>
+    </ion-card>
+
+    <!-- Line Items -->
+    <ion-card>
+      <ion-card-header><ion-card-title>Line Items</ion-card-title></ion-card-header>
+      <ion-card-content>
+        <div class="items-table">
+          <div class="items-header">
+            <span class="desc">Description</span>
+            <span class="qty">Qty</span>
+            <span class="price">Price</span>
+            <span class="amount">Total</span>
+          </div>
+          <div class="item-row" *ngFor="let item of invoice.items">
+            <span class="desc">
+              {{ item.description }}
+              <small *ngIf="item.vat_rate > 0" class="vat-note">+{{ item.vat_rate }}% VAT</small>
+            </span>
+            <span class="qty">{{ item.quantity }}</span>
+            <span class="price">R {{ item.unit_price | number:'1.2-2' }}</span>
+            <span class="amount">R {{ item.total | number:'1.2-2' }}</span>
+          </div>
+        </div>
+
+        <div class="totals">
+          <div class="totals-row"><span>Subtotal</span><span>R {{ invoice.subtotal | number:'1.2-2' }}</span></div>
+          <div class="totals-row"><span>VAT</span><span>R {{ invoice.vat_amount | number:'1.2-2' }}</span></div>
+          <div class="totals-row total-row"><strong>Total</strong><strong>R {{ invoice.total | number:'1.2-2' }}</strong></div>
+          <div class="totals-row paid-row" *ngIf="totalPaid > 0">
+            <span>Paid</span><span class="paid">R {{ totalPaid | number:'1.2-2' }}</span>
+          </div>
+        </div>
+      </ion-card-content>
+    </ion-card>
+
+    <!-- Notes -->
+    <ion-card *ngIf="invoice.notes || invoice.terms_conditions">
+      <ion-card-content>
+        <div *ngIf="invoice.notes">
+          <p class="note-label">Notes</p>
+          <p>{{ invoice.notes }}</p>
+        </div>
+        <div *ngIf="invoice.terms_conditions" [class.mt]="invoice.notes">
+          <p class="note-label">Terms & Conditions</p>
+          <p>{{ invoice.terms_conditions }}</p>
+        </div>
+      </ion-card-content>
+    </ion-card>
+
+    <!-- Actions -->
+    <ion-card>
+      <ion-card-content>
+        <div class="actions">
+          <ion-button *ngIf="canSend" expand="block" fill="outline" (click)="confirmSend()">
+            <ion-icon slot="start" name="send-outline"></ion-icon>
+            Mark as Sent
+          </ion-button>
+          <ion-button *ngIf="canMarkPaid" expand="block" fill="outline" color="success" (click)="togglePaymentForm()">
+            <ion-icon slot="start" name="cash-outline"></ion-icon>
+            {{ showPaymentForm ? 'Cancel' : 'Record Payment' }}
+          </ion-button>
+        </div>
+
+        <!-- Inline payment form -->
+        <div class="payment-form" *ngIf="showPaymentForm" [formGroup]="paymentForm">
+          <ion-item fill="outline">
+            <ion-label position="floating">Amount <ion-text color="danger">*</ion-text></ion-label>
+            <ion-input formControlName="amount" type="number" min="0.01" step="0.01"></ion-input>
+          </ion-item>
+          <ion-item fill="outline">
+            <ion-label position="floating">Payment Date <ion-text color="danger">*</ion-text></ion-label>
+            <ion-input formControlName="payment_date" type="date"></ion-input>
+          </ion-item>
+          <ion-item fill="outline">
+            <ion-label position="floating">Payment Method <ion-text color="danger">*</ion-text></ion-label>
+            <ion-select formControlName="payment_method" interface="action-sheet">
+              <ion-select-option *ngFor="let m of paymentMethods" [value]="m.value">{{ m.label }}</ion-select-option>
+            </ion-select>
+          </ion-item>
+          <ion-item fill="outline">
+            <ion-label position="floating">Reference</ion-label>
+            <ion-input formControlName="transaction_reference" type="text"></ion-input>
+          </ion-item>
+          <ion-item fill="outline">
+            <ion-label position="floating">Notes</ion-label>
+            <ion-textarea formControlName="notes" rows="2"></ion-textarea>
+          </ion-item>
+          <ion-button expand="block" (click)="submitPayment()" [disabled]="isSubmittingPayment" style="margin-top: 0.75rem;">
+            <ion-spinner *ngIf="isSubmittingPayment" slot="start" name="crescent"></ion-spinner>
+            {{ isSubmittingPayment ? 'Saving...' : 'Save Payment' }}
+          </ion-button>
+        </div>
+      </ion-card-content>
+    </ion-card>
+
+    <!-- Payment history -->
+    <ion-card *ngIf="invoice.payments && invoice.payments.length > 0">
+      <ion-card-header><ion-card-title>Payments</ion-card-title></ion-card-header>
+      <ion-card-content>
+        <ion-list lines="full">
+          <ion-item *ngFor="let payment of invoice.payments">
+            <ion-icon name="cash-outline" slot="start" color="success"></ion-icon>
+            <ion-label>
+              <h3>R {{ payment.amount | number:'1.2-2' }}</h3>
+              <p>{{ payment.payment_date | date:'mediumDate' }} &mdash; {{ payment.payment_method }}</p>
+              <p *ngIf="payment.transaction_reference">Ref: {{ payment.transaction_reference }}</p>
+            </ion-label>
+          </ion-item>
+        </ion-list>
+      </ion-card-content>
+    </ion-card>
+
+    <!-- Tracking timeline -->
+    <ion-card *ngIf="invoice.tracking && invoice.tracking.length > 0">
+      <ion-card-header><ion-card-title>History</ion-card-title></ion-card-header>
+      <ion-card-content>
+        <div class="timeline">
+          <div class="timeline-item" *ngFor="let event of invoice.tracking">
+            <div class="timeline-icon">
+              <ion-icon [name]="getTrackingIcon(event.event_type)" color="primary"></ion-icon>
+            </div>
+            <div class="timeline-content">
+              <p class="event-type">{{ event.event_type }}</p>
+              <p class="event-date">{{ event.event_date | date:'medium' }}</p>
+            </div>
+          </div>
+        </div>
+      </ion-card-content>
+    </ion-card>
+
+  </ng-container>
+</ion-content>

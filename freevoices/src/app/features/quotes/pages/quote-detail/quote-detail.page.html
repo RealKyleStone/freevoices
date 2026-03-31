@@ -1,0 +1,135 @@
+<ion-header>
+  <ion-toolbar>
+    <ion-buttons slot="start">
+      <ion-back-button defaultHref="/quotes"></ion-back-button>
+    </ion-buttons>
+    <ion-title>{{ quote?.document_number || 'Quote' }}</ion-title>
+    <ion-buttons slot="end">
+      <ion-button *ngIf="canEdit" [routerLink]="['/quotes', quoteId, 'edit']">
+        <ion-icon slot="icon-only" name="create-outline"></ion-icon>
+      </ion-button>
+    </ion-buttons>
+  </ion-toolbar>
+</ion-header>
+
+<ion-content>
+  <div class="loading-state" *ngIf="isLoading"><ion-spinner></ion-spinner></div>
+
+  <ng-container *ngIf="!isLoading && quote">
+
+    <!-- Status + Customer -->
+    <ion-card>
+      <ion-card-content>
+        <div class="quote-header">
+          <div class="header-left">
+            <h2>{{ quote.document_number }}</h2>
+            <p class="customer">{{ quote.customer_name }}</p>
+            <p class="sub" *ngIf="quote.customer_billing_address">{{ quote.customer_billing_address }}</p>
+          </div>
+          <ion-badge [color]="getStatusColor(quote.status)" class="status-badge">{{ quote.status }}</ion-badge>
+        </div>
+      </ion-card-content>
+    </ion-card>
+
+    <!-- Dates -->
+    <ion-card>
+      <ion-card-content>
+        <ion-list lines="none">
+          <ion-item>
+            <ion-icon name="calendar-outline" slot="start" color="medium"></ion-icon>
+            <ion-label><h3>Issued</h3><p>{{ quote.issue_date | date:'mediumDate' }}</p></ion-label>
+          </ion-item>
+          <ion-item *ngIf="quote.valid_until">
+            <ion-icon name="timer-outline" slot="start" color="medium"></ion-icon>
+            <ion-label><h3>Valid Until</h3><p>{{ quote.valid_until | date:'mediumDate' }}</p></ion-label>
+          </ion-item>
+          <ion-item *ngIf="quote.payment_terms != null">
+            <ion-icon name="time-outline" slot="start" color="medium"></ion-icon>
+            <ion-label><h3>Payment Terms</h3><p>{{ quote.payment_terms }} days</p></ion-label>
+          </ion-item>
+        </ion-list>
+      </ion-card-content>
+    </ion-card>
+
+    <!-- Line Items -->
+    <ion-card>
+      <ion-card-header><ion-card-title>Line Items</ion-card-title></ion-card-header>
+      <ion-card-content>
+        <div class="items-table">
+          <div class="items-header">
+            <span class="desc">Description</span>
+            <span class="qty">Qty</span>
+            <span class="price">Price</span>
+            <span class="amount">Total</span>
+          </div>
+          <div class="item-row" *ngFor="let item of quote.items">
+            <span class="desc">
+              {{ item.description }}
+              <small *ngIf="item.vat_rate > 0" class="vat-note">+{{ item.vat_rate }}% VAT</small>
+            </span>
+            <span class="qty">{{ item.quantity }}</span>
+            <span class="price">R {{ item.unit_price | number:'1.2-2' }}</span>
+            <span class="amount">R {{ item.total | number:'1.2-2' }}</span>
+          </div>
+        </div>
+
+        <div class="totals">
+          <div class="totals-row"><span>Subtotal</span><span>R {{ quote.subtotal | number:'1.2-2' }}</span></div>
+          <div class="totals-row"><span>VAT</span><span>R {{ quote.vat_amount | number:'1.2-2' }}</span></div>
+          <div class="totals-row total-row"><strong>Total</strong><strong>R {{ quote.total | number:'1.2-2' }}</strong></div>
+        </div>
+      </ion-card-content>
+    </ion-card>
+
+    <!-- Notes -->
+    <ion-card *ngIf="quote.notes || quote.terms_conditions">
+      <ion-card-content>
+        <div *ngIf="quote.notes">
+          <p class="note-label">Notes</p>
+          <p>{{ quote.notes }}</p>
+        </div>
+        <div *ngIf="quote.terms_conditions" [class.mt]="quote.notes">
+          <p class="note-label">Terms & Conditions</p>
+          <p>{{ quote.terms_conditions }}</p>
+        </div>
+      </ion-card-content>
+    </ion-card>
+
+    <!-- Actions -->
+    <ion-card>
+      <ion-card-content>
+        <div class="actions">
+          <ion-button *ngIf="canSend" expand="block" fill="outline" (click)="confirmSend()">
+            <ion-icon slot="start" name="send-outline"></ion-icon>
+            Mark as Sent
+          </ion-button>
+          <ion-button *ngIf="canConvert" expand="block" fill="outline" color="success"
+                      (click)="confirmConvert()" [disabled]="isConverting">
+            <ion-spinner *ngIf="isConverting" slot="start" name="crescent"></ion-spinner>
+            <ion-icon *ngIf="!isConverting" slot="start" name="document-text-outline"></ion-icon>
+            Convert to Invoice
+          </ion-button>
+        </div>
+      </ion-card-content>
+    </ion-card>
+
+    <!-- Tracking timeline -->
+    <ion-card *ngIf="quote.tracking && quote.tracking.length > 0">
+      <ion-card-header><ion-card-title>History</ion-card-title></ion-card-header>
+      <ion-card-content>
+        <div class="timeline">
+          <div class="timeline-item" *ngFor="let event of quote.tracking">
+            <div class="timeline-icon">
+              <ion-icon [name]="getTrackingIcon(event.event_type)" color="primary"></ion-icon>
+            </div>
+            <div class="timeline-content">
+              <p class="event-type">{{ event.event_type }}</p>
+              <p class="event-date">{{ event.event_date | date:'medium' }}</p>
+            </div>
+          </div>
+        </div>
+      </ion-card-content>
+    </ion-card>
+
+  </ng-container>
+</ion-content>
