@@ -5,6 +5,8 @@ import { FormsModule } from '@angular/forms';
 import { IonicModule, AlertController, ToastController } from '@ionic/angular';
 import { Subject } from 'rxjs';
 import { debounceTime, distinctUntilChanged } from 'rxjs/operators';
+import { addIcons } from 'ionicons';
+import { addOutline, cubeOutline, createOutline, trashOutline, chevronBackOutline, chevronForwardOutline } from 'ionicons/icons';
 import { ProductService } from '../../services/product.service';
 import { Product } from '../../../../../models/database.models';
 
@@ -29,7 +31,9 @@ export class ProductListPage implements OnInit {
     private productService: ProductService,
     private alertCtrl: AlertController,
     private toastCtrl: ToastController
-  ) {}
+  ) {
+    addIcons({ addOutline, cubeOutline, createOutline, trashOutline, chevronBackOutline, chevronForwardOutline });
+  }
 
   ngOnInit() {
     this.searchSubject.pipe(debounceTime(300), distinctUntilChanged()).subscribe(() => {

@@ -7,6 +7,8 @@ import { CustomerService } from '../../services/customer.service';
 import { Customer } from '../../../../../models/database.models';
 import { Subject } from 'rxjs';
 import { debounceTime, distinctUntilChanged } from 'rxjs/operators';
+import { addIcons } from 'ionicons';
+import { addOutline, peopleOutline, createOutline, trashOutline, chevronBackOutline, chevronForwardOutline } from 'ionicons/icons';
 
 @Component({
   selector: 'app-customer-list',
@@ -29,7 +31,9 @@ export class CustomerListPage implements OnInit {
     private customerService: CustomerService,
     private alertCtrl: AlertController,
     private toastCtrl: ToastController
-  ) {}
+  ) {
+    addIcons({ addOutline, peopleOutline, createOutline, trashOutline, chevronBackOutline, chevronForwardOutline });
+  }
 
   ngOnInit() {
     this.searchSubject.pipe(debounceTime(300), distinctUntilChanged()).subscribe(() => {

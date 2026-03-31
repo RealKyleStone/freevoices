@@ -16,7 +16,7 @@
       </ion-card-header>
       <ion-card-content>
 
-        <ion-item [class.ion-invalid]="isInvalid('name')" fill="outline">
+        <ion-item [class.ion-invalid]="isInvalid('name')" [class.ion-touched]="isInvalid('name')" fill="outline">
           <ion-label position="floating">Name <ion-text color="danger">*</ion-text></ion-label>
           <ion-input formControlName="name" type="text"></ion-input>
           <ion-note slot="error">Name is required (min 2 characters)</ion-note>
@@ -27,7 +27,7 @@
           <ion-textarea formControlName="description" rows="3"></ion-textarea>
         </ion-item>
 
-        <ion-item [class.ion-invalid]="isInvalid('price')" fill="outline">
+        <ion-item [class.ion-invalid]="isInvalid('price')" [class.ion-touched]="isInvalid('price')" fill="outline">
           <ion-label position="floating">Price <ion-text color="danger">*</ion-text></ion-label>
           <ion-input formControlName="price" type="number" min="0" step="0.01"></ion-input>
           <ion-note slot="error">A valid price is required</ion-note>

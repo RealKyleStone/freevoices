@@ -21,7 +21,7 @@
 
         <ion-item [class.ion-invalid]="isInvalid('customer_id')" [class.ion-touched]="isInvalid('customer_id')" fill="outline">
           <ion-label position="floating">Customer <ion-text color="danger">*</ion-text></ion-label>
-          <ion-select formControlName="customer_id" interface="action-sheet" placeholder="Select customer">
+          <ion-select formControlName="customer_id" interface="popover" placeholder="Select customer">
             <ion-select-option *ngFor="let c of customers" [value]="c.id">{{ c.name }}</ion-select-option>
           </ion-select>
           <ion-note slot="error">Customer is required</ion-note>
@@ -63,7 +63,7 @@
 
           <ion-item fill="outline" *ngIf="products.length > 0">
             <ion-label position="floating">Product (optional)</ion-label>
-            <ion-select formControlName="product_id" interface="action-sheet" placeholder="Custom / ad-hoc"
+            <ion-select formControlName="product_id" interface="popover" placeholder="Custom / ad-hoc"
                         (ionChange)="onProductChange(i)">
               <ion-select-option [value]="null">Custom / ad-hoc</ion-select-option>
               <ion-select-option *ngFor="let p of products" [value]="p.id">{{ p.name }}</ion-select-option>

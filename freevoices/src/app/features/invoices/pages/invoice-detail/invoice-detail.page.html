@@ -126,7 +126,7 @@
           </ion-item>
           <ion-item fill="outline">
             <ion-label position="floating">Payment Method <ion-text color="danger">*</ion-text></ion-label>
-            <ion-select formControlName="payment_method" interface="action-sheet">
+            <ion-select formControlName="payment_method" interface="popover">
               <ion-select-option *ngFor="let m of paymentMethods" [value]="m.value">{{ m.label }}</ion-select-option>
             </ion-select>
           </ion-item>
