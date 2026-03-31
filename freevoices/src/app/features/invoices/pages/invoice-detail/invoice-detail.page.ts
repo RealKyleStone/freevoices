@@ -3,7 +3,14 @@ import { CommonModule } from '@angular/common';
 import { RouterModule, ActivatedRoute, Router } from '@angular/router';
 import { ReactiveFormsModule, FormBuilder, FormGroup, Validators } from '@angular/forms';
 import { IonicModule, AlertController, ToastController } from '@ionic/angular';
+import { addIcons } from 'ionicons';
+import {
+  createOutline, calendarOutline, alarmOutline, timeOutline, sendOutline,
+  cashOutline, documentOutline, eyeOutline, downloadOutline,
+  checkmarkCircleOutline, closeCircleOutline, ellipseOutline
+} from 'ionicons/icons';
 import { InvoiceService, InvoiceDetail } from '../../services/invoice.service';
+import { environment } from '../../../../../environments/environment';
 
 @Component({
   selector: 'app-invoice-detail',
@@ -19,6 +26,8 @@ export class InvoiceDetailPage implements OnInit {
   showPaymentForm = false;
   paymentForm: FormGroup;
   isSubmittingPayment = false;
+  isSending = false;
+  isDownloading = false;
 
   readonly paymentMethods = [
     { value: 'BANK_TRANSFER', label: 'Bank Transfer' },
@@ -36,6 +45,12 @@ export class InvoiceDetailPage implements OnInit {
     private toastCtrl: ToastController,
     private fb: FormBuilder
   ) {
+    addIcons({
+      createOutline, calendarOutline, alarmOutline, timeOutline, sendOutline,
+      cashOutline, documentOutline, eyeOutline, downloadOutline,
+      checkmarkCircleOutline, closeCircleOutline, ellipseOutline
+    });
+
     this.paymentForm = this.fb.group({
       amount:                [null, [Validators.required, Validators.min(0.01)]],
       payment_date:         [new Date().toISOString().split('T')[0], Validators.required],
@@ -56,7 +71,6 @@ export class InvoiceDetailPage implements OnInit {
       next: (invoice) => {
         this.invoice = invoice;
         this.isLoading = false;
-        // Pre-fill payment amount with outstanding balance
         const paid = (invoice.payments || []).reduce((s, p) => s + +p.amount, 0);
         const outstanding = +invoice.total - paid;
         if (outstanding > 0) this.paymentForm.patchValue({ amount: outstanding.toFixed(2) });
@@ -87,24 +101,55 @@ export class InvoiceDetailPage implements OnInit {
 
   async confirmSend() {
     const alert = await this.alertCtrl.create({
-      header: 'Mark as Sent',
-      message: 'Mark this invoice as sent to the customer?',
+      header: 'Email Invoice',
+      message: `Send this invoice as a PDF to ${this.invoice?.customer_email || 'the customer'}?`,
       buttons: [
         { text: 'Cancel', role: 'cancel' },
-        { text: 'Mark Sent', handler: () => this.sendInvoice() }
+        { text: 'Send Email', handler: () => this.sendInvoice() }
       ]
     });
     await alert.present();
   }
 
-  sendInvoice() {
+  async sendInvoice() {
+    this.isSending = true;
     this.invoiceService.sendInvoice(this.invoiceId).subscribe({
-      next: () => this.loadInvoice(),
-      error: async () => {
-        const toast = await this.toastCtrl.create({ message: 'Failed to update invoice', duration: 3000, color: 'danger', position: 'bottom' });
+      next: async (res: any) => {
+        this.isSending = false;
+        const color = res.emailFailed ? 'warning' : 'success';
+        const toast = await this.toastCtrl.create({ message: res.message || 'Invoice sent', duration: 4000, color, position: 'bottom' });
+        await toast.present();
+        this.loadInvoice();
+      },
+      error: async (err) => {
+        this.isSending = false;
+        const toast = await this.toastCtrl.create({ message: err.error?.message || 'Failed to send invoice', duration: 3000, color: 'danger', position: 'bottom' });
         await toast.present();
       }
     });
+  }
+
+  async downloadPdf() {
+    this.isDownloading = true;
+    const token = localStorage.getItem('token');
+    try {
+      const response = await fetch(`${environment.apiUrl}/invoices/${this.invoiceId}/pdf`, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      if (!response.ok) throw new Error('Failed to generate PDF');
+      const blob = await response.blob();
+      const url  = URL.createObjectURL(blob);
+      const a    = document.createElement('a');
+      a.href     = url;
+      a.download = `${this.invoice?.document_number || 'invoice'}.pdf`;
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch {
+      const toast = await this.toastCtrl.create({ message: 'Failed to download PDF', duration: 3000, color: 'danger', position: 'bottom' });
+      await toast.present();
+    } finally {
+      this.isDownloading = false;
+    }
   }
 
   togglePaymentForm() {

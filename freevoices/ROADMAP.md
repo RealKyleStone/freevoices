@@ -174,22 +174,28 @@ Structurally identical to invoices. Shares the `Document` model. Key differences
 
 Once Phase 1 works, these features dramatically improve day-to-day usability.
 
-#### 2.1 PDF Generation
+#### 2.1 PDF Generation ✅ COMPLETE
 
-Users need to send professional-looking PDF invoices to customers.
+**Library:** PDFKit (server-side, no headless browser required)
 
-**Options (pick one):**
-- **[Puppeteer](https://pptr.dev/)** — render the Angular invoice component as HTML, then print to PDF server-side. Most flexible.
-- **[PDFKit](https://pdfkit.org/)** — generate PDFs programmatically in Node.js. Lighter weight.
+**Backend (live in `server.js` + `src/services/pdf.service.js`):**
+- `GET /api/invoices/:id/pdf` — generates and streams a PDF; also logs a `DOWNLOADED` tracking event ✅
+- `src/services/pdf.service.js` — `buildInvoicePdf(invoice, items, user)` builds a professional A4 layout: company header, billed-to block, line items table, totals, banking details, footer ✅
 
-Suggested approach: create an Angular invoice template component used for both on-screen preview and PDF export. Pass the rendered HTML to a `/api/invoices/:id/pdf` endpoint.
+**Frontend (`invoice-detail` page):**
+- "Download PDF" button fetches the PDF as a blob and triggers a browser download ✅
 
-#### 2.2 Email Invoice to Customer
+#### 2.2 Email Invoice to Customer ✅ COMPLETE
 
-The email infrastructure already exists (`src/services/email.service.js`). This is a matter of:
-- Attaching the generated PDF to a Nodemailer message
-- Building a clean HTML email template
-- Calling it from the `POST /api/invoices/:id/send` endpoint
+**Backend:**
+- `POST /api/invoices/:id/send` now generates the PDF via `buildInvoicePdf`, attaches it to a Nodemailer message, and emails it to the customer's address ✅
+- Returns an error if the customer has no email on file ✅
+
+**Email template (`src/services/email.service.js` — `sendInvoiceEmail`):**
+- Clean HTML email with invoice summary table, amount due, due date, and banking details ✅
+
+**Frontend:**
+- "Mark as Sent" button renamed to "Email to Customer" with loading spinner ✅
 
 #### 2.3 Dashboard — Live Data ✅ COMPLETE
 
@@ -317,12 +323,8 @@ These should be addressed before or alongside Phase 2:
 
 **Phase 1 (Core Business Logic) is complete.** The entire CRUD pipeline — customers → products → invoices → quotes — is live and wired.
 
-**Phase 2.3 (Dashboard Live Data) and Phase 2.5 (Forgot/Reset Password) are now complete.**
+**Phase 2.1 (PDF Generation), 2.2 (Email Invoice), 2.3 (Dashboard Live Data), and 2.5 (Forgot/Reset Password) are now complete.**
 
-The next best self-contained starting points are:
-
-1. **Settings Pages** (Phase 2.4) — build out profile, company, invoice defaults, payment details, and notifications sub-pages in `src/app/features/settings/`
-2. **PDF Generation** (Phase 2.1) — add `GET /api/invoices/:id/pdf` using Puppeteer or PDFKit so users can download professional invoices
-3. **Email Invoice to Customer** (Phase 2.2) — attach the PDF to the existing `POST /api/invoices/:id/send` endpoint via `email.service.js`
-
-Settings Pages (2.4) is the most self-contained. PDF + Email (2.1 + 2.2) pair naturally together and deliver the highest user value.
+The next best self-contained starting point is **Settings Pages** (Phase 2.4):
+- Build out `src/app/features/settings/` sub-pages: Profile, Company, Invoice Defaults, Payment Details, Notifications
+- Company details (logo, VAT number) and bank details feed directly into the PDF header and banking block

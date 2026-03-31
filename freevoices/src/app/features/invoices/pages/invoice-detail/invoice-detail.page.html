@@ -104,9 +104,15 @@
     <ion-card>
       <ion-card-content>
         <div class="actions">
-          <ion-button *ngIf="canSend" expand="block" fill="outline" (click)="confirmSend()">
-            <ion-icon slot="start" name="send-outline"></ion-icon>
-            Mark as Sent
+          <ion-button expand="block" fill="outline" color="medium" (click)="downloadPdf()" [disabled]="isDownloading">
+            <ion-spinner *ngIf="isDownloading" slot="start" name="crescent"></ion-spinner>
+            <ion-icon *ngIf="!isDownloading" slot="start" name="download-outline"></ion-icon>
+            {{ isDownloading ? 'Generating...' : 'Download PDF' }}
+          </ion-button>
+          <ion-button *ngIf="canSend" expand="block" fill="outline" (click)="confirmSend()" [disabled]="isSending">
+            <ion-spinner *ngIf="isSending" slot="start" name="crescent"></ion-spinner>
+            <ion-icon *ngIf="!isSending" slot="start" name="send-outline"></ion-icon>
+            {{ isSending ? 'Sending...' : 'Email to Customer' }}
           </ion-button>
           <ion-button *ngIf="canMarkPaid" expand="block" fill="outline" color="success" (click)="togglePaymentForm()">
             <ion-icon slot="start" name="cash-outline"></ion-icon>
@@ -138,7 +144,7 @@
             <ion-label position="floating">Notes</ion-label>
             <ion-textarea formControlName="notes" rows="2"></ion-textarea>
           </ion-item>
-          <ion-button expand="block" (click)="submitPayment()" [disabled]="isSubmittingPayment" style="margin-top: 0.75rem;">
+          <ion-button expand="block" (click)="submitPayment()" [disabled]="isSubmittingPayment" class="payment-submit-btn">
             <ion-spinner *ngIf="isSubmittingPayment" slot="start" name="crescent"></ion-spinner>
             {{ isSubmittingPayment ? 'Saving...' : 'Save Payment' }}
           </ion-button>

@@ -2,6 +2,7 @@ require('dotenv').config();
 const axios = require('axios');
 
 const EmailService = require('./src/services/email.service');
+const { buildInvoicePdf } = require('./src/services/pdf.service');
 const express = require('express');
 const path = require('path');
 const mysql = require('mysql2');
@@ -813,6 +814,45 @@ app.get('/api/invoices/:id', authenticateToken, async (req, res) => {
   }
 });
 
+// PDF download
+app.get('/api/invoices/:id/pdf', authenticateToken, async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    const [invoices, items, users] = await Promise.all([
+      executeQuery(
+        `SELECT d.*, c.name AS customer_name, c.email AS customer_email,
+                c.billing_address AS customer_billing_address,
+                c.vat_number AS customer_vat_number
+         FROM documents d
+         JOIN customers c ON c.id = d.customer_id
+         WHERE d.id = ? AND d.user_id = ? AND d.type = 'INVOICE'`,
+        [id, req.user.id]
+      ),
+      executeQuery('SELECT * FROM document_items WHERE document_id = ? ORDER BY id ASC', [id]),
+      executeQuery('SELECT * FROM users WHERE id = ?', [req.user.id])
+    ]);
+
+    if (invoices.length === 0) return res.status(404).json({ message: 'Invoice not found' });
+
+    const pdfBuffer = await buildInvoicePdf(invoices[0], items, users[0]);
+
+    await executeQuery(
+      `INSERT INTO document_tracking (document_id, event_type) VALUES (?, 'DOWNLOADED')`, [id]
+    );
+
+    res.set({
+      'Content-Type':        'application/pdf',
+      'Content-Disposition': `attachment; filename="${invoices[0].document_number}.pdf"`,
+      'Content-Length':      pdfBuffer.length
+    });
+    res.send(pdfBuffer);
+  } catch (error) {
+    logger.error('Error generating invoice PDF:', error);
+    res.status(500).json({ message: 'Failed to generate PDF' });
+  }
+});
+
 app.put('/api/invoices/:id', authenticateToken, async (req, res) => {
   try {
     const { id } = req.params;
@@ -915,13 +955,48 @@ app.put('/api/invoices/:id', authenticateToken, async (req, res) => {
 app.post('/api/invoices/:id/send', authenticateToken, async (req, res) => {
   try {
     const { id } = req.params;
-    const existing = await executeQuery(
-      `SELECT id, status FROM documents WHERE id = ? AND user_id = ? AND type = 'INVOICE'`,
-      [id, req.user.id]
-    );
-    if (existing.length === 0) return res.status(404).json({ message: 'Invoice not found' });
-    if (!['DRAFT', 'SENT'].includes(existing[0].status)) {
-      return res.status(400).json({ message: `Cannot send an invoice with status ${existing[0].status}` });
+
+    const [invoices, items, users] = await Promise.all([
+      executeQuery(
+        `SELECT d.*, c.name AS customer_name, c.email AS customer_email,
+                c.billing_address AS customer_billing_address,
+                c.vat_number AS customer_vat_number
+         FROM documents d
+         JOIN customers c ON c.id = d.customer_id
+         WHERE d.id = ? AND d.user_id = ? AND d.type = 'INVOICE'`,
+        [id, req.user.id]
+      ),
+      executeQuery('SELECT * FROM document_items WHERE document_id = ? ORDER BY id ASC', [id]),
+      executeQuery('SELECT * FROM users WHERE id = ?', [req.user.id])
+    ]);
+
+    if (invoices.length === 0) return res.status(404).json({ message: 'Invoice not found' });
+    const invoice = invoices[0];
+    const user    = users[0];
+
+    if (!['DRAFT', 'SENT'].includes(invoice.status)) {
+      return res.status(400).json({ message: `Cannot send an invoice with status ${invoice.status}` });
+    }
+
+    if (!invoice.customer_email) {
+      return res.status(400).json({ message: 'This customer has no email address on file' });
+    }
+
+    // Generate PDF
+    const pdfBuffer = await buildInvoicePdf(invoice, items, user);
+
+    // Attempt to email — mark as sent regardless, but report email failures
+    let emailWarning = null;
+    try {
+      await emailService.sendInvoiceEmail(
+        invoice.customer_email,
+        { ...invoice, company_name: user.company_name, bank_name: user.bank_name,
+          bank_account_number: user.bank_account_number, bank_branch_code: user.bank_branch_code },
+        pdfBuffer
+      );
+    } catch (emailError) {
+      logger.error('Email delivery failed (invoice still marked sent):', emailError);
+      emailWarning = `Invoice marked as sent, but the email could not be delivered: ${emailError.message}`;
     }
 
     await executeQuery(
@@ -931,7 +1006,11 @@ app.post('/api/invoices/:id/send', authenticateToken, async (req, res) => {
     await executeQuery(
       `INSERT INTO document_tracking (document_id, event_type) VALUES (?, 'SENT')`, [id]
     );
-    res.json({ message: 'Invoice marked as sent' });
+
+    if (emailWarning) {
+      return res.status(207).json({ message: emailWarning, emailFailed: true });
+    }
+    res.json({ message: `Invoice emailed to ${invoice.customer_email}` });
   } catch (error) {
     logger.error('Error sending invoice:', error);
     res.status(500).json({ message: 'Failed to send invoice' });
