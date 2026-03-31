@@ -556,6 +556,134 @@ app.delete('/api/customers/:id', authenticateToken, async (req, res) => {
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
+// Products
+
+app.get('/api/products', authenticateToken, async (req, res) => {
+  try {
+    const search = req.query.search || '';
+    const page   = Math.max(1, parseInt(req.query.page)  || 1);
+    const limit  = Math.min(100, parseInt(req.query.limit) || 20);
+    const offset = (page - 1) * limit;
+
+    let sql    = 'SELECT * FROM products WHERE user_id = ? AND is_active = 1';
+    let cntSql = 'SELECT COUNT(*) AS total FROM products WHERE user_id = ? AND is_active = 1';
+    const params    = [req.user.id];
+    const cntParams = [req.user.id];
+
+    if (search) {
+      const clause = ' AND (name LIKE ? OR description LIKE ?)';
+      sql    += clause;
+      cntSql += clause;
+      params.push(`%${search}%`, `%${search}%`);
+      cntParams.push(`%${search}%`, `%${search}%`);
+    }
+
+    sql += ' ORDER BY name ASC LIMIT ? OFFSET ?';
+    params.push(limit, offset);
+
+    const [products, countResult] = await Promise.all([
+      executeQuery(sql, params),
+      executeQuery(cntSql, cntParams)
+    ]);
+
+    res.json({ data: products, total: countResult[0].total, page, limit });
+  } catch (error) {
+    logger.error('Error fetching products:', error);
+    res.status(500).json({ message: 'Failed to fetch products' });
+  }
+});
+
+app.post('/api/products', authenticateToken, async (req, res) => {
+  try {
+    const { name, description, price, vat_inclusive } = req.body;
+
+    if (!name || price == null) {
+      return res.status(400).json({ message: 'Name and price are required' });
+    }
+
+    const result = await executeQuery(
+      'INSERT INTO products (user_id, name, description, price, vat_inclusive) VALUES (?, ?, ?, ?, ?)',
+      [req.user.id, name, description || null, price, vat_inclusive ? 1 : 0]
+    );
+
+    const product = await executeQuery('SELECT * FROM products WHERE id = ?', [result.insertId]);
+    res.status(201).json(product[0]);
+  } catch (error) {
+    logger.error('Error creating product:', error);
+    res.status(500).json({ message: 'Failed to create product' });
+  }
+});
+
+app.get('/api/products/:id', authenticateToken, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const product = await executeQuery(
+      'SELECT * FROM products WHERE id = ? AND user_id = ? AND is_active = 1',
+      [id, req.user.id]
+    );
+    if (product.length === 0) {
+      return res.status(404).json({ message: 'Product not found' });
+    }
+    res.json(product[0]);
+  } catch (error) {
+    logger.error('Error fetching product:', error);
+    res.status(500).json({ message: 'Failed to fetch product' });
+  }
+});
+
+app.put('/api/products/:id', authenticateToken, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { name, description, price, vat_inclusive } = req.body;
+
+    if (!name || price == null) {
+      return res.status(400).json({ message: 'Name and price are required' });
+    }
+
+    const existing = await executeQuery(
+      'SELECT id FROM products WHERE id = ? AND user_id = ? AND is_active = 1',
+      [id, req.user.id]
+    );
+    if (existing.length === 0) {
+      return res.status(404).json({ message: 'Product not found' });
+    }
+
+    await executeQuery(
+      'UPDATE products SET name = ?, description = ?, price = ?, vat_inclusive = ?, updated_at = NOW() WHERE id = ? AND user_id = ?',
+      [name, description || null, price, vat_inclusive ? 1 : 0, id, req.user.id]
+    );
+
+    const product = await executeQuery('SELECT * FROM products WHERE id = ?', [id]);
+    res.json(product[0]);
+  } catch (error) {
+    logger.error('Error updating product:', error);
+    res.status(500).json({ message: 'Failed to update product' });
+  }
+});
+
+app.delete('/api/products/:id', authenticateToken, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const existing = await executeQuery(
+      'SELECT id FROM products WHERE id = ? AND user_id = ? AND is_active = 1',
+      [id, req.user.id]
+    );
+    if (existing.length === 0) {
+      return res.status(404).json({ message: 'Product not found' });
+    }
+
+    await executeQuery(
+      'UPDATE products SET is_active = 0, updated_at = NOW() WHERE id = ? AND user_id = ?',
+      [id, req.user.id]
+    );
+    res.json({ message: 'Product deleted successfully' });
+  } catch (error) {
+    logger.error('Error deleting product:', error);
+    res.status(500).json({ message: 'Failed to delete product' });
+  }
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
 
 // Catch-all route for Angular app
 app.get('*', (req, res) => {

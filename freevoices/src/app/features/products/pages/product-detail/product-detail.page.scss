@@ -1,0 +1,28 @@
+.loading-state {
+  display: flex;
+  justify-content: center;
+  padding: 3rem;
+}
+
+.product-header {
+  display: flex;
+  align-items: flex-start;
+  gap: 1rem;
+
+  .product-icon {
+    font-size: 2.5rem;
+    color: var(--ion-color-primary);
+    flex-shrink: 0;
+  }
+
+  h2 {
+    margin: 0 0 0.25rem;
+    font-size: 1.2rem;
+    font-weight: 600;
+  }
+
+  .description {
+    color: var(--ion-color-medium);
+    margin: 0;
+  }
+}

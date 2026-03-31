@@ -1,0 +1,65 @@
+<ion-header>
+  <ion-toolbar>
+    <ion-buttons slot="start">
+      <ion-back-button defaultHref="/products"></ion-back-button>
+    </ion-buttons>
+    <ion-title>{{ product?.name || 'Product' }}</ion-title>
+    <ion-buttons slot="end">
+      <ion-button [routerLink]="['/products', productId, 'edit']">
+        <ion-icon slot="icon-only" name="create-outline"></ion-icon>
+      </ion-button>
+      <ion-button (click)="confirmDelete()" color="danger">
+        <ion-icon slot="icon-only" name="trash-outline"></ion-icon>
+      </ion-button>
+    </ion-buttons>
+  </ion-toolbar>
+</ion-header>
+
+<ion-content>
+  <div class="loading-state" *ngIf="isLoading">
+    <ion-spinner></ion-spinner>
+  </div>
+
+  <ng-container *ngIf="!isLoading && product">
+
+    <ion-card>
+      <ion-card-content>
+        <div class="product-header">
+          <ion-icon name="cube-outline" class="product-icon"></ion-icon>
+          <div>
+            <h2>{{ product.name }}</h2>
+            <p *ngIf="product.description" class="description">{{ product.description }}</p>
+          </div>
+        </div>
+      </ion-card-content>
+    </ion-card>
+
+    <ion-card>
+      <ion-card-header>
+        <ion-card-title>Pricing</ion-card-title>
+      </ion-card-header>
+      <ion-card-content>
+        <ion-list lines="none">
+          <ion-item>
+            <ion-icon name="pricetag-outline" slot="start" color="medium"></ion-icon>
+            <ion-label>
+              <h3>Price</h3>
+              <p>R {{ product.price | number:'1.2-2' }}</p>
+            </ion-label>
+          </ion-item>
+          <ion-item>
+            <ion-icon name="receipt-outline" slot="start" color="medium"></ion-icon>
+            <ion-label>
+              <h3>VAT</h3>
+              <p>{{ product.vat_inclusive ? 'Price includes VAT' : 'VAT not included' }}</p>
+            </ion-label>
+            <ion-badge slot="end" [color]="product.vat_inclusive ? 'success' : 'medium'">
+              {{ product.vat_inclusive ? 'Incl.' : 'Excl.' }}
+            </ion-badge>
+          </ion-item>
+        </ion-list>
+      </ion-card-content>
+    </ion-card>
+
+  </ng-container>
+</ion-content>

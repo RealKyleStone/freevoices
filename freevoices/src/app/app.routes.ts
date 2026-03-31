@@ -25,6 +25,11 @@ export const routes: Routes = [
         path: 'customers',
         loadChildren: () => import('./features/customers/customers.routes')
           .then(m => m.CUSTOMER_ROUTES)
+      },
+      {
+        path: 'products',
+        loadChildren: () => import('./features/products/products.routes')
+          .then(m => m.PRODUCT_ROUTES)
       }
 
       /*,
@@ -37,11 +42,6 @@ export const routes: Routes = [
         path: 'quotes',
         loadChildren: () => import('./features/quotes/quotes.routes')
           .then(m => m.QUOTE_ROUTES)
-      },
-      {
-        path: 'products',
-        loadChildren: () => import('./features/products/products.routes')
-          .then(m => m.PRODUCT_ROUTES)
       },
       {
         path: 'settings',

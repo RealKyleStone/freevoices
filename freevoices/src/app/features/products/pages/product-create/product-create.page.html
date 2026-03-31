@@ -1,0 +1,52 @@
+<ion-header>
+  <ion-toolbar>
+    <ion-buttons slot="start">
+      <ion-back-button defaultHref="/products"></ion-back-button>
+    </ion-buttons>
+    <ion-title>New Product</ion-title>
+  </ion-toolbar>
+</ion-header>
+
+<ion-content class="ion-padding">
+  <form [formGroup]="form" (ngSubmit)="onSubmit()">
+
+    <ion-card>
+      <ion-card-header>
+        <ion-card-title>Product Details</ion-card-title>
+      </ion-card-header>
+      <ion-card-content>
+
+        <ion-item [class.ion-invalid]="isInvalid('name')" fill="outline">
+          <ion-label position="floating">Name <ion-text color="danger">*</ion-text></ion-label>
+          <ion-input formControlName="name" type="text"></ion-input>
+          <ion-note slot="error">Name is required (min 2 characters)</ion-note>
+        </ion-item>
+
+        <ion-item fill="outline">
+          <ion-label position="floating">Description</ion-label>
+          <ion-textarea formControlName="description" rows="3"></ion-textarea>
+        </ion-item>
+
+        <ion-item [class.ion-invalid]="isInvalid('price')" fill="outline">
+          <ion-label position="floating">Price <ion-text color="danger">*</ion-text></ion-label>
+          <ion-input formControlName="price" type="number" min="0" step="0.01"></ion-input>
+          <ion-note slot="error">A valid price is required</ion-note>
+        </ion-item>
+
+        <ion-item>
+          <ion-label>VAT Inclusive</ion-label>
+          <ion-toggle formControlName="vat_inclusive" slot="end"></ion-toggle>
+        </ion-item>
+
+      </ion-card-content>
+    </ion-card>
+
+    <div class="form-actions">
+      <ion-button expand="block" type="submit" [disabled]="isLoading">
+        <ion-spinner *ngIf="isLoading" slot="start" name="crescent"></ion-spinner>
+        {{ isLoading ? 'Saving...' : 'Create Product' }}
+      </ion-button>
+    </div>
+
+  </form>
+</ion-content>
