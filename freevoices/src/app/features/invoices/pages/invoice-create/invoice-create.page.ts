@@ -4,6 +4,8 @@ import { ReactiveFormsModule, FormBuilder, FormGroup, FormArray, Validators } fr
 import { Router } from '@angular/router';
 import { IonicModule, ToastController } from '@ionic/angular';
 import { forkJoin } from 'rxjs';
+import { addIcons } from 'ionicons';
+import { trashOutline, addOutline } from 'ionicons/icons';
 import { InvoiceService } from '../../services/invoice.service';
 import { CustomerService } from '../../../customers/services/customer.service';
 import { ProductService } from '../../../products/services/product.service';
@@ -32,6 +34,8 @@ export class InvoiceCreatePage implements OnInit {
     private router: Router,
     private toastCtrl: ToastController
   ) {
+    addIcons({ trashOutline, addOutline });
+
     const today = new Date().toISOString().split('T')[0];
     this.form = this.fb.group({
       customer_id:      [null, Validators.required],
@@ -80,8 +84,12 @@ export class InvoiceCreatePage implements OnInit {
     this.items.push(this.newItemGroup());
   }
 
-  removeItem(i: number) {
-    if (this.items.length > 1) this.items.removeAt(i);
+  async removeItem(i: number) {
+    if (this.items.length === 1) {
+      await this.showToast('An invoice must have at least one line item', 'warning');
+      return;
+    }
+    this.items.removeAt(i);
   }
 
   onProductChange(index: number) {
@@ -133,7 +141,11 @@ export class InvoiceCreatePage implements OnInit {
 
   async onSubmit() {
     this.submitted = true;
-    if (this.form.invalid) { this.form.markAllAsTouched(); return; }
+    if (this.form.invalid) {
+      this.form.markAllAsTouched();
+      await this.showToast('Please fill in all required fields', 'warning');
+      return;
+    }
 
     this.isLoading = true;
     const { items, ...rest } = this.form.value;

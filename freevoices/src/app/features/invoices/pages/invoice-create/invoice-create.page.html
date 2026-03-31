@@ -19,7 +19,7 @@
       <ion-card-header><ion-card-title>Invoice Details</ion-card-title></ion-card-header>
       <ion-card-content>
 
-        <ion-item [class.ion-invalid]="isInvalid('customer_id')" fill="outline">
+        <ion-item [class.ion-invalid]="isInvalid('customer_id')" [class.ion-touched]="isInvalid('customer_id')" fill="outline">
           <ion-label position="floating">Customer <ion-text color="danger">*</ion-text></ion-label>
           <ion-select formControlName="customer_id" interface="action-sheet" placeholder="Select customer">
             <ion-select-option *ngFor="let c of customers" [value]="c.id">{{ c.name }}</ion-select-option>
@@ -27,7 +27,7 @@
           <ion-note slot="error">Customer is required</ion-note>
         </ion-item>
 
-        <ion-item [class.ion-invalid]="isInvalid('issue_date')" fill="outline">
+        <ion-item [class.ion-invalid]="isInvalid('issue_date')" [class.ion-touched]="isInvalid('issue_date')" fill="outline">
           <ion-label position="floating">Issue Date <ion-text color="danger">*</ion-text></ion-label>
           <ion-input formControlName="issue_date" type="date"></ion-input>
           <ion-note slot="error">Issue date is required</ion-note>
@@ -56,7 +56,7 @@
         <div *ngFor="let item of items.controls; let i = index" [formGroupName]="i" class="line-item">
           <div class="line-item-header">
             <span class="line-item-num">Item {{ i + 1 }}</span>
-            <ion-button fill="clear" color="danger" size="small" (click)="removeItem(i)" [disabled]="items.length === 1">
+            <ion-button fill="clear" color="danger" size="small" (click)="removeItem(i)" type="button">
               <ion-icon slot="icon-only" name="trash-outline"></ion-icon>
             </ion-button>
           </div>
@@ -70,21 +70,23 @@
             </ion-select>
           </ion-item>
 
-          <ion-item [class.ion-invalid]="isItemInvalid(i, 'description')" fill="outline">
+          <ion-item [class.ion-invalid]="isItemInvalid(i, 'description')" [class.ion-touched]="isItemInvalid(i, 'description')" fill="outline">
             <ion-label position="floating">Description <ion-text color="danger">*</ion-text></ion-label>
             <ion-input formControlName="description" type="text"></ion-input>
             <ion-note slot="error">Description is required</ion-note>
           </ion-item>
 
           <div class="item-row">
-            <ion-item [class.ion-invalid]="isItemInvalid(i, 'quantity')" fill="outline" class="flex-1">
+            <ion-item [class.ion-invalid]="isItemInvalid(i, 'quantity')" [class.ion-touched]="isItemInvalid(i, 'quantity')" fill="outline" class="flex-1">
               <ion-label position="floating">Qty <ion-text color="danger">*</ion-text></ion-label>
               <ion-input formControlName="quantity" type="number" min="0.01" step="0.01"></ion-input>
+              <ion-note slot="error">Min 0.01</ion-note>
             </ion-item>
 
-            <ion-item [class.ion-invalid]="isItemInvalid(i, 'unit_price')" fill="outline" class="flex-2">
+            <ion-item [class.ion-invalid]="isItemInvalid(i, 'unit_price')" [class.ion-touched]="isItemInvalid(i, 'unit_price')" fill="outline" class="flex-2">
               <ion-label position="floating">Unit Price <ion-text color="danger">*</ion-text></ion-label>
               <ion-input formControlName="unit_price" type="number" min="0" step="0.01"></ion-input>
+              <ion-note slot="error">Required</ion-note>
             </ion-item>
 
             <ion-item fill="outline" class="flex-1">
