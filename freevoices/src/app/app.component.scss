@@ -30,14 +30,7 @@ ion-menu {
         --padding-start: 1rem;
         margin-bottom: 0.5rem;
         
-        &.selected {
-          --background: var(--ion-color-primary-tint);
-          --color: var(--ion-color-primary);
-          
-          ion-icon {
-            color: var(--ion-color-primary);
-          }
-        }
+        // Removed selected item override to allow global.scss to control selected state
         
         ion-icon {
           margin-right: 0.75rem;

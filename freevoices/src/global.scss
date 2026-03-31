@@ -87,20 +87,35 @@ ion-menu {
       margin-bottom: 0.5rem;
 
       &.selected {
-        --background: rgba(var(--ion-color-primary-rgb), 0.15);
-        --color: var(--ion-color-primary);
-        font-weight: 500;
+          --background: var(--ion-color-primary);
+          --color: #fff;
+          font-weight: 600;
+          box-shadow: 0 2px 8px rgba(var(--ion-color-primary-rgb), 0.10);
+          border-radius: 10px;
+          transition: background 0.2s, color 0.2s;
+
+          ion-icon {
+            color: #fff;
+          }
+      }
 
         ion-icon {
-          color: var(--ion-color-primary);
+          font-size: 1.25rem;
+          margin-right: 0.75rem;
+          color: var(--ion-text-color);
+          transition: color 0.2s;
+      }
+      
+        &:hover:not(.selected) {
+          --background: rgba(var(--ion-color-primary-rgb), 0.10);
+          --color: var(--ion-color-primary);
+          font-weight: 500;
+          cursor: pointer;
         }
-      }
-
-      ion-icon {
-        font-size: 1.25rem;
-        margin-right: 0.75rem;
-        color: var(--ion-text-color);
-      }
+      
+        font-size: 1.08rem;
+        font-weight: 500;
+        letter-spacing: 0.01em;
     }
   }
 
