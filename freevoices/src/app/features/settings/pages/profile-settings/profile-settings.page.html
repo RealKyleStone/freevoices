@@ -1,0 +1,93 @@
+<div class="settings-page">
+  <div class="settings-page-header">
+    <h2>Profile</h2>
+    <p>Update your personal information and password.</p>
+  </div>
+
+  <div *ngIf="isLoading" class="loading-container">
+    <ion-spinner name="crescent"></ion-spinner>
+  </div>
+
+  <form *ngIf="!isLoading" [formGroup]="form" (ngSubmit)="onSubmit()">
+    <ion-card>
+      <ion-card-header>
+        <ion-card-title>
+          <ion-icon name="person-outline"></ion-icon>
+          Personal Details
+        </ion-card-title>
+      </ion-card-header>
+      <ion-card-content>
+        <ion-item [class.ion-invalid]="isInvalid('contact_person')" [class.ion-touched]="form.get('contact_person')?.touched">
+          <ion-label position="stacked">Full Name <span class="required">*</span></ion-label>
+          <ion-input formControlName="contact_person" type="text" placeholder="Your full name"></ion-input>
+          <ion-note slot="error">Full name is required</ion-note>
+        </ion-item>
+
+        <ion-item [class.ion-invalid]="isInvalid('email')" [class.ion-touched]="form.get('email')?.touched">
+          <ion-label position="stacked">Email Address <span class="required">*</span></ion-label>
+          <ion-input formControlName="email" type="email" placeholder="you@example.com"></ion-input>
+          <ion-note slot="error">A valid email address is required</ion-note>
+        </ion-item>
+
+        <ion-item>
+          <ion-label position="stacked">Phone</ion-label>
+          <ion-input formControlName="phone" type="tel" placeholder="+27 00 000 0000"></ion-input>
+        </ion-item>
+      </ion-card-content>
+    </ion-card>
+
+    <ion-card>
+      <ion-card-header>
+        <ion-card-title>
+          <ion-icon name="lock-closed-outline"></ion-icon>
+          Change Password
+        </ion-card-title>
+      </ion-card-header>
+      <ion-card-content>
+        <p class="hint">Leave these fields blank to keep your current password.</p>
+
+        <ion-item>
+          <ion-label position="stacked">Current Password</ion-label>
+          <ion-input
+            formControlName="current_password"
+            [type]="showCurrentPassword ? 'text' : 'password'"
+            placeholder="Current password"
+          ></ion-input>
+          <ion-button fill="clear" slot="end" (click)="showCurrentPassword = !showCurrentPassword">
+            <ion-icon [name]="showCurrentPassword ? 'eye-off-outline' : 'eye-outline'"></ion-icon>
+          </ion-button>
+        </ion-item>
+
+        <ion-item [class.ion-invalid]="isInvalid('new_password')" [class.ion-touched]="form.get('new_password')?.touched">
+          <ion-label position="stacked">New Password</ion-label>
+          <ion-input
+            formControlName="new_password"
+            [type]="showNewPassword ? 'text' : 'password'"
+            placeholder="Minimum 8 characters"
+          ></ion-input>
+          <ion-button fill="clear" slot="end" (click)="showNewPassword = !showNewPassword">
+            <ion-icon [name]="showNewPassword ? 'eye-off-outline' : 'eye-outline'"></ion-icon>
+          </ion-button>
+          <ion-note slot="error">Password must be at least 8 characters</ion-note>
+        </ion-item>
+
+        <ion-item [class.ion-invalid]="isInvalid('confirm_password')" [class.ion-touched]="form.get('confirm_password')?.touched">
+          <ion-label position="stacked">Confirm New Password</ion-label>
+          <ion-input
+            formControlName="confirm_password"
+            type="password"
+            placeholder="Repeat new password"
+          ></ion-input>
+          <ion-note slot="error">Passwords do not match</ion-note>
+        </ion-item>
+      </ion-card-content>
+    </ion-card>
+
+    <div class="form-actions">
+      <ion-button type="submit" [disabled]="isSaving" expand="block" color="primary">
+        <ion-spinner *ngIf="isSaving" name="crescent" slot="start"></ion-spinner>
+        {{ isSaving ? 'Saving...' : 'Save Changes' }}
+      </ion-button>
+    </div>
+  </form>
+</div>

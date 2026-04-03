@@ -5,12 +5,37 @@ const EmailService = require('./src/services/email.service');
 const { buildInvoicePdf } = require('./src/services/pdf.service');
 const express = require('express');
 const path = require('path');
+const fs = require('fs');
 const mysql = require('mysql2');
 const cors = require('cors');
 const bodyParser = require('body-parser');
 const argon2 = require('argon2');
 const winston = require('winston');
 const { randomUUID } = require('crypto');
+const multer = require('multer');
+
+// Multer setup for company logo uploads (5 MB limit, jpg/png only)
+const logoStorage = multer.diskStorage({
+  destination: (req, file, cb) => {
+    const dir = path.join(__dirname, 'uploads', 'logos');
+    fs.mkdirSync(dir, { recursive: true });
+    cb(null, dir);
+  },
+  filename: (req, file, cb) => {
+    const ext = path.extname(file.originalname).toLowerCase();
+    cb(null, `logo_${req.user.id}_${Date.now()}${ext}`);
+  }
+});
+const logoUpload = multer({
+  storage: logoStorage,
+  limits: { fileSize: 5 * 1024 * 1024 },
+  fileFilter: (req, file, cb) => {
+    if (!['image/jpeg', 'image/png', 'image/gif', 'image/webp'].includes(file.mimetype)) {
+      return cb(new Error('Only image files (JPEG, PNG, GIF, WebP) are allowed'));
+    }
+    cb(null, true);
+  }
+});
 
 const app = express();
 
@@ -819,7 +844,7 @@ app.get('/api/invoices/:id/pdf', authenticateToken, async (req, res) => {
   try {
     const { id } = req.params;
 
-    const [invoices, items, users] = await Promise.all([
+    const [invoices, items, users, logoRows] = await Promise.all([
       executeQuery(
         `SELECT d.*, c.name AS customer_name, c.email AS customer_email,
                 c.billing_address AS customer_billing_address,
@@ -830,12 +855,15 @@ app.get('/api/invoices/:id/pdf', authenticateToken, async (req, res) => {
         [id, req.user.id]
       ),
       executeQuery('SELECT * FROM document_items WHERE document_id = ? ORDER BY id ASC', [id]),
-      executeQuery('SELECT * FROM users WHERE id = ?', [req.user.id])
+      executeQuery('SELECT * FROM users WHERE id = ?', [req.user.id]),
+      executeQuery("SELECT setting_value FROM settings WHERE user_id = ? AND setting_key = 'company_logo'", [req.user.id])
     ]);
 
     if (invoices.length === 0) return res.status(404).json({ message: 'Invoice not found' });
 
-    const pdfBuffer = await buildInvoicePdf(invoices[0], items, users[0]);
+    const logoRelPath = logoRows[0]?.setting_value || null;
+    const user = { ...users[0], logo_path: logoRelPath ? path.join(__dirname, logoRelPath) : null };
+    const pdfBuffer = await buildInvoicePdf(invoices[0], items, user);
 
     await executeQuery(
       `INSERT INTO document_tracking (document_id, event_type) VALUES (?, 'DOWNLOADED')`, [id]
@@ -956,7 +984,7 @@ app.post('/api/invoices/:id/send', authenticateToken, async (req, res) => {
   try {
     const { id } = req.params;
 
-    const [invoices, items, users] = await Promise.all([
+    const [invoices, items, users, logoRows] = await Promise.all([
       executeQuery(
         `SELECT d.*, c.name AS customer_name, c.email AS customer_email,
                 c.billing_address AS customer_billing_address,
@@ -967,12 +995,14 @@ app.post('/api/invoices/:id/send', authenticateToken, async (req, res) => {
         [id, req.user.id]
       ),
       executeQuery('SELECT * FROM document_items WHERE document_id = ? ORDER BY id ASC', [id]),
-      executeQuery('SELECT * FROM users WHERE id = ?', [req.user.id])
+      executeQuery('SELECT * FROM users WHERE id = ?', [req.user.id]),
+      executeQuery("SELECT setting_value FROM settings WHERE user_id = ? AND setting_key = 'company_logo'", [req.user.id])
     ]);
 
     if (invoices.length === 0) return res.status(404).json({ message: 'Invoice not found' });
     const invoice = invoices[0];
-    const user    = users[0];
+    const logoRelPath = logoRows[0]?.setting_value || null;
+    const user = { ...users[0], logo_path: logoRelPath ? path.join(__dirname, logoRelPath) : null };
 
     if (!['DRAFT', 'SENT'].includes(invoice.status)) {
       return res.status(400).json({ message: `Cannot send an invoice with status ${invoice.status}` });
@@ -1629,6 +1659,253 @@ app.get('/api/dashboard/summary', authenticateToken, async (req, res) => {
   } catch (error) {
     logger.error('Error fetching dashboard summary:', error);
     res.status(500).json({ message: 'Failed to fetch dashboard summary' });
+  }
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Settings API Endpoints
+// ─────────────────────────────────────────────────────────────────────────────
+
+// Serve uploaded logos
+app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
+
+// GET /api/settings — fetch all settings for the current user
+app.get('/api/settings', authenticateToken, async (req, res) => {
+  try {
+    const userId = req.user.id;
+
+    const [userRows, settingRows] = await Promise.all([
+      executeQuery(
+        `SELECT email, company_name, company_registration, vat_number,
+                contact_person, phone, address,
+                bank_name, bank_account_number, bank_branch_code, bank_account_type
+         FROM users WHERE id = ?`,
+        [userId]
+      ),
+      executeQuery(
+        'SELECT setting_key, setting_value FROM settings WHERE user_id = ?',
+        [userId]
+      )
+    ]);
+
+    if (userRows.length === 0) {
+      return res.status(404).json({ message: 'User not found' });
+    }
+
+    const kvSettings = {};
+    for (const row of settingRows) {
+      kvSettings[row.setting_key] = row.setting_value;
+    }
+
+    res.json({ ...userRows[0], ...kvSettings });
+  } catch (error) {
+    logger.error('Error fetching settings:', error);
+    res.status(500).json({ message: 'Failed to fetch settings' });
+  }
+});
+
+// PUT /api/settings/profile — update name, email, phone, optional password
+app.put('/api/settings/profile', authenticateToken, async (req, res) => {
+  try {
+    const userId = req.user.id;
+    const { contact_person, email, phone, current_password, new_password } = req.body;
+
+    if (!contact_person || !email) {
+      return res.status(400).json({ message: 'Name and email are required' });
+    }
+
+    // If changing password, verify current password first
+    if (new_password) {
+      if (!current_password) {
+        return res.status(400).json({ message: 'Current password is required to set a new password' });
+      }
+      const userRows = await executeQuery('SELECT password_hash FROM users WHERE id = ?', [userId]);
+      if (userRows.length === 0) return res.status(404).json({ message: 'User not found' });
+
+      const valid = await argon2.verify(userRows[0].password_hash, current_password);
+      if (!valid) {
+        return res.status(400).json({ message: 'Current password is incorrect' });
+      }
+
+      const newHash = await argon2.hash(new_password);
+      await executeQuery(
+        'UPDATE users SET contact_person = ?, email = ?, phone = ?, password_hash = ?, updated_at = NOW() WHERE id = ?',
+        [contact_person, email, phone || null, newHash, userId]
+      );
+    } else {
+      await executeQuery(
+        'UPDATE users SET contact_person = ?, email = ?, phone = ?, updated_at = NOW() WHERE id = ?',
+        [contact_person, email, phone || null, userId]
+      );
+    }
+
+    res.json({ message: 'Profile updated successfully' });
+  } catch (error) {
+    logger.error('Error updating profile:', error);
+    res.status(500).json({ message: 'Failed to update profile' });
+  }
+});
+
+// PUT /api/settings/company — update company info
+app.put('/api/settings/company', authenticateToken, async (req, res) => {
+  try {
+    const userId = req.user.id;
+    const { company_name, company_registration, vat_number, address } = req.body;
+
+    await executeQuery(
+      'UPDATE users SET company_name = ?, company_registration = ?, vat_number = ?, address = ?, updated_at = NOW() WHERE id = ?',
+      [company_name || null, company_registration || null, vat_number || null, address || null, userId]
+    );
+
+    res.json({ message: 'Company details updated successfully' });
+  } catch (error) {
+    logger.error('Error updating company settings:', error);
+    res.status(500).json({ message: 'Failed to update company details' });
+  }
+});
+
+// POST /api/settings/logo — upload company logo (5 MB max)
+app.post('/api/settings/logo', authenticateToken, (req, res) => {
+  logoUpload.single('logo')(req, res, async (err) => {
+    if (err) {
+      if (err.code === 'LIMIT_FILE_SIZE') {
+        return res.status(400).json({ message: 'Logo must be 5 MB or smaller' });
+      }
+      return res.status(400).json({ message: err.message || 'Upload failed' });
+    }
+
+    if (!req.file) {
+      return res.status(400).json({ message: 'No file uploaded' });
+    }
+
+    try {
+      const userId = req.user.id;
+      const logoPath = `/uploads/logos/${req.file.filename}`;
+
+      // Delete previous logo file if it exists
+      const existing = await executeQuery(
+        "SELECT setting_value FROM settings WHERE user_id = ? AND setting_key = 'company_logo'",
+        [userId]
+      );
+      if (existing.length > 0 && existing[0].setting_value) {
+        const oldFile = path.join(__dirname, existing[0].setting_value);
+        fs.unlink(oldFile, () => {});
+      }
+
+      await executeQuery(
+        `INSERT INTO settings (user_id, setting_key, setting_value, updated_at)
+         VALUES (?, 'company_logo', ?, NOW())
+         ON DUPLICATE KEY UPDATE setting_value = VALUES(setting_value), updated_at = NOW()`,
+        [userId, logoPath]
+      );
+
+      res.json({ message: 'Logo uploaded successfully', logo_url: logoPath });
+    } catch (error) {
+      logger.error('Error saving logo path:', error);
+      res.status(500).json({ message: 'Failed to save logo' });
+    }
+  });
+});
+
+// DELETE /api/settings/logo — remove company logo
+app.delete('/api/settings/logo', authenticateToken, async (req, res) => {
+  try {
+    const userId = req.user.id;
+    const existing = await executeQuery(
+      "SELECT setting_value FROM settings WHERE user_id = ? AND setting_key = 'company_logo'",
+      [userId]
+    );
+
+    if (existing.length > 0 && existing[0].setting_value) {
+      const filePath = path.join(__dirname, existing[0].setting_value);
+      fs.unlink(filePath, () => {});
+    }
+
+    await executeQuery(
+      "DELETE FROM settings WHERE user_id = ? AND setting_key = 'company_logo'",
+      [userId]
+    );
+
+    res.json({ message: 'Logo removed successfully' });
+  } catch (error) {
+    logger.error('Error removing logo:', error);
+    res.status(500).json({ message: 'Failed to remove logo' });
+  }
+});
+
+// PUT /api/settings/invoice — update invoice defaults (stored as key-value in settings table)
+app.put('/api/settings/invoice', authenticateToken, async (req, res) => {
+  try {
+    const userId = req.user.id;
+    const { invoice_prefix, invoice_next_number, invoice_payment_terms, invoice_vat_rate, invoice_notes } = req.body;
+
+    const pairs = [
+      ['invoice_prefix', invoice_prefix ?? 'INV'],
+      ['invoice_next_number', String(invoice_next_number ?? 1)],
+      ['invoice_payment_terms', String(invoice_payment_terms ?? 30)],
+      ['invoice_vat_rate', String(invoice_vat_rate ?? 15)],
+      ['invoice_notes', invoice_notes ?? '']
+    ];
+
+    for (const [key, value] of pairs) {
+      await executeQuery(
+        `INSERT INTO settings (user_id, setting_key, setting_value, updated_at)
+         VALUES (?, ?, ?, NOW())
+         ON DUPLICATE KEY UPDATE setting_value = VALUES(setting_value), updated_at = NOW()`,
+        [userId, key, value]
+      );
+    }
+
+    res.json({ message: 'Invoice defaults updated successfully' });
+  } catch (error) {
+    logger.error('Error updating invoice settings:', error);
+    res.status(500).json({ message: 'Failed to update invoice defaults' });
+  }
+});
+
+// PUT /api/settings/payment — update bank/payment details
+app.put('/api/settings/payment', authenticateToken, async (req, res) => {
+  try {
+    const userId = req.user.id;
+    const { bank_name, bank_account_number, bank_branch_code, bank_account_type } = req.body;
+
+    await executeQuery(
+      'UPDATE users SET bank_name = ?, bank_account_number = ?, bank_branch_code = ?, bank_account_type = ?, updated_at = NOW() WHERE id = ?',
+      [bank_name || null, bank_account_number || null, bank_branch_code || null, bank_account_type || null, userId]
+    );
+
+    res.json({ message: 'Payment details updated successfully' });
+  } catch (error) {
+    logger.error('Error updating payment settings:', error);
+    res.status(500).json({ message: 'Failed to update payment details' });
+  }
+});
+
+// PUT /api/settings/notifications — update notification preferences
+app.put('/api/settings/notifications', authenticateToken, async (req, res) => {
+  try {
+    const userId = req.user.id;
+    const { notify_invoice_sent, notify_payment_received, notify_invoice_overdue } = req.body;
+
+    const pairs = [
+      ['notify_invoice_sent', notify_invoice_sent ? '1' : '0'],
+      ['notify_payment_received', notify_payment_received ? '1' : '0'],
+      ['notify_invoice_overdue', notify_invoice_overdue ? '1' : '0']
+    ];
+
+    for (const [key, value] of pairs) {
+      await executeQuery(
+        `INSERT INTO settings (user_id, setting_key, setting_value, updated_at)
+         VALUES (?, ?, ?, NOW())
+         ON DUPLICATE KEY UPDATE setting_value = VALUES(setting_value), updated_at = NOW()`,
+        [userId, key, value]
+      );
+    }
+
+    res.json({ message: 'Notification preferences updated successfully' });
+  } catch (error) {
+    logger.error('Error updating notification settings:', error);
+    res.status(500).json({ message: 'Failed to update notification preferences' });
   }
 });
 

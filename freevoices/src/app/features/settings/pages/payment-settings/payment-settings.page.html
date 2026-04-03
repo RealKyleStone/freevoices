@@ -1,0 +1,51 @@
+<div class="settings-page">
+  <div class="settings-page-header">
+    <h2>Payment Details</h2>
+    <p>Your banking details are displayed on invoices so clients know where to pay.</p>
+  </div>
+
+  <div *ngIf="isLoading" class="loading-container">
+    <ion-spinner name="crescent"></ion-spinner>
+  </div>
+
+  <form *ngIf="!isLoading" [formGroup]="form" (ngSubmit)="onSubmit()">
+    <ion-card>
+      <ion-card-header>
+        <ion-card-title>
+          <ion-icon name="card-outline"></ion-icon>
+          Bank Account
+        </ion-card-title>
+      </ion-card-header>
+      <ion-card-content>
+        <ion-item>
+          <ion-label position="stacked">Bank Name</ion-label>
+          <ion-input formControlName="bank_name" type="text" placeholder="e.g. FNB, ABSA, Standard Bank"></ion-input>
+        </ion-item>
+
+        <ion-item>
+          <ion-label position="stacked">Account Number</ion-label>
+          <ion-input formControlName="bank_account_number" type="text" placeholder="1234567890"></ion-input>
+        </ion-item>
+
+        <ion-item>
+          <ion-label position="stacked">Branch Code</ion-label>
+          <ion-input formControlName="bank_branch_code" type="text" placeholder="250655"></ion-input>
+        </ion-item>
+
+        <ion-item>
+          <ion-label position="stacked">Account Type</ion-label>
+          <ion-select formControlName="bank_account_type" interface="popover" placeholder="Select type">
+            <ion-select-option *ngFor="let type of accountTypes" [value]="type">{{ type }}</ion-select-option>
+          </ion-select>
+        </ion-item>
+      </ion-card-content>
+    </ion-card>
+
+    <div class="form-actions">
+      <ion-button type="submit" [disabled]="isSaving" expand="block" color="primary">
+        <ion-spinner *ngIf="isSaving" name="crescent" slot="start"></ion-spinner>
+        {{ isSaving ? 'Saving...' : 'Save Payment Details' }}
+      </ion-button>
+    </div>
+  </form>
+</div>

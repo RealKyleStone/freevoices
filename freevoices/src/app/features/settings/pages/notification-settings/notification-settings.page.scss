@@ -1,0 +1,13 @@
+@use '../settings-page';
+
+ion-item {
+  ion-label {
+    h3 {
+      font-weight: 500;
+    }
+    p {
+      font-size: 0.82rem;
+      color: var(--ion-color-medium);
+    }
+  }
+}

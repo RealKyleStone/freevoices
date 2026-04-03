@@ -1,0 +1,50 @@
+@use '../settings-page';
+
+.logo-container {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+.logo-preview {
+  max-height: 120px;
+  max-width: 280px;
+  object-fit: contain;
+  border: 1px solid var(--ion-border-color, #e0e0e0);
+  border-radius: 8px;
+  padding: 8px;
+  background: #fff;
+}
+
+.logo-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.logo-upload-area {
+  margin-top: 8px;
+}
+
+.upload-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 20px;
+  border: 2px dashed var(--ion-color-primary);
+  border-radius: 8px;
+  color: var(--ion-color-primary);
+  cursor: pointer;
+  font-size: 0.9rem;
+  font-weight: 500;
+  transition: background 0.2s;
+
+  ion-icon {
+    font-size: 1.2rem;
+  }
+
+  &:hover {
+    background: var(--ion-color-primary-tint);
+  }
+}

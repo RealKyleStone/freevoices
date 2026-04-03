@@ -1,0 +1,104 @@
+<div class="settings-page">
+  <div class="settings-page-header">
+    <h2>Company</h2>
+    <p>Your company details appear on invoices and quotes.</p>
+  </div>
+
+  <div *ngIf="isLoading" class="loading-container">
+    <ion-spinner name="crescent"></ion-spinner>
+  </div>
+
+  <ng-container *ngIf="!isLoading">
+    <!-- Logo Upload Card -->
+    <ion-card>
+      <ion-card-header>
+        <ion-card-title>
+          <ion-icon name="image-outline"></ion-icon>
+          Company Logo
+        </ion-card-title>
+      </ion-card-header>
+      <ion-card-content>
+        <p class="hint">Max file size: 5 MB. Accepted formats: JPEG, PNG, GIF, WebP.</p>
+
+        <!-- Current / preview logo -->
+        <div class="logo-container" *ngIf="logoUrl || logoPreview">
+          <img [src]="logoPreview || logoUrl" alt="Company logo" class="logo-preview" />
+          <div class="logo-actions">
+            <ion-button *ngIf="logoPreview" fill="solid" color="primary" size="small" (click)="uploadLogo()" [disabled]="isUploadingLogo">
+              <ion-spinner *ngIf="isUploadingLogo" name="crescent" slot="start" style="width:16px;height:16px"></ion-spinner>
+              <ion-icon name="cloud-upload-outline" slot="start" *ngIf="!isUploadingLogo"></ion-icon>
+              {{ isUploadingLogo ? 'Uploading...' : 'Upload' }}
+            </ion-button>
+            <ion-button *ngIf="logoPreview" fill="outline" color="medium" size="small" (click)="cancelLogoSelection()">
+              Cancel
+            </ion-button>
+            <ion-button *ngIf="logoUrl && !logoPreview" fill="outline" color="danger" size="small" (click)="removeLogo()">
+              <ion-icon name="trash-outline" slot="start"></ion-icon>
+              Remove
+            </ion-button>
+          </div>
+        </div>
+
+        <!-- File picker -->
+        <div class="logo-upload-area" *ngIf="!logoPreview">
+          <label for="logoFile" class="upload-label">
+            <ion-icon name="cloud-upload-outline"></ion-icon>
+            <span>{{ logoUrl ? 'Replace Logo' : 'Choose Logo' }}</span>
+          </label>
+          <input
+            id="logoFile"
+            type="file"
+            accept="image/*"
+            style="display:none"
+            (change)="onFileSelected($event)"
+          />
+        </div>
+      </ion-card-content>
+    </ion-card>
+
+    <!-- Company Info Form -->
+    <form [formGroup]="form" (ngSubmit)="onSubmit()">
+      <ion-card>
+        <ion-card-header>
+          <ion-card-title>
+            <ion-icon name="business-outline"></ion-icon>
+            Company Details
+          </ion-card-title>
+        </ion-card-header>
+        <ion-card-content>
+          <ion-item>
+            <ion-label position="stacked">Company Name</ion-label>
+            <ion-input formControlName="company_name" type="text" placeholder="Acme Pty Ltd"></ion-input>
+          </ion-item>
+
+          <ion-item>
+            <ion-label position="stacked">Registration Number</ion-label>
+            <ion-input formControlName="company_registration" type="text" placeholder="2020/123456/07"></ion-input>
+          </ion-item>
+
+          <ion-item>
+            <ion-label position="stacked">VAT Number</ion-label>
+            <ion-input formControlName="vat_number" type="text" placeholder="4123456789"></ion-input>
+          </ion-item>
+
+          <ion-item>
+            <ion-label position="stacked">Business Address</ion-label>
+            <ion-textarea
+              formControlName="address"
+              placeholder="123 Main Street&#10;Cape Town, 8001"
+              rows="3"
+              auto-grow="true"
+            ></ion-textarea>
+          </ion-item>
+        </ion-card-content>
+      </ion-card>
+
+      <div class="form-actions">
+        <ion-button type="submit" [disabled]="isSaving" expand="block" color="primary">
+          <ion-spinner *ngIf="isSaving" name="crescent" slot="start"></ion-spinner>
+          {{ isSaving ? 'Saving...' : 'Save Changes' }}
+        </ion-button>
+      </div>
+    </form>
+  </ng-container>
+</div>

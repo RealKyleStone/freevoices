@@ -40,19 +40,12 @@ export const routes: Routes = [
         path: 'quotes',
         loadChildren: () => import('./features/quotes/quotes.routes')
           .then(m => m.QUOTE_ROUTES)
-      }
-
-      /*,
-      {
-        path: 'quotes',
-        loadChildren: () => import('./features/quotes/quotes.routes')
-          .then(m => m.QUOTE_ROUTES)
       },
       {
         path: 'settings',
         loadChildren: () => import('./features/settings/settings.routes')
           .then(m => m.SETTINGS_ROUTES)
-      }*/
+      }
     ]
   },
   {

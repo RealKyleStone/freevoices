@@ -1,0 +1,53 @@
+<div class="settings-page">
+  <div class="settings-page-header">
+    <h2>Notifications</h2>
+    <p>Choose which email notifications you want to receive.</p>
+  </div>
+
+  <div *ngIf="isLoading" class="loading-container">
+    <ion-spinner name="crescent"></ion-spinner>
+  </div>
+
+  <form *ngIf="!isLoading" [formGroup]="form" (ngSubmit)="onSubmit()">
+    <ion-card>
+      <ion-card-header>
+        <ion-card-title>
+          <ion-icon name="mail-outline"></ion-icon>
+          Email Notifications
+        </ion-card-title>
+      </ion-card-header>
+      <ion-card-content>
+        <ion-item lines="full">
+          <ion-label>
+            <h3>Invoice Sent</h3>
+            <p>Receive a confirmation when an invoice is sent to a client</p>
+          </ion-label>
+          <ion-toggle formControlName="notify_invoice_sent" slot="end" color="primary"></ion-toggle>
+        </ion-item>
+
+        <ion-item lines="full">
+          <ion-label>
+            <h3>Payment Received</h3>
+            <p>Get notified when an invoice is marked as paid</p>
+          </ion-label>
+          <ion-toggle formControlName="notify_payment_received" slot="end" color="primary"></ion-toggle>
+        </ion-item>
+
+        <ion-item lines="none">
+          <ion-label>
+            <h3>Invoice Overdue</h3>
+            <p>Alert when an invoice passes its due date unpaid</p>
+          </ion-label>
+          <ion-toggle formControlName="notify_invoice_overdue" slot="end" color="primary"></ion-toggle>
+        </ion-item>
+      </ion-card-content>
+    </ion-card>
+
+    <div class="form-actions">
+      <ion-button type="submit" [disabled]="isSaving" expand="block" color="primary">
+        <ion-spinner *ngIf="isSaving" name="crescent" slot="start"></ion-spinner>
+        {{ isSaving ? 'Saving...' : 'Save Preferences' }}
+      </ion-button>
+    </div>
+  </form>
+</div>

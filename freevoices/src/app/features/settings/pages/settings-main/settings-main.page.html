@@ -1,0 +1,33 @@
+<ion-header>
+  <ion-toolbar>
+    <ion-buttons slot="start">
+      <ion-menu-button></ion-menu-button>
+    </ion-buttons>
+    <ion-title>Settings</ion-title>
+  </ion-toolbar>
+</ion-header>
+
+<ion-content>
+  <div class="settings-layout">
+    <!-- Side navigation -->
+    <nav class="settings-nav">
+      <ion-list lines="none">
+        <ion-item
+          *ngFor="let item of navItems"
+          [routerLink]="item.path"
+          routerLinkActive="active-nav"
+          detail="false"
+          button
+        >
+          <ion-icon [name]="item.icon" slot="start"></ion-icon>
+          <ion-label>{{ item.label }}</ion-label>
+        </ion-item>
+      </ion-list>
+    </nav>
+
+    <!-- Sub-page content -->
+    <div class="settings-content">
+      <router-outlet></router-outlet>
+    </div>
+  </div>
+</ion-content>

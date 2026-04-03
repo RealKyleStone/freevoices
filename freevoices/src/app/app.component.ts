@@ -19,7 +19,8 @@ import {
   alertCircleOutline,
   peopleOutline,
   receiptOutline,
-  cubeOutline
+  cubeOutline,
+  settingsOutline
 } from 'ionicons/icons';
 import { addIcons } from 'ionicons';
 
@@ -64,7 +65,8 @@ export class AppComponent {
       'alert-circle-outline': alertCircleOutline,
       'people-outline': peopleOutline,
       'receipt-outline': receiptOutline,
-      'cube-outline': cubeOutline
+      'cube-outline': cubeOutline,
+      'settings-outline': settingsOutline
     });
   }
 

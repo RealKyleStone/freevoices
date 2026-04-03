@@ -33,14 +33,31 @@ function buildInvoicePdf(invoice, items, user) {
     // ── HEADER ────────────────────────────────────────────────────────────────
     doc.rect(0, 0, doc.page.width, 90).fill(DARK);
 
+    // Logo — rendered on the left if available, otherwise fall back to text
+    const LOGO_MAX_W = 120;
+    const LOGO_MAX_H = 70;
+    const LOGO_X     = col.left;
+    const LOGO_Y     = 10;
+    let textX = col.left;
+
+    if (user.logo_path) {
+      try {
+        doc.image(user.logo_path, LOGO_X, LOGO_Y, { fit: [LOGO_MAX_W, LOGO_MAX_H] });
+        textX = LOGO_X + LOGO_MAX_W + 14;
+      } catch (_) {
+        // Logo file missing or unreadable — fall back to text-only layout
+      }
+    }
+
+    const textW = 300 - (textX - col.left);
     doc.fillColor('#ffffff')
        .fontSize(22)
        .font('Helvetica-Bold')
-       .text(user.company_name || 'Your Company', col.left, 28, { width: 300 });
+       .text(user.company_name || 'Your Company', textX, 28, { width: textW });
 
     if (user.vat_number) {
       doc.fontSize(9).font('Helvetica').fillColor('#aaaacc')
-         .text(`VAT Reg: ${user.vat_number}`, col.left, 55);
+         .text(`VAT Reg: ${user.vat_number}`, textX, 55);
     }
 
     // Invoice badge (top-right of header) — flush to right edge, full header height
