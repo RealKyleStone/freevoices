@@ -843,6 +843,7 @@ app.get('/api/invoices/:id', authenticateToken, async (req, res) => {
 app.get('/api/invoices/:id/pdf', authenticateToken, async (req, res) => {
   try {
     const { id } = req.params;
+    const markSent = req.query.markSent === 'true';
 
     const [invoices, items, users, logoRows] = await Promise.all([
       executeQuery(
@@ -868,6 +869,17 @@ app.get('/api/invoices/:id/pdf', authenticateToken, async (req, res) => {
     await executeQuery(
       `INSERT INTO document_tracking (document_id, event_type) VALUES (?, 'DOWNLOADED')`, [id]
     );
+
+    // Optionally mark as sent if requested and currently DRAFT
+    if (markSent && invoices[0].status === 'DRAFT') {
+      await executeQuery(
+        `UPDATE documents SET status = 'SENT', updated_at = NOW() WHERE id = ? AND user_id = ?`,
+        [id, req.user.id]
+      );
+      await executeQuery(
+        `INSERT INTO document_tracking (document_id, event_type) VALUES (?, 'SENT')`, [id]
+      );
+    }
 
     res.set({
       'Content-Type':        'application/pdf',

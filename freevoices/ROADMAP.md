@@ -206,7 +206,7 @@ Once Phase 1 works, these features dramatically improve day-to-day usability.
 - `DashboardService` calls the summary endpoint ✅
 - Dashboard page replaced with live stats, skeleton loaders, and real recent-activity list ✅
 
-#### 2.4 Settings Pages
+#### 2.4 Settings Pages ✅ COMPLETE
 
 Build out `src/app/features/settings/` sub-pages:
 

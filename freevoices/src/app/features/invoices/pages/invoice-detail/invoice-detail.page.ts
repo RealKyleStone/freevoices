@@ -129,26 +129,44 @@ export class InvoiceDetailPage implements OnInit {
     });
   }
 
-  async downloadPdf() {
+  async downloadPdf(markSent = false) {
     this.isDownloading = true;
     const token = localStorage.getItem('token');
     try {
-      const response = await fetch(`${environment.apiUrl}/invoices/${this.invoiceId}/pdf`, {
+      const url = `${environment.apiUrl}/invoices/${this.invoiceId}/pdf${markSent ? '?markSent=true' : ''}`;
+      const response = await fetch(url, {
         headers: { Authorization: `Bearer ${token}` }
       });
       if (!response.ok) throw new Error('Failed to generate PDF');
       const blob = await response.blob();
-      const url  = URL.createObjectURL(blob);
+      const blobUrl = URL.createObjectURL(blob);
       const a    = document.createElement('a');
-      a.href     = url;
+      a.href     = blobUrl;
       a.download = `${this.invoice?.document_number || 'invoice'}.pdf`;
       a.click();
-      URL.revokeObjectURL(url);
+      URL.revokeObjectURL(blobUrl);
+      if (markSent) this.loadInvoice(); // Refresh to show updated status
     } catch {
       const toast = await this.toastCtrl.create({ message: 'Failed to download PDF', duration: 3000, color: 'danger', position: 'bottom' });
       await toast.present();
     } finally {
       this.isDownloading = false;
+    }
+  }
+
+  async confirmDownload() {
+    if (this.invoice?.status === 'DRAFT') {
+      const alert = await this.alertCtrl.create({
+        header: 'Download Invoice',
+        message: 'Do you want to mark this invoice as sent?',
+        buttons: [
+          { text: 'No, keep as draft', handler: () => this.downloadPdf(false) },
+          { text: 'Yes, mark as sent', handler: () => this.downloadPdf(true) }
+        ]
+      });
+      await alert.present();
+    } else {
+      this.downloadPdf(false);
     }
   }
 

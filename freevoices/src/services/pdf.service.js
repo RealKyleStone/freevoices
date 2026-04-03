@@ -111,14 +111,12 @@ function buildInvoicePdf(invoice, items, user) {
       invoice.payment_terms != null
         ? ['Payment Terms:', `${invoice.payment_terms} days`]
         : null,
-      ['Status:',        invoice.status],
     ].filter(Boolean);
 
     let metaY = detailsY;
     for (const [label, value] of metaRows) {
       doc.fillColor(MEDIUM).fontSize(9).font('Helvetica-Bold').text(label, metaX, metaY, { width: metaLabelW });
-      const color = value === 'PAID' ? SUCCESS : value === 'OVERDUE' ? '#dc2626' : DARK;
-      doc.fillColor(color).fontSize(9).font('Helvetica').text(value, metaValueX, metaY);
+      doc.fillColor(DARK).fontSize(9).font('Helvetica').text(value, metaValueX, metaY);
       metaY += 16;
     }
 
@@ -127,25 +125,27 @@ function buildInvoicePdf(invoice, items, user) {
     // ── LINE ITEMS TABLE ──────────────────────────────────────────────────────
     const tableTop = doc.y;
     // Columns must fit within col.left (50) → col.right (545) = 495px total
+    // Using 8px padding (4px each side) for text within columns
+    const PAD = 4;
     const cols = {
-      desc:     { x: col.left,       w: 220 },  // ends 270
-      qty:      { x: col.left + 225, w: 45  },  // ends 320
-      price:    { x: col.left + 275, w: 80  },  // ends 405
-      vat:      { x: col.left + 360, w: 50  },  // ends 460
-      total:    { x: col.left + 415, w: 80  }   // ends 545 ✓
+      desc:     { x: col.left,       w: 200 },  // Description
+      qty:      { x: col.left + 200, w: 50  },  // Quantity
+      price:    { x: col.left + 250, w: 85  },  // Unit Price
+      vat:      { x: col.left + 335, w: 55  },  // VAT %
+      total:    { x: col.left + 390, w: 105 }   // Total (wider column for currency)
     };
 
     // Header row
     doc.rect(col.left, tableTop, pageWidth, 22).fill(DARK);
     doc.fillColor('#ffffff').fontSize(9).font('Helvetica-Bold');
-    doc.text('DESCRIPTION',  cols.desc.x  + 4, tableTop + 7, { width: cols.desc.w });
-    doc.text('QTY',          cols.qty.x   + 4, tableTop + 7, { width: cols.qty.w,  align: 'right' });
-    doc.text('UNIT PRICE',   cols.price.x + 4, tableTop + 7, { width: cols.price.w, align: 'right' });
-    doc.text('VAT %',        cols.vat.x   + 4, tableTop + 7, { width: cols.vat.w,  align: 'right' });
-    doc.text('TOTAL',        cols.total.x + 4, tableTop + 7, { width: cols.total.w, align: 'right' });
+    doc.text('DESCRIPTION',  cols.desc.x  + PAD, tableTop + 7, { width: cols.desc.w - PAD * 2 });
+    doc.text('QTY',          cols.qty.x   + PAD, tableTop + 7, { width: cols.qty.w - PAD * 2,   align: 'right' });
+    doc.text('UNIT PRICE',   cols.price.x + PAD, tableTop + 7, { width: cols.price.w - PAD * 2, align: 'right' });
+    doc.text('VAT %',        cols.vat.x   + PAD, tableTop + 7, { width: cols.vat.w - PAD * 2,   align: 'right' });
+    doc.text('TOTAL',        cols.total.x + PAD, tableTop + 7, { width: cols.total.w - PAD * 2, align: 'right' });
 
     let rowY = tableTop + 22;
-    const fmt = (n) => `R ${parseFloat(n).toFixed(2)}`;
+    const fmt = (n) => `R ${parseFloat(n).toLocaleString('en-ZA', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 
     for (let i = 0; i < items.length; i++) {
       const item = items[i];
@@ -153,11 +153,14 @@ function buildInvoicePdf(invoice, items, user) {
       doc.rect(col.left, rowY, pageWidth, 20).fill(bg);
 
       doc.fillColor(DARK).fontSize(9).font('Helvetica');
-      doc.text(item.description,                  cols.desc.x  + 4, rowY + 6, { width: cols.desc.w - 8 });
-      doc.text(String(parseFloat(item.quantity)), cols.qty.x   + 4, rowY + 6, { width: cols.qty.w,  align: 'right' });
-      doc.text(fmt(item.unit_price),              cols.price.x + 4, rowY + 6, { width: cols.price.w, align: 'right' });
-      doc.text(`${parseFloat(item.vat_rate)}%`,   cols.vat.x   + 4, rowY + 6, { width: cols.vat.w,  align: 'right' });
-      doc.text(fmt(item.total),                   cols.total.x + 4, rowY + 6, { width: cols.total.w, align: 'right' });
+      doc.text(item.description,                  cols.desc.x  + PAD, rowY + 6, { width: cols.desc.w - PAD * 2 });
+      // Use Courier for numbers to ensure consistent width and alignment
+      doc.font('Courier');
+      doc.text(String(parseFloat(item.quantity)), cols.qty.x   + PAD, rowY + 6, { width: cols.qty.w - PAD * 2,   align: 'right' });
+      doc.text(fmt(item.unit_price),              cols.price.x + PAD, rowY + 6, { width: cols.price.w - PAD * 2, align: 'right' });
+      doc.text(`${parseFloat(item.vat_rate)}%`,   cols.vat.x   + PAD, rowY + 6, { width: cols.vat.w - PAD * 2,   align: 'right' });
+      doc.text(fmt(item.total),                   cols.total.x + PAD, rowY + 6, { width: cols.total.w - PAD * 2, align: 'right' });
+      doc.font('Helvetica');
 
       rowY += 20;
     }
@@ -169,8 +172,8 @@ function buildInvoicePdf(invoice, items, user) {
 
     // ── TOTALS ────────────────────────────────────────────────────────────────
     const totalsLabelX = col.right - 200;
-    const totalsValueX = col.right - 90;
-    const totalsW      = 85;
+    const totalsValueX = col.right - 100;
+    const totalsW      = 95;  // Wider to accommodate formatted currency
 
     const totalsRows = [
       ['Subtotal',    fmt(invoice.subtotal),    DARK,    false],
@@ -180,15 +183,17 @@ function buildInvoicePdf(invoice, items, user) {
 
     for (const [label, value, color, bold] of totalsRows) {
       if (bold) {
-        doc.rect(totalsLabelX - 8, rowY - 2, 195, 22).fill(PRIMARY);
+        const bannerX = totalsLabelX - 8;
+        doc.rect(bannerX, rowY - 2, col.right - bannerX, 22).fill(PRIMARY);
         doc.fillColor('#ffffff').fontSize(11).font('Helvetica-Bold')
-           .text(label, totalsLabelX, rowY + 3, { width: 90 })
+           .text(label, totalsLabelX, rowY + 3, { width: 90 });
+        doc.font('Courier-Bold')
            .text(value, totalsValueX, rowY + 3, { width: totalsW, align: 'right' });
         rowY += 24;
       } else {
         doc.fillColor(MEDIUM).fontSize(9).font('Helvetica')
-           .text(label, totalsLabelX, rowY, { width: 90 })
-           .fillColor(color).font(bold ? 'Helvetica-Bold' : 'Helvetica')
+           .text(label, totalsLabelX, rowY, { width: 90 });
+        doc.fillColor(color).font('Courier')
            .text(value, totalsValueX, rowY, { width: totalsW, align: 'right' });
         rowY += 18;
       }
