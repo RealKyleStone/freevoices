@@ -14,6 +14,7 @@ const argon2 = require('argon2');
 const winston = require('winston');
 const { randomUUID } = require('crypto');
 const multer = require('multer');
+const { body, validationResult } = require('express-validator');
 
 // Multer setup for company logo uploads (5 MB limit, jpg/png only)
 const logoStorage = multer.diskStorage({
@@ -39,8 +40,6 @@ const logoUpload = multer({
 });
 
 const app = express();
-
-RECAPTCHA_SECRET_KEY="6LecjacqAAAAAFG-2MsglDJzKcvfYBvEw4zkYepg"
 
 // Middleware
 app.use(cors());
@@ -139,6 +138,18 @@ function executeQuery(sql, params = []) {
   });
 }
 
+// Validation middleware factory — runs validators then short-circuits with 422 on failure
+function validate(validators) {
+  return async (req, res, next) => {
+    for (const v of validators) await v.run(req);
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+      return res.status(422).json({ message: errors.array()[0].msg, errors: errors.array() });
+    }
+    next();
+  };
+}
+
 // Authentication middleware
 const authenticateToken = async (req, res, next) => {
   try {
@@ -207,7 +218,12 @@ async function verifyCaptcha(token) {
 
 
 // Login endpoint
-app.post('/api/auth/login', async (req, res) => {
+app.post('/api/auth/login',
+  validate([
+    body('email').isEmail().withMessage('A valid email address is required'),
+    body('password').notEmpty().withMessage('Password is required'),
+  ]),
+  async (req, res) => {
   try {
     const { email, password, captchaToken } = req.body;
     logger.info(`Login attempt for user: ${email}`);

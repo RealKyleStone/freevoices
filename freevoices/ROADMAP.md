@@ -49,7 +49,7 @@ The core value proposition: give small businesses a simple, no-cost way to creat
 | **Quote builder** — same as invoice builder, `valid_until` expiry date | `src/app/features/quotes/pages/quote-create/`, `quote-edit/` |
 | **Quote detail page** — items, tracking timeline, "Convert to Invoice" action | `src/app/features/quotes/pages/quote-detail/` |
 | **Database schema documented** | `database/schema.sql` |
-| **Migrations applied** — soft-delete on customers (`001`), currencies seeded ZAR default (`002`), password reset tokens table (`003`) | All applied; `database/migrations/` folder is now empty |
+| **Migrations applied** — soft-delete on customers (`001`), currencies seeded ZAR default (`002`), password reset tokens table (`003`), recurring invoice columns (`002_add_recurring_to_documents`) | All applied |
 | **Dashboard live data** — `GET /api/dashboard/summary`, DashboardService, live stats + recent activity | `server.js` + `src/app/features/dashboard/` |
 | **Forgot / Reset Password** — token generation, email link, secure reset with Argon2 | `server.js` + `src/app/features/auth/pages/forgot-password/`, `reset-password/` |
 
@@ -249,9 +249,25 @@ Once the core is solid, these add significant value for growing businesses.
 - VAT summary — stacked bar chart + printable table ✅
 - Wired into `/reports` route and side-nav menu ✅
 
-#### 3.2 Recurring Invoices
+#### 3.2 Recurring Invoices ✅ COMPLETE
 
-Allow a user to mark an invoice as recurring (weekly/monthly/quarterly). A server-side cron job auto-generates and optionally auto-sends the invoice.
+**DB columns added to `documents` (migration `002_add_recurring_to_documents.sql` applied):**
+- `is_recurring TINYINT(1)` — flag enabling recurrence
+- `recurrence_interval ENUM('WEEKLY','MONTHLY','QUARTERLY','YEARLY')` — schedule cadence
+- `recurrence_next_date DATE` — date the cron uses to decide when to fire; advanced after each run
+- `recurrence_end_date DATE` — optional stop date; recurrence disabled automatically when crossed
+- `auto_send TINYINT(1)` — if set, each generated copy is emailed immediately
+
+**Backend (live in `server.js`):**
+- `advanceDate(dateStr, interval)` helper — UTC-safe date arithmetic for all four intervals ✅
+- `POST /api/invoices` and `PUT /api/invoices/:id` — accept and persist all 5 recurring fields; `recurrence_next_date` computed server-side as `issue_date + interval` ✅
+- `processRecurringInvoices()` — queries all due recurring invoices, clones each (doc + items) in a transaction, advances `recurrence_next_date`, disables recurrence at end date, auto-sends via `buildInvoicePdf` + `emailService` if flagged ✅
+- `cron.schedule('5 0 * * *', processRecurringInvoices)` — fires at 00:05 daily; failures per document are isolated and logged without stopping other rows ✅
+
+**Frontend (live in `src/app/features/invoices/pages/invoice-create/`):**
+- "Recurring Schedule" card in the invoice builder with: Recurring toggle → Interval select (Weekly/Monthly/Quarterly/Yearly) + optional End Date + Auto-send toggle ✅
+- `isRecurring` getter drives conditional visibility of interval/end date/auto-send controls ✅
+- Recurring fields included in submit payload; stripped when toggle is off ✅
 
 #### 3.3 Multi-Currency
 
@@ -332,7 +348,7 @@ These should be addressed before or alongside Phase 2:
 
 The remaining Phase 3 items are the best next targets, in priority order:
 
-1. **Recurring Invoices** (Phase 3.2) — add a `recurrence` flag + interval to the `documents` table, write a server-side cron job (`node-cron`) that auto-creates and optionally auto-sends invoices on schedule. Self-contained: new DB columns, one cron handler, a toggle in the invoice builder.
+1. **Recurring Invoices (Phase 3.2) is now complete.** New DB columns, `node-cron` daily job, and invoice builder toggle are all live.
 
 2. **Multi-Currency is now complete** (Phase 3.3) — the `currencies` table and `currency_id` column already exist. Wire a currency picker into the invoice/quote builder, store the user's default currency in `settings`, and optionally fetch exchange rates for display conversion.
 

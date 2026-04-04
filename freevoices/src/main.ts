@@ -6,6 +6,7 @@ import { AppComponent } from './app/app.component';
 import { routes } from './app/app.routes';
 import { provideHttpClient, withInterceptorsFromDi, HTTP_INTERCEPTORS } from '@angular/common/http';
 import { AuthInterceptor } from './app/core/http/interceptors/auth.interceptor';
+import { ErrorInterceptor } from './app/core/http/interceptors/error.interceptor';
 
 bootstrapApplication(AppComponent, {
   providers: [
@@ -14,5 +15,6 @@ bootstrapApplication(AppComponent, {
     provideRouter(routes, withPreloading(PreloadAllModules)),
     provideHttpClient(withInterceptorsFromDi()),
     { provide: HTTP_INTERCEPTORS, useClass: AuthInterceptor, multi: true },
+    { provide: HTTP_INTERCEPTORS, useClass: ErrorInterceptor, multi: true },
   ],
 }).catch(err => console.error('Error', err));

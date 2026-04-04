@@ -5,7 +5,8 @@
       "Bash(xargs ls:*)",
       "Bash(ls -la /e/github/freevoices/freevoices/src/app/features/*/)",
       "Bash(grep -E \"\\\\.\\(js|ts\\)$\")",
-      "Bash(npm install:*)"
+      "Bash(npm install:*)",
+      "Bash(npm list:*)"
     ]
   }
 }
