@@ -1,0 +1,102 @@
+.loading-state,
+.error-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 4rem 1rem;
+  gap: 1rem;
+
+  ion-icon {
+    font-size: 3rem;
+  }
+
+  p {
+    color: var(--ion-color-medium);
+    margin: 0;
+  }
+}
+
+.summary-row {
+  display: flex;
+  gap: 1rem;
+  padding: 1rem 1rem 0;
+  flex-wrap: wrap;
+}
+
+.summary-chip {
+  flex: 1;
+  min-width: 140px;
+  background: var(--ion-color-light);
+  border-radius: 12px;
+  padding: 0.875rem 1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+
+  .chip-label {
+    font-size: 0.75rem;
+    color: var(--ion-color-medium);
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+  }
+
+  .chip-value {
+    font-size: 1.25rem;
+    font-weight: 700;
+    color: var(--ion-color-dark);
+  }
+}
+
+.chart-wrap {
+  position: relative;
+  height: 260px;
+
+  &--sm {
+    height: 220px;
+  }
+
+  canvas {
+    width: 100% !important;
+    height: 100% !important;
+  }
+}
+
+.empty-msg {
+  color: var(--ion-color-medium);
+  text-align: center;
+  padding: 2rem 0;
+  font-size: 0.9rem;
+}
+
+.vat-table {
+  width: 100%;
+  border-collapse: collapse;
+  margin-top: 1.25rem;
+  font-size: 0.875rem;
+
+  th, td {
+    padding: 0.5rem 0.75rem;
+    text-align: left;
+    border-bottom: 1px solid var(--ion-color-light);
+  }
+
+  th {
+    font-weight: 600;
+    color: var(--ion-color-medium);
+    font-size: 0.75rem;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+  }
+
+  tfoot td {
+    border-top: 2px solid var(--ion-color-light);
+    border-bottom: none;
+  }
+
+  .num {
+    text-align: right;
+    font-variant-numeric: tabular-nums;
+  }
+}

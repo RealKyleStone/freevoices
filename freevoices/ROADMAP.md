@@ -233,16 +233,21 @@ Build out `src/app/features/settings/` sub-pages:
 
 Once the core is solid, these add significant value for growing businesses.
 
-#### 3.1 Reports
+#### 3.1 Reports ✅ COMPLETE
 
-Basic financial reports:
+**Backend endpoints (live in `server.js`):**
+- `GET /api/reports/revenue-by-month` — paid invoice revenue for last 12 months ✅
+- `GET /api/reports/invoice-status` — count + total by status (all time) ✅
+- `GET /api/reports/top-customers` — top 5 customers by paid revenue ✅
+- `GET /api/reports/vat-summary` — monthly subtotal/VAT/total for current year ✅
 
-- Revenue by month (bar chart)
-- Outstanding vs paid invoices (pie chart)
-- Top customers by revenue
-- VAT summary report (useful for tax filing)
-
-Use a lightweight charting library — [Chart.js](https://www.chartjs.org/) works well with Angular. Build in `src/app/features/reports/`.
+**Frontend (live in `src/app/features/reports/`):**
+- Chart.js installed (vanilla, no ng2-charts wrapper needed) ✅
+- Revenue by month — bar chart ✅
+- Invoice status breakdown — doughnut chart ✅
+- Top customers — horizontal bar chart ✅
+- VAT summary — stacked bar chart + printable table ✅
+- Wired into `/reports` route and side-nav menu ✅
 
 #### 3.2 Recurring Invoices
 
@@ -299,7 +304,7 @@ These should be addressed before or alongside Phase 2:
 | No input validation middleware | `server.js` | Add `express-validator` to validate and sanitise all POST/PUT request bodies |
 | Database migrations | `database/migrations/` | All three migrations applied and files removed. Consider adding a runner tool like `db-migrate` or `Knex` for future migrations. |
 | Customer delete is hard-delete | `server.js` | ✅ Fixed — migration `001` applied, soft-delete now in place |
-| Profile API selects non-existent columns | `server.js` | `GET /api/profile` selects `username`, `role`, `organizationID`, `organizationName` — none of these columns exist in the `users` table. Fix the SELECT to match the actual schema. |
+| Profile API selects non-existent columns | `server.js` | ✅ Fixed — stale `GET /api/profile` endpoint removed; profile is managed via `PUT /api/settings/profile` |
 | `.env` committed? | `.env` | Verify `.env` is in `.gitignore`. It should never be committed. |
 
 ---

@@ -277,23 +277,6 @@ app.post('/api/logout', authenticateToken, async (req, res) => {
   }
 });
 
-// Get user profile endpoint
-app.get('/api/profile', authenticateToken, async (req, res) => {
-  try {
-    const sql = 'SELECT id, username, email, role, organizationID, organizationName FROM users WHERE id = ? AND deleted = 0';
-    const users = await executeQuery(sql, [req.user.id]);
-
-    if (users.length === 0) {
-      return res.status(404).json({ message: 'User not found' });
-    }
-
-    res.json(users[0]);
-  } catch (error) {
-    logger.error('Profile fetch error:', error);
-    res.status(500).json({ message: 'Error fetching profile' });
-  }
-});
-
 // Graceful shutdown handling
 process.on('SIGINT', () => {
   pool.end((err) => {
@@ -1918,6 +1901,87 @@ app.put('/api/settings/notifications', authenticateToken, async (req, res) => {
   } catch (error) {
     logger.error('Error updating notification settings:', error);
     res.status(500).json({ message: 'Failed to update notification preferences' });
+  }
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// REPORTS
+
+// GET /api/reports/revenue-by-month — paid invoice revenue for the last 12 months
+app.get('/api/reports/revenue-by-month', authenticateToken, async (req, res) => {
+  try {
+    const rows = await executeQuery(
+      `SELECT DATE_FORMAT(issue_date, '%Y-%m') AS month, SUM(total) AS revenue
+       FROM documents
+       WHERE user_id = ? AND type = 'INVOICE' AND status = 'PAID'
+         AND issue_date >= DATE_SUB(CURDATE(), INTERVAL 12 MONTH)
+       GROUP BY DATE_FORMAT(issue_date, '%Y-%m')
+       ORDER BY month ASC`,
+      [req.user.id]
+    );
+    res.json(rows);
+  } catch (error) {
+    logger.error('Error fetching revenue by month:', error);
+    res.status(500).json({ message: 'Failed to fetch revenue report' });
+  }
+});
+
+// GET /api/reports/invoice-status — count and total by status
+app.get('/api/reports/invoice-status', authenticateToken, async (req, res) => {
+  try {
+    const rows = await executeQuery(
+      `SELECT status, COUNT(*) AS count, COALESCE(SUM(total), 0) AS total
+       FROM documents
+       WHERE user_id = ? AND type = 'INVOICE'
+       GROUP BY status`,
+      [req.user.id]
+    );
+    res.json(rows);
+  } catch (error) {
+    logger.error('Error fetching invoice status breakdown:', error);
+    res.status(500).json({ message: 'Failed to fetch invoice status report' });
+  }
+});
+
+// GET /api/reports/top-customers — top 5 customers by paid revenue
+app.get('/api/reports/top-customers', authenticateToken, async (req, res) => {
+  try {
+    const rows = await executeQuery(
+      `SELECT c.name, SUM(d.total) AS revenue, COUNT(d.id) AS invoice_count
+       FROM documents d
+       JOIN customers c ON d.customer_id = c.id
+       WHERE d.user_id = ? AND d.type = 'INVOICE' AND d.status = 'PAID'
+       GROUP BY c.id, c.name
+       ORDER BY revenue DESC
+       LIMIT 5`,
+      [req.user.id]
+    );
+    res.json(rows);
+  } catch (error) {
+    logger.error('Error fetching top customers:', error);
+    res.status(500).json({ message: 'Failed to fetch top customers report' });
+  }
+});
+
+// GET /api/reports/vat-summary — monthly VAT breakdown for the current year
+app.get('/api/reports/vat-summary', authenticateToken, async (req, res) => {
+  try {
+    const rows = await executeQuery(
+      `SELECT DATE_FORMAT(issue_date, '%Y-%m') AS month,
+              SUM(subtotal) AS subtotal,
+              SUM(vat_amount) AS vat_amount,
+              SUM(total) AS total
+       FROM documents
+       WHERE user_id = ? AND type = 'INVOICE' AND status IN ('SENT', 'PAID')
+         AND YEAR(issue_date) = YEAR(CURDATE())
+       GROUP BY DATE_FORMAT(issue_date, '%Y-%m')
+       ORDER BY month ASC`,
+      [req.user.id]
+    );
+    res.json(rows);
+  } catch (error) {
+    logger.error('Error fetching VAT summary:', error);
+    res.status(500).json({ message: 'Failed to fetch VAT summary report' });
   }
 });
 

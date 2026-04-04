@@ -1,0 +1,117 @@
+<ion-header>
+  <ion-toolbar>
+    <ion-title>Reports</ion-title>
+  </ion-toolbar>
+</ion-header>
+
+<ion-content>
+
+  <!-- Loading -->
+  <div class="loading-state" *ngIf="isLoading">
+    <ion-spinner></ion-spinner>
+  </div>
+
+  <!-- Error -->
+  <div class="error-state" *ngIf="hasError && !isLoading">
+    <ion-icon name="alert-circle-outline" color="danger"></ion-icon>
+    <p>Failed to load reports. Please try again.</p>
+  </div>
+
+  <ng-container *ngIf="!isLoading && !hasError">
+
+    <!-- Summary chips -->
+    <div class="summary-row">
+      <div class="summary-chip">
+        <span class="chip-label">Paid Revenue (12 mo)</span>
+        <span class="chip-value">R {{ totalPaidRevenue | number:'1.2-2' }}</span>
+      </div>
+      <div class="summary-chip">
+        <span class="chip-label">VAT Collected (YTD)</span>
+        <span class="chip-value">R {{ totalVat | number:'1.2-2' }}</span>
+      </div>
+    </div>
+
+    <!-- Revenue by month -->
+    <ion-card>
+      <ion-card-header>
+        <ion-card-title>Revenue by Month</ion-card-title>
+        <ion-card-subtitle>Paid invoices — last 12 months</ion-card-subtitle>
+      </ion-card-header>
+      <ion-card-content>
+        <div class="chart-wrap">
+          <canvas #revenueCanvas></canvas>
+        </div>
+      </ion-card-content>
+    </ion-card>
+
+    <!-- Invoice status breakdown -->
+    <ion-card>
+      <ion-card-header>
+        <ion-card-title>Invoice Status</ion-card-title>
+        <ion-card-subtitle>Count by status — all time</ion-card-subtitle>
+      </ion-card-header>
+      <ion-card-content>
+        <div class="chart-wrap chart-wrap--sm">
+          <canvas #statusCanvas></canvas>
+        </div>
+      </ion-card-content>
+    </ion-card>
+
+    <!-- Top customers -->
+    <ion-card>
+      <ion-card-header>
+        <ion-card-title>Top Customers</ion-card-title>
+        <ion-card-subtitle>By paid revenue — all time</ion-card-subtitle>
+      </ion-card-header>
+      <ion-card-content>
+        <div *ngIf="topCustomers.length === 0" class="empty-msg">No paid invoices yet.</div>
+        <div class="chart-wrap" *ngIf="topCustomers.length > 0">
+          <canvas #customersCanvas></canvas>
+        </div>
+      </ion-card-content>
+    </ion-card>
+
+    <!-- VAT summary -->
+    <ion-card>
+      <ion-card-header>
+        <ion-card-title>VAT Summary</ion-card-title>
+        <ion-card-subtitle>Subtotal vs VAT — current year (sent + paid)</ion-card-subtitle>
+      </ion-card-header>
+      <ion-card-content>
+        <div *ngIf="vatRows.length === 0" class="empty-msg">No invoices issued this year.</div>
+        <div class="chart-wrap" *ngIf="vatRows.length > 0">
+          <canvas #vatCanvas></canvas>
+        </div>
+
+        <!-- VAT table for tax filing -->
+        <table class="vat-table" *ngIf="vatRows.length > 0">
+          <thead>
+            <tr>
+              <th>Month</th>
+              <th class="num">Subtotal</th>
+              <th class="num">VAT</th>
+              <th class="num">Total</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr *ngFor="let row of vatRows">
+              <td>{{ row.month }}</td>
+              <td class="num">R {{ row.subtotal | number:'1.2-2' }}</td>
+              <td class="num">R {{ row.vat_amount | number:'1.2-2' }}</td>
+              <td class="num">R {{ row.total | number:'1.2-2' }}</td>
+            </tr>
+          </tbody>
+          <tfoot>
+            <tr>
+              <td><strong>Total</strong></td>
+              <td class="num"><strong>R {{ totalVatSubtotal | number:'1.2-2' }}</strong></td>
+              <td class="num"><strong>R {{ totalVat | number:'1.2-2' }}</strong></td>
+              <td class="num"><strong>R {{ totalVatTotal | number:'1.2-2' }}</strong></td>
+            </tr>
+          </tfoot>
+        </table>
+      </ion-card-content>
+    </ion-card>
+
+  </ng-container>
+</ion-content>
