@@ -324,12 +324,18 @@ These should be addressed before or alongside Phase 2:
 
 ---
 
-## Suggested First PR for a New Contributor
+## Suggested Next Steps for a New Contributor
 
-**Phase 1 (Core Business Logic) is complete.** The entire CRUD pipeline — customers → products → invoices → quotes — is live and wired.
+**Phases 1 and 2 are fully complete.** The entire CRUD pipeline, PDF generation, email delivery, dashboard, settings, and password reset are all live.
 
-**Phase 2.1 (PDF Generation), 2.2 (Email Invoice), 2.3 (Dashboard Live Data), and 2.5 (Forgot/Reset Password) are now complete.**
+**Phase 3.1 (Reports) is now complete.** Revenue by month, invoice status breakdown, top customers, and VAT summary are all wired to live data with Chart.js charts.
 
-The next best self-contained starting point is **Settings Pages** (Phase 2.4):
-- Build out `src/app/features/settings/` sub-pages: Profile, Company, Invoice Defaults, Payment Details, Notifications
-- Company details (logo, VAT number) and bank details feed directly into the PDF header and banking block
+The remaining Phase 3 items are the best next targets, in priority order:
+
+1. **Recurring Invoices** (Phase 3.2) — add a `recurrence` flag + interval to the `documents` table, write a server-side cron job (`node-cron`) that auto-creates and optionally auto-sends invoices on schedule. Self-contained: new DB columns, one cron handler, a toggle in the invoice builder.
+
+2. **Multi-Currency is now complete** (Phase 3.3) — the `currencies` table and `currency_id` column already exist. Wire a currency picker into the invoice/quote builder, store the user's default currency in `settings`, and optionally fetch exchange rates for display conversion.
+
+3. **Customer Portal is now complete** (Phase 3.4) — generate a signed, read-only share link per invoice. The customer can view the invoice, download the PDF, and trigger a `VIEWED` tracking event — no login required.
+
+Address the remaining known issues (NgRx cleanup, global error handler, `express-validator`) alongside any of the above.

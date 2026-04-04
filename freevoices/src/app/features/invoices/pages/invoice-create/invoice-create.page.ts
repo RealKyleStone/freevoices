@@ -9,7 +9,8 @@ import { trashOutline, addOutline } from 'ionicons/icons';
 import { InvoiceService } from '../../services/invoice.service';
 import { CustomerService } from '../../../customers/services/customer.service';
 import { ProductService } from '../../../products/services/product.service';
-import { Customer, Product } from '../../../../../models/database.models';
+import { SettingsService } from '../../../settings/services/settings.service';
+import { Customer, Product, Currency } from '../../../../../models/database.models';
 
 @Component({
   selector: 'app-invoice-create',
@@ -22,6 +23,7 @@ export class InvoiceCreatePage implements OnInit {
   form: FormGroup;
   customers: Customer[] = [];
   products: Product[] = [];
+  currencies: Currency[] = [];
   isLoading = false;
   isLoadingData = true;
   submitted = false;
@@ -31,6 +33,7 @@ export class InvoiceCreatePage implements OnInit {
     private invoiceService: InvoiceService,
     private customerService: CustomerService,
     private productService: ProductService,
+    private settingsService: SettingsService,
     private router: Router,
     private toastCtrl: ToastController
   ) {
@@ -38,24 +41,34 @@ export class InvoiceCreatePage implements OnInit {
 
     const today = new Date().toISOString().split('T')[0];
     this.form = this.fb.group({
-      customer_id:      [null, Validators.required],
-      issue_date:       [today, Validators.required],
-      due_date:         [''],
-      payment_terms:    [30],
-      notes:            [''],
-      terms_conditions: [''],
-      items:            this.fb.array([])
+      customer_id:          [null, Validators.required],
+      currency_id:          [null, Validators.required],
+      issue_date:           [today, Validators.required],
+      due_date:             [''],
+      payment_terms:        [30],
+      notes:                [''],
+      terms_conditions:     [''],
+      items:                this.fb.array([]),
+      is_recurring:         [false],
+      recurrence_interval:  [null],
+      recurrence_end_date:  [''],
+      auto_send:            [false]
     });
   }
 
   ngOnInit() {
     forkJoin({
-      customers: this.customerService.getCustomers('', 1, 200),
-      products:  this.productService.getProducts('', 1, 200)
+      customers:  this.customerService.getCustomers('', 1, 200),
+      products:   this.productService.getProducts('', 1, 200),
+      currencies: this.settingsService.getCurrencies(),
+      settings:   this.settingsService.getSettings()
     }).subscribe({
-      next: ({ customers, products }) => {
-        this.customers = customers.data;
-        this.products  = products.data;
+      next: ({ customers, products, currencies, settings }) => {
+        this.customers  = customers.data;
+        this.products   = products.data;
+        this.currencies = currencies;
+        const defaultCurrencyId = parseInt(settings.default_currency_id || '1', 10);
+        this.form.patchValue({ currency_id: defaultCurrencyId });
         this.addItem();
         this.isLoadingData = false;
       },
@@ -64,6 +77,15 @@ export class InvoiceCreatePage implements OnInit {
         await this.showToast('Failed to load data', 'danger');
       }
     });
+  }
+
+  get isRecurring(): boolean {
+    return !!this.form.get('is_recurring')?.value;
+  }
+
+  get currencySymbol(): string {
+    const id = this.form.get('currency_id')?.value;
+    return this.currencies.find(c => c.id === +id)?.symbol || 'R';
   }
 
   get items(): FormArray {
@@ -148,7 +170,7 @@ export class InvoiceCreatePage implements OnInit {
     }
 
     this.isLoading = true;
-    const { items, ...rest } = this.form.value;
+    const { items, is_recurring, recurrence_interval, recurrence_end_date, auto_send, ...rest } = this.form.value;
     const payload = {
       ...rest,
       items: items.map((item: any) => ({
@@ -157,7 +179,11 @@ export class InvoiceCreatePage implements OnInit {
         quantity:    item.quantity,
         unit_price:  item.unit_price,
         vat_rate:    item.vat_rate
-      }))
+      })),
+      is_recurring,
+      recurrence_interval: is_recurring ? recurrence_interval : null,
+      recurrence_end_date: is_recurring && recurrence_end_date ? recurrence_end_date : null,
+      auto_send: is_recurring ? auto_send : false
     };
 
     this.invoiceService.createInvoice(payload).subscribe({

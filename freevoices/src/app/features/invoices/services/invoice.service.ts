@@ -31,6 +31,8 @@ export interface InvoiceDetail extends Document {
   items: DocumentItem[];
   tracking: DocumentTracking[];
   payments: Payment[];
+  currency_symbol?: string;
+  currency_code?: string;
 }
 
 export interface InvoiceItemPayload {
@@ -48,7 +50,12 @@ export interface InvoicePayload {
   payment_terms?: number | null;
   notes?: string | null;
   terms_conditions?: string | null;
+  currency_id?: number | null;
   items: InvoiceItemPayload[];
+  is_recurring?: boolean;
+  recurrence_interval?: 'WEEKLY' | 'MONTHLY' | 'QUARTERLY' | 'YEARLY' | null;
+  recurrence_end_date?: string | null;
+  auto_send?: boolean;
 }
 
 export interface MarkPaidPayload {
@@ -87,5 +94,9 @@ export class InvoiceService {
 
   markPaid(id: number, data: MarkPaidPayload): Observable<{ message: string }> {
     return this.db.create<{ message: string }>(`invoices/${id}/mark-paid`, data);
+  }
+
+  shareInvoice(id: number): Observable<{ token: string; share_url: string }> {
+    return this.db.create<{ token: string; share_url: string }>(`invoices/${id}/share`, {});
   }
 }

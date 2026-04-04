@@ -1,0 +1,189 @@
+ion-content.portal-content {
+  --background: #f3f4f6;
+}
+
+.portal-loading,
+.portal-error {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  min-height: 60vh;
+  gap: 12px;
+  color: var(--ion-color-medium);
+
+  ion-icon { font-size: 48px; }
+  h2 { margin: 0; font-size: 1.2rem; color: var(--ion-color-dark); }
+  p  { margin: 0; text-align: center; max-width: 320px; }
+}
+
+.portal-wrapper {
+  max-width: 780px;
+  margin: 24px auto;
+  padding: 0 16px 40px;
+}
+
+/* Header */
+.portal-header {
+  background: #1a1a2e;
+  border-radius: 8px 8px 0 0;
+  padding: 24px;
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 16px;
+  color: #fff;
+
+  .company-info {
+    h1 { margin: 0 0 4px; font-size: 1.3rem; }
+    p  { margin: 2px 0; font-size: 0.8rem; color: #aaaacc; }
+    .address { white-space: pre-line; }
+  }
+
+  .doc-badge {
+    text-align: right;
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end;
+    gap: 6px;
+
+    .doc-type   { font-size: 0.75rem; letter-spacing: 2px; color: #aaaacc; }
+    .doc-number { font-size: 1.1rem; font-weight: 700; }
+  }
+}
+
+/* Meta */
+.portal-meta {
+  background: #fff;
+  display: flex;
+  gap: 24px;
+  padding: 20px 24px;
+  border-left: 1px solid #e5e7eb;
+  border-right: 1px solid #e5e7eb;
+  flex-wrap: wrap;
+
+  .billed-to, .dates { flex: 1; min-width: 180px; }
+
+  .customer-name { font-weight: 600; font-size: 1rem; margin: 4px 0; }
+  .address { white-space: pre-line; }
+  p { margin: 2px 0; font-size: 0.875rem; color: #374151; }
+
+  .date-row {
+    display: flex;
+    justify-content: space-between;
+    font-size: 0.875rem;
+    padding: 4px 0;
+    border-bottom: 1px solid #f3f4f6;
+
+    .date-label { color: #6b7280; font-weight: 500; }
+  }
+}
+
+.section-label {
+  font-size: 0.7rem;
+  font-weight: 700;
+  letter-spacing: 1px;
+  color: #6b7280;
+  margin: 0 0 6px;
+}
+
+/* Items Table */
+.items-table {
+  background: #fff;
+  border: 1px solid #e5e7eb;
+
+  .items-head {
+    background: #1a1a2e;
+    color: #fff;
+    display: grid;
+    grid-template-columns: 1fr 60px 100px 60px 100px;
+    padding: 10px 16px;
+    font-size: 0.75rem;
+    font-weight: 700;
+    letter-spacing: 0.5px;
+
+    span:not(:first-child) { text-align: right; }
+  }
+
+  .item-row {
+    display: grid;
+    grid-template-columns: 1fr 60px 100px 60px 100px;
+    padding: 10px 16px;
+    font-size: 0.875rem;
+    border-bottom: 1px solid #e5e7eb;
+
+    &.alt { background: #f9fafb; }
+    span:not(:first-child) { text-align: right; }
+  }
+}
+
+/* Totals */
+.totals-section {
+  background: #fff;
+  border: 1px solid #e5e7eb;
+  border-top: none;
+  padding: 12px 24px;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 6px;
+
+  .totals-row {
+    display: flex;
+    gap: 48px;
+    font-size: 0.9rem;
+    color: #374151;
+  }
+
+  .total-row {
+    background: #4a90e2;
+    color: #fff;
+    padding: 6px 12px;
+    border-radius: 4px;
+    font-size: 1rem;
+    margin-top: 4px;
+  }
+}
+
+/* Notes / Terms */
+.notes-section {
+  background: #fff;
+  border: 1px solid #e5e7eb;
+  border-top: none;
+  padding: 16px 24px;
+  font-size: 0.875rem;
+  color: #374151;
+
+  p { margin: 4px 0; }
+  .mt { margin-top: 16px; }
+}
+
+/* Banking */
+.bank-section {
+  background: #f9fafb;
+  border: 1px solid #e5e7eb;
+  border-top: none;
+  padding: 14px 24px;
+
+  .bank-fields {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px 24px;
+    font-size: 0.875rem;
+    color: #374151;
+  }
+}
+
+/* Actions */
+.portal-actions {
+  margin-top: 24px;
+  ion-button { max-width: 320px; margin: 0 auto; display: block; }
+}
+
+/* Footer */
+.portal-footer {
+  text-align: center;
+  margin-top: 24px;
+  font-size: 0.75rem;
+  color: #9ca3af;
+}

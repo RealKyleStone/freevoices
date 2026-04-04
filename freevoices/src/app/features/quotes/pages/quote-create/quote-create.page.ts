@@ -4,10 +4,13 @@ import { ReactiveFormsModule, FormBuilder, FormGroup, FormArray, Validators } fr
 import { Router } from '@angular/router';
 import { IonicModule, ToastController } from '@ionic/angular';
 import { forkJoin } from 'rxjs';
+import { addIcons } from 'ionicons';
+import { trashOutline, addOutline } from 'ionicons/icons';
 import { QuoteService } from '../../services/quote.service';
 import { CustomerService } from '../../../customers/services/customer.service';
 import { ProductService } from '../../../products/services/product.service';
-import { Customer, Product } from '../../../../../models/database.models';
+import { SettingsService } from '../../../settings/services/settings.service';
+import { Customer, Product, Currency } from '../../../../../models/database.models';
 
 @Component({
   selector: 'app-quote-create',
@@ -20,6 +23,7 @@ export class QuoteCreatePage implements OnInit {
   form: FormGroup;
   customers: Customer[] = [];
   products: Product[] = [];
+  currencies: Currency[] = [];
   isLoading = false;
   isLoadingData = true;
   submitted = false;
@@ -29,12 +33,15 @@ export class QuoteCreatePage implements OnInit {
     private quoteService: QuoteService,
     private customerService: CustomerService,
     private productService: ProductService,
+    private settingsService: SettingsService,
     private router: Router,
     private toastCtrl: ToastController
   ) {
+    addIcons({ trashOutline, addOutline });
     const today = new Date().toISOString().split('T')[0];
     this.form = this.fb.group({
       customer_id:      [null, Validators.required],
+      currency_id:      [null, Validators.required],
       issue_date:       [today, Validators.required],
       valid_until:      [''],
       payment_terms:    [30],
@@ -46,12 +53,17 @@ export class QuoteCreatePage implements OnInit {
 
   ngOnInit() {
     forkJoin({
-      customers: this.customerService.getCustomers('', 1, 200),
-      products:  this.productService.getProducts('', 1, 200)
+      customers:  this.customerService.getCustomers('', 1, 200),
+      products:   this.productService.getProducts('', 1, 200),
+      currencies: this.settingsService.getCurrencies(),
+      settings:   this.settingsService.getSettings()
     }).subscribe({
-      next: ({ customers, products }) => {
-        this.customers = customers.data;
-        this.products  = products.data;
+      next: ({ customers, products, currencies, settings }) => {
+        this.customers  = customers.data;
+        this.products   = products.data;
+        this.currencies = currencies;
+        const defaultCurrencyId = parseInt(settings.default_currency_id || '1', 10);
+        this.form.patchValue({ currency_id: defaultCurrencyId });
         this.addItem();
         this.isLoadingData = false;
       },
@@ -60,6 +72,11 @@ export class QuoteCreatePage implements OnInit {
         await this.showToast('Failed to load data', 'danger');
       }
     });
+  }
+
+  get currencySymbol(): string {
+    const id = this.form.get('currency_id')?.value;
+    return this.currencies.find(c => c.id === +id)?.symbol || 'R';
   }
 
   get items(): FormArray { return this.form.get('items') as FormArray; }

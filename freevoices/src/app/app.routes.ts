@@ -69,6 +69,11 @@ export const routes: Routes = [
       .then(m => m.VerifyEmailPage)
   },
   {
+    path: 'portal',
+    loadChildren: () => import('./features/portal/portal.routes')
+      .then(m => m.PORTAL_ROUTES)
+  },
+  {
     path: '**',
     loadComponent: () => import('./shared/pages/not-found/not-found.page')
       .then(m => m.NotFoundPage)

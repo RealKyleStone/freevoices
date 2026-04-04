@@ -70,17 +70,17 @@
               <small *ngIf="item.vat_rate > 0" class="vat-note">+{{ item.vat_rate }}% VAT</small>
             </span>
             <span class="qty">{{ item.quantity }}</span>
-            <span class="price">R {{ item.unit_price | number:'1.2-2' }}</span>
-            <span class="amount">R {{ item.total | number:'1.2-2' }}</span>
+            <span class="price">{{ currencySymbol }} {{ item.unit_price | number:'1.2-2' }}</span>
+            <span class="amount">{{ currencySymbol }} {{ item.total | number:'1.2-2' }}</span>
           </div>
         </div>
 
         <div class="totals">
-          <div class="totals-row"><span>Subtotal</span><span>R {{ invoice.subtotal | number:'1.2-2' }}</span></div>
-          <div class="totals-row"><span>VAT</span><span>R {{ invoice.vat_amount | number:'1.2-2' }}</span></div>
-          <div class="totals-row total-row"><strong>Total</strong><strong>R {{ invoice.total | number:'1.2-2' }}</strong></div>
+          <div class="totals-row"><span>Subtotal</span><span>{{ currencySymbol }} {{ invoice.subtotal | number:'1.2-2' }}</span></div>
+          <div class="totals-row"><span>VAT</span><span>{{ currencySymbol }} {{ invoice.vat_amount | number:'1.2-2' }}</span></div>
+          <div class="totals-row total-row"><strong>Total</strong><strong>{{ currencySymbol }} {{ invoice.total | number:'1.2-2' }}</strong></div>
           <div class="totals-row paid-row" *ngIf="totalPaid > 0">
-            <span>Paid</span><span class="paid">R {{ totalPaid | number:'1.2-2' }}</span>
+            <span>Paid</span><span class="paid">{{ currencySymbol }} {{ totalPaid | number:'1.2-2' }}</span>
           </div>
         </div>
       </ion-card-content>
@@ -118,6 +118,22 @@
             <ion-icon slot="start" name="cash-outline"></ion-icon>
             {{ showPaymentForm ? 'Cancel' : 'Record Payment' }}
           </ion-button>
+          <ion-button expand="block" fill="outline" color="tertiary" (click)="generateShareLink()" [disabled]="isSharing">
+            <ion-spinner *ngIf="isSharing" slot="start" name="crescent"></ion-spinner>
+            <ion-icon *ngIf="!isSharing" slot="start" name="share-social-outline"></ion-icon>
+            {{ isSharing ? 'Generating...' : 'Share with Customer' }}
+          </ion-button>
+        </div>
+
+        <!-- Share link panel -->
+        <div class="share-panel" *ngIf="shareLink">
+          <p class="share-label">Customer portal link (valid 30 days):</p>
+          <div class="share-link-row">
+            <span class="share-url">{{ shareLink }}</span>
+            <ion-button fill="clear" size="small" (click)="copyShareLink()" title="Copy link">
+              <ion-icon slot="icon-only" name="copy-outline"></ion-icon>
+            </ion-button>
+          </div>
         </div>
 
         <!-- Inline payment form -->
@@ -160,7 +176,7 @@
           <ion-item *ngFor="let payment of invoice.payments">
             <ion-icon name="cash-outline" slot="start" color="success"></ion-icon>
             <ion-label>
-              <h3>R {{ payment.amount | number:'1.2-2' }}</h3>
+              <h3>{{ currencySymbol }} {{ payment.amount | number:'1.2-2' }}</h3>
               <p>{{ payment.payment_date | date:'mediumDate' }} &mdash; {{ payment.payment_method }}</p>
               <p *ngIf="payment.transaction_reference">Ref: {{ payment.transaction_reference }}</p>
             </ion-label>

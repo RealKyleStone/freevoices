@@ -2,6 +2,7 @@ import { Injectable } from '@angular/core';
 import { HttpClient, HttpHeaders } from '@angular/common/http';
 import { Observable } from 'rxjs';
 import { environment } from '../../../../environments/environment';
+import { Currency } from '../../../../models/database.models';
 
 export interface UserSettings {
   // Profile
@@ -20,6 +21,7 @@ export interface UserSettings {
   invoice_payment_terms: string;
   invoice_vat_rate: string;
   invoice_notes: string;
+  default_currency_id: string;
   // Payment
   bank_name: string;
   bank_account_number: string;
@@ -52,6 +54,12 @@ export class SettingsService {
 
   getSettings(): Observable<UserSettings> {
     return this.http.get<UserSettings>(`${this.apiUrl}/settings`, {
+      headers: this.getHeaders()
+    });
+  }
+
+  getCurrencies(): Observable<Currency[]> {
+    return this.http.get<Currency[]>(`${this.apiUrl}/currencies`, {
       headers: this.getHeaders()
     });
   }
@@ -102,6 +110,7 @@ export class SettingsService {
     invoice_payment_terms: number;
     invoice_vat_rate: number;
     invoice_notes: string;
+    default_currency_id: number;
   }): Observable<{ message: string }> {
     return this.http.put<{ message: string }>(`${this.apiUrl}/settings/invoice`, data, {
       headers: this.getHeaders()

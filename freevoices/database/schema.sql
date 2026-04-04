@@ -56,6 +56,13 @@ CREATE TABLE documents (
   total decimal(15,2) NOT NULL,
   notes text DEFAULT NULL,
   terms_conditions text DEFAULT NULL,
+  is_recurring tinyint(1) NOT NULL DEFAULT 0,
+  recurrence_interval enum('WEEKLY','MONTHLY','QUARTERLY','YEARLY') DEFAULT NULL,
+  recurrence_next_date date DEFAULT NULL,
+  recurrence_end_date date DEFAULT NULL,
+  auto_send tinyint(1) NOT NULL DEFAULT 0,
+  share_token varchar(64) DEFAULT NULL,
+  share_token_expires_at timestamp NULL DEFAULT NULL,
   created_at timestamp NOT NULL DEFAULT current_timestamp(),
   updated_at timestamp NOT NULL DEFAULT current_timestamp() ON UPDATE current_timestamp()
 ) ENGINE=InnoDB DEFAULT CHARSET=latin1 COLLATE=latin1_swedish_ci;
@@ -181,8 +188,10 @@ ALTER TABLE customers
 ALTER TABLE documents
   ADD PRIMARY KEY (id),
   ADD UNIQUE KEY user_id (user_id,type,document_number),
+  ADD UNIQUE KEY share_token (share_token),
   ADD KEY customer_id (customer_id),
-  ADD KEY currency_id (currency_id);
+  ADD KEY currency_id (currency_id),
+  ADD KEY idx_recurring (is_recurring,recurrence_next_date,type,status);
 
 ALTER TABLE document_items
   ADD PRIMARY KEY (id),

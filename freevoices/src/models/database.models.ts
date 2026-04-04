@@ -51,6 +51,10 @@ export interface Document extends BaseModel {
   type: 'INVOICE' | 'QUOTE';
   document_number: string;
   currency_id: number;
+  currency_symbol?: string;
+  currency_code?: string;
+  share_token?: string;
+  share_token_expires_at?: string;
   status: 'DRAFT' | 'SENT' | 'PAID' | 'OVERDUE' | 'CANCELLED';
   issue_date: string;
   due_date: string;
@@ -61,6 +65,11 @@ export interface Document extends BaseModel {
   total: number;
   notes?: string;
   terms_conditions?: string;
+  is_recurring?: boolean;
+  recurrence_interval?: 'WEEKLY' | 'MONTHLY' | 'QUARTERLY' | 'YEARLY' | null;
+  recurrence_next_date?: string | null;
+  recurrence_end_date?: string | null;
+  auto_send?: boolean;
 }
 
 export interface DocumentItem extends BaseModel {

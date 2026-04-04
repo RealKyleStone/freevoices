@@ -64,6 +64,14 @@
             auto-grow="true"
           ></ion-textarea>
         </ion-item>
+
+        <ion-item [class.ion-invalid]="isInvalid('default_currency_id')" [class.ion-touched]="form.get('default_currency_id')?.touched">
+          <ion-label position="stacked">Default Currency <span class="required">*</span></ion-label>
+          <ion-select formControlName="default_currency_id" interface="popover" placeholder="Select currency">
+            <ion-select-option *ngFor="let c of currencies" [value]="c.id">{{ c.code }} — {{ c.name }} ({{ c.symbol }})</ion-select-option>
+          </ion-select>
+          <ion-note slot="error">Currency is required</ion-note>
+        </ion-item>
       </ion-card-content>
     </ion-card>
 

@@ -30,6 +30,8 @@ export interface QuoteDetail extends Document {
   customer_vat_number: string;
   items: DocumentItem[];
   tracking: DocumentTracking[];
+  currency_symbol?: string;
+  currency_code?: string;
 }
 
 export interface QuoteItemPayload {
@@ -47,6 +49,7 @@ export interface QuotePayload {
   payment_terms?: number | null;
   notes?: string | null;
   terms_conditions?: string | null;
+  currency_id?: number | null;
   items: QuoteItemPayload[];
 }
 

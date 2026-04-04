@@ -145,7 +145,8 @@ function buildInvoicePdf(invoice, items, user) {
     doc.text('TOTAL',        cols.total.x + PAD, tableTop + 7, { width: cols.total.w - PAD * 2, align: 'right' });
 
     let rowY = tableTop + 22;
-    const fmt = (n) => `R ${parseFloat(n).toLocaleString('en-ZA', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+    const currSym = invoice.currency_symbol || 'R';
+    const fmt = (n) => `${currSym} ${parseFloat(n).toLocaleString('en-ZA', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 
     for (let i = 0; i < items.length; i++) {
       const item = items[i];

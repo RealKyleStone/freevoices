@@ -7,7 +7,7 @@ import { addIcons } from 'ionicons';
 import {
   createOutline, calendarOutline, alarmOutline, timeOutline, sendOutline,
   cashOutline, documentOutline, eyeOutline, downloadOutline,
-  checkmarkCircleOutline, closeCircleOutline, ellipseOutline
+  checkmarkCircleOutline, closeCircleOutline, ellipseOutline, shareSocialOutline, copyOutline
 } from 'ionicons/icons';
 import { InvoiceService, InvoiceDetail } from '../../services/invoice.service';
 import { environment } from '../../../../../environments/environment';
@@ -28,6 +28,8 @@ export class InvoiceDetailPage implements OnInit {
   isSubmittingPayment = false;
   isSending = false;
   isDownloading = false;
+  isSharing = false;
+  shareLink: string | null = null;
 
   readonly paymentMethods = [
     { value: 'BANK_TRANSFER', label: 'Bank Transfer' },
@@ -48,7 +50,8 @@ export class InvoiceDetailPage implements OnInit {
     addIcons({
       createOutline, calendarOutline, alarmOutline, timeOutline, sendOutline,
       cashOutline, documentOutline, eyeOutline, downloadOutline,
-      checkmarkCircleOutline, closeCircleOutline, ellipseOutline
+      checkmarkCircleOutline, closeCircleOutline, ellipseOutline,
+      shareSocialOutline, copyOutline
     });
 
     this.paymentForm = this.fb.group({
@@ -207,5 +210,31 @@ export class InvoiceDetailPage implements OnInit {
 
   get canMarkPaid(): boolean {
     return !['PAID', 'CANCELLED'].includes(this.invoice?.status ?? '');
+  }
+
+  get currencySymbol(): string {
+    return this.invoice?.currency_symbol || 'R';
+  }
+
+  async generateShareLink() {
+    this.isSharing = true;
+    this.invoiceService.shareInvoice(this.invoiceId).subscribe({
+      next: async (res) => {
+        this.isSharing = false;
+        this.shareLink = res.share_url;
+      },
+      error: async () => {
+        this.isSharing = false;
+        const toast = await this.toastCtrl.create({ message: 'Failed to generate share link', duration: 3000, color: 'danger', position: 'bottom' });
+        await toast.present();
+      }
+    });
+  }
+
+  async copyShareLink() {
+    if (!this.shareLink) return;
+    await navigator.clipboard.writeText(this.shareLink);
+    const toast = await this.toastCtrl.create({ message: 'Link copied to clipboard', duration: 2000, color: 'success', position: 'bottom' });
+    await toast.present();
   }
 }

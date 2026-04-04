@@ -2,7 +2,10 @@
   "permissions": {
     "allow": [
       "Bash(grep -r \"TODO\\\\|FIXME\\\\|XXX\\\\|HACK\" /e/github/freevoices/freevoices/src --include=*.ts --include=*.js)",
-      "Bash(xargs ls:*)"
+      "Bash(xargs ls:*)",
+      "Bash(ls -la /e/github/freevoices/freevoices/src/app/features/*/)",
+      "Bash(grep -E \"\\\\.\\(js|ts\\)$\")",
+      "Bash(npm install:*)"
     ]
   }
 }

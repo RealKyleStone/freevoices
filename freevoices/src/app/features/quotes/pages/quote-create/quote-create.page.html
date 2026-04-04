@@ -24,6 +24,14 @@
           <ion-note slot="error">Customer is required</ion-note>
         </ion-item>
 
+        <ion-item [class.ion-invalid]="isInvalid('currency_id')" fill="outline">
+          <ion-label position="floating">Currency <ion-text color="danger">*</ion-text></ion-label>
+          <ion-select formControlName="currency_id" interface="popover" placeholder="Select currency">
+            <ion-select-option *ngFor="let c of currencies" [value]="c.id">{{ c.code }} — {{ c.name }} ({{ c.symbol }})</ion-select-option>
+          </ion-select>
+          <ion-note slot="error">Currency is required</ion-note>
+        </ion-item>
+
         <ion-item [class.ion-invalid]="isInvalid('issue_date')" fill="outline">
           <ion-label position="floating">Issue Date <ion-text color="danger">*</ion-text></ion-label>
           <ion-input formControlName="issue_date" type="date"></ion-input>
@@ -86,9 +94,9 @@
           </div>
 
           <div class="item-totals">
-            <span>Subtotal: R {{ itemSubtotal(i) | number:'1.2-2' }}</span>
-            <span>VAT: R {{ itemVat(i) | number:'1.2-2' }}</span>
-            <strong>Total: R {{ itemTotal(i) | number:'1.2-2' }}</strong>
+            <span>Subtotal: {{ currencySymbol }} {{ itemSubtotal(i) | number:'1.2-2' }}</span>
+            <span>VAT: {{ currencySymbol }} {{ itemVat(i) | number:'1.2-2' }}</span>
+            <strong>Total: {{ currencySymbol }} {{ itemTotal(i) | number:'1.2-2' }}</strong>
           </div>
         </div>
 
@@ -103,9 +111,9 @@
     <ion-card>
       <ion-card-content>
         <div class="totals">
-          <div class="totals-row"><span>Subtotal</span><span>R {{ docSubtotal | number:'1.2-2' }}</span></div>
-          <div class="totals-row"><span>VAT</span><span>R {{ docVat | number:'1.2-2' }}</span></div>
-          <div class="totals-row total-row"><strong>Total</strong><strong>R {{ docTotal | number:'1.2-2' }}</strong></div>
+          <div class="totals-row"><span>Subtotal</span><span>{{ currencySymbol }} {{ docSubtotal | number:'1.2-2' }}</span></div>
+          <div class="totals-row"><span>VAT</span><span>{{ currencySymbol }} {{ docVat | number:'1.2-2' }}</span></div>
+          <div class="totals-row total-row"><strong>Total</strong><strong>{{ currencySymbol }} {{ docTotal | number:'1.2-2' }}</strong></div>
         </div>
       </ion-card-content>
     </ion-card>

@@ -4,7 +4,9 @@ import { ReactiveFormsModule, FormBuilder, FormGroup, Validators } from '@angula
 import { IonicModule, ToastController } from '@ionic/angular';
 import { addIcons } from 'ionicons';
 import { documentTextOutline } from 'ionicons/icons';
+import { forkJoin } from 'rxjs';
 import { SettingsService } from '../../services/settings.service';
+import { Currency } from '../../../../../models/database.models';
 
 @Component({
   selector: 'app-invoice-settings',
@@ -18,6 +20,7 @@ export class InvoiceSettingsPage implements OnInit {
   isLoading = true;
   isSaving = false;
   submitted = false;
+  currencies: Currency[] = [];
 
   constructor(
     private fb: FormBuilder,
@@ -33,17 +36,23 @@ export class InvoiceSettingsPage implements OnInit {
       invoice_next_number: [1, [Validators.required, Validators.min(1)]],
       invoice_payment_terms: [30, [Validators.required, Validators.min(0)]],
       invoice_vat_rate: [15, [Validators.required, Validators.min(0), Validators.max(100)]],
-      invoice_notes: ['']
+      invoice_notes: [''],
+      default_currency_id: [1, Validators.required]
     });
 
-    this.settingsService.getSettings().subscribe({
-      next: (data) => {
+    forkJoin({
+      settings: this.settingsService.getSettings(),
+      currencies: this.settingsService.getCurrencies()
+    }).subscribe({
+      next: ({ settings, currencies }) => {
+        this.currencies = currencies;
         this.form.patchValue({
-          invoice_prefix: data.invoice_prefix || 'INV',
-          invoice_next_number: parseInt(data.invoice_next_number || '1', 10),
-          invoice_payment_terms: parseInt(data.invoice_payment_terms || '30', 10),
-          invoice_vat_rate: parseFloat(data.invoice_vat_rate || '15'),
-          invoice_notes: data.invoice_notes || ''
+          invoice_prefix: settings.invoice_prefix || 'INV',
+          invoice_next_number: parseInt(settings.invoice_next_number || '1', 10),
+          invoice_payment_terms: parseInt(settings.invoice_payment_terms || '30', 10),
+          invoice_vat_rate: parseFloat(settings.invoice_vat_rate || '15'),
+          invoice_notes: settings.invoice_notes || '',
+          default_currency_id: parseInt(settings.default_currency_id || '1', 10)
         });
         this.isLoading = false;
       },

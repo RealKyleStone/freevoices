@@ -1,0 +1,121 @@
+<ion-content class="portal-content">
+
+  <!-- Loading -->
+  <div class="portal-loading" *ngIf="isLoading">
+    <ion-spinner name="crescent"></ion-spinner>
+    <p>Loading invoice...</p>
+  </div>
+
+  <!-- Error -->
+  <div class="portal-error" *ngIf="!isLoading && error">
+    <ion-icon name="warning-outline" color="danger"></ion-icon>
+    <h2>Link Not Found</h2>
+    <p>{{ error }}</p>
+  </div>
+
+  <!-- Invoice -->
+  <div class="portal-wrapper" *ngIf="!isLoading && invoice">
+
+    <!-- Header bar -->
+    <div class="portal-header">
+      <div class="company-info">
+        <h1>{{ invoice.company_name }}</h1>
+        <p *ngIf="invoice.company_vat_number">VAT: {{ invoice.company_vat_number }}</p>
+        <p *ngIf="invoice.company_address" class="address">{{ invoice.company_address }}</p>
+        <p *ngIf="invoice.company_email">{{ invoice.company_email }}</p>
+      </div>
+      <div class="doc-badge">
+        <span class="doc-type">INVOICE</span>
+        <span class="doc-number">{{ invoice.document_number }}</span>
+        <ion-badge [color]="getStatusColor(invoice.status)">{{ invoice.status }}</ion-badge>
+      </div>
+    </div>
+
+    <!-- Billed to + Dates -->
+    <div class="portal-meta">
+      <div class="billed-to">
+        <p class="section-label">BILLED TO</p>
+        <p class="customer-name">{{ invoice.customer_name }}</p>
+        <p *ngIf="invoice.customer_email">{{ invoice.customer_email }}</p>
+        <p *ngIf="invoice.customer_billing_address" class="address">{{ invoice.customer_billing_address }}</p>
+        <p *ngIf="invoice.customer_vat_number">VAT: {{ invoice.customer_vat_number }}</p>
+      </div>
+      <div class="dates">
+        <div class="date-row">
+          <span class="date-label">Issue Date</span>
+          <span>{{ invoice.issue_date | date:'mediumDate' }}</span>
+        </div>
+        <div class="date-row" *ngIf="invoice.due_date">
+          <span class="date-label">Due Date</span>
+          <span>{{ invoice.due_date | date:'mediumDate' }}</span>
+        </div>
+        <div class="date-row" *ngIf="invoice.payment_terms != null">
+          <span class="date-label">Payment Terms</span>
+          <span>{{ invoice.payment_terms }} days</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Line Items -->
+    <div class="items-table">
+      <div class="items-head">
+        <span class="col-desc">Description</span>
+        <span class="col-qty">Qty</span>
+        <span class="col-price">Unit Price</span>
+        <span class="col-vat">VAT %</span>
+        <span class="col-total">Total</span>
+      </div>
+      <div class="item-row" *ngFor="let item of invoice.items; let even = even" [class.alt]="!even">
+        <span class="col-desc">{{ item.description }}</span>
+        <span class="col-qty">{{ item.quantity }}</span>
+        <span class="col-price">{{ currencySymbol }} {{ item.unit_price | number:'1.2-2' }}</span>
+        <span class="col-vat">{{ item.vat_rate }}%</span>
+        <span class="col-total">{{ currencySymbol }} {{ item.total | number:'1.2-2' }}</span>
+      </div>
+    </div>
+
+    <!-- Totals -->
+    <div class="totals-section">
+      <div class="totals-row"><span>Subtotal</span><span>{{ currencySymbol }} {{ invoice.subtotal | number:'1.2-2' }}</span></div>
+      <div class="totals-row"><span>VAT</span><span>{{ currencySymbol }} {{ invoice.vat_amount | number:'1.2-2' }}</span></div>
+      <div class="totals-row total-row"><strong>Total</strong><strong>{{ currencySymbol }} {{ invoice.total | number:'1.2-2' }}</strong></div>
+    </div>
+
+    <!-- Notes / Terms -->
+    <div class="notes-section" *ngIf="invoice.notes || invoice.terms_conditions">
+      <div *ngIf="invoice.notes">
+        <p class="section-label">NOTES</p>
+        <p>{{ invoice.notes }}</p>
+      </div>
+      <div *ngIf="invoice.terms_conditions" [class.mt]="invoice.notes">
+        <p class="section-label">TERMS &amp; CONDITIONS</p>
+        <p>{{ invoice.terms_conditions }}</p>
+      </div>
+    </div>
+
+    <!-- Banking details -->
+    <div class="bank-section" *ngIf="invoice.bank_name || invoice.bank_account_number">
+      <p class="section-label">BANKING DETAILS</p>
+      <div class="bank-fields">
+        <span *ngIf="invoice.bank_name">Bank: {{ invoice.bank_name }}</span>
+        <span *ngIf="invoice.bank_account_number">Account: {{ invoice.bank_account_number }}</span>
+        <span *ngIf="invoice.bank_branch_code">Branch Code: {{ invoice.bank_branch_code }}</span>
+        <span *ngIf="invoice.bank_account_type">Account Type: {{ invoice.bank_account_type }}</span>
+      </div>
+    </div>
+
+    <!-- Download action -->
+    <div class="portal-actions">
+      <ion-button expand="block" (click)="downloadPdf()" [disabled]="isDownloading">
+        <ion-spinner *ngIf="isDownloading" slot="start" name="crescent"></ion-spinner>
+        <ion-icon *ngIf="!isDownloading" slot="start" name="download-outline"></ion-icon>
+        {{ isDownloading ? 'Preparing PDF...' : 'Download PDF' }}
+      </ion-button>
+    </div>
+
+    <div class="portal-footer">
+      <p>Powered by FreeVoices</p>
+    </div>
+  </div>
+
+</ion-content>

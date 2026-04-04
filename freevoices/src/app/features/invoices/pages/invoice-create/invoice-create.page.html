@@ -27,6 +27,14 @@
           <ion-note slot="error">Customer is required</ion-note>
         </ion-item>
 
+        <ion-item [class.ion-invalid]="isInvalid('currency_id')" [class.ion-touched]="isInvalid('currency_id')" fill="outline">
+          <ion-label position="floating">Currency <ion-text color="danger">*</ion-text></ion-label>
+          <ion-select formControlName="currency_id" interface="popover" placeholder="Select currency">
+            <ion-select-option *ngFor="let c of currencies" [value]="c.id">{{ c.code }} — {{ c.name }} ({{ c.symbol }})</ion-select-option>
+          </ion-select>
+          <ion-note slot="error">Currency is required</ion-note>
+        </ion-item>
+
         <ion-item [class.ion-invalid]="isInvalid('issue_date')" [class.ion-touched]="isInvalid('issue_date')" fill="outline">
           <ion-label position="floating">Issue Date <ion-text color="danger">*</ion-text></ion-label>
           <ion-input formControlName="issue_date" type="date"></ion-input>
@@ -96,9 +104,9 @@
           </div>
 
           <div class="item-totals">
-            <span>Subtotal: R {{ itemSubtotal(i) | number:'1.2-2' }}</span>
-            <span>VAT: R {{ itemVat(i) | number:'1.2-2' }}</span>
-            <strong>Total: R {{ itemTotal(i) | number:'1.2-2' }}</strong>
+            <span>Subtotal: {{ currencySymbol }} {{ itemSubtotal(i) | number:'1.2-2' }}</span>
+            <span>VAT: {{ currencySymbol }} {{ itemVat(i) | number:'1.2-2' }}</span>
+            <strong>Total: {{ currencySymbol }} {{ itemTotal(i) | number:'1.2-2' }}</strong>
           </div>
         </div>
 
@@ -114,10 +122,45 @@
     <ion-card>
       <ion-card-content>
         <div class="totals">
-          <div class="totals-row"><span>Subtotal</span><span>R {{ docSubtotal | number:'1.2-2' }}</span></div>
-          <div class="totals-row"><span>VAT</span><span>R {{ docVat | number:'1.2-2' }}</span></div>
-          <div class="totals-row total-row"><strong>Total</strong><strong>R {{ docTotal | number:'1.2-2' }}</strong></div>
+          <div class="totals-row"><span>Subtotal</span><span>{{ currencySymbol }} {{ docSubtotal | number:'1.2-2' }}</span></div>
+          <div class="totals-row"><span>VAT</span><span>{{ currencySymbol }} {{ docVat | number:'1.2-2' }}</span></div>
+          <div class="totals-row total-row"><strong>Total</strong><strong>{{ currencySymbol }} {{ docTotal | number:'1.2-2' }}</strong></div>
         </div>
+      </ion-card-content>
+    </ion-card>
+
+    <!-- Recurring -->
+    <ion-card>
+      <ion-card-header><ion-card-title>Recurring Schedule</ion-card-title></ion-card-header>
+      <ion-card-content>
+
+        <ion-item>
+          <ion-label>Recurring invoice</ion-label>
+          <ion-toggle formControlName="is_recurring" slot="end"></ion-toggle>
+        </ion-item>
+
+        <ng-container *ngIf="isRecurring">
+          <ion-item fill="outline">
+            <ion-label position="floating">Interval <ion-text color="danger">*</ion-text></ion-label>
+            <ion-select formControlName="recurrence_interval" interface="popover" placeholder="Select interval">
+              <ion-select-option value="WEEKLY">Weekly</ion-select-option>
+              <ion-select-option value="MONTHLY">Monthly</ion-select-option>
+              <ion-select-option value="QUARTERLY">Quarterly</ion-select-option>
+              <ion-select-option value="YEARLY">Yearly</ion-select-option>
+            </ion-select>
+          </ion-item>
+
+          <ion-item fill="outline">
+            <ion-label position="floating">End Date (optional)</ion-label>
+            <ion-input formControlName="recurrence_end_date" type="date"></ion-input>
+          </ion-item>
+
+          <ion-item>
+            <ion-label>Auto-send each generated invoice</ion-label>
+            <ion-toggle formControlName="auto_send" slot="end"></ion-toggle>
+          </ion-item>
+        </ng-container>
+
       </ion-card-content>
     </ion-card>
 
