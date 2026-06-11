@@ -10,6 +10,7 @@ import { DatabaseService } from '../../../../../services/database.service';
 import { CommonModule } from '@angular/common';
 import { CaptchaService } from '../../../../core/services/captcha.service';
 import { Platform } from '@ionic/angular';
+import { environment } from '../../../../../environments/environment';
 import { catchError, finalize } from 'rxjs/operators';
 import { of } from 'rxjs';
 
@@ -98,7 +99,7 @@ export class RegisterPage implements OnInit {
   }
 
   async ngOnInit() {
-    if (!this.isMobile) {
+    if (!this.isMobile && !environment.bypassCaptcha) {
       try {
         await this.captchaService.loadScript();
       } catch (error) {
@@ -168,7 +169,7 @@ export class RegisterPage implements OnInit {
   }
 
   async ngAfterViewInit() {
-    if (!this.isMobile && this.recaptchaElement) {
+    if (!this.isMobile && !environment.bypassCaptcha && this.recaptchaElement) {
       try {
         await this.captchaService.render(this.recaptchaElement.nativeElement);
         this.captchaInitialized = true;
@@ -214,7 +215,7 @@ export class RegisterPage implements OnInit {
     try {
       let captchaToken = '';
       
-      if (!this.isMobile && this.captchaInitialized) {
+      if (!this.isMobile && !environment.bypassCaptcha && this.captchaInitialized) {
         try {
           captchaToken = await this.captchaService.execute();
         } catch (error) {
@@ -233,8 +234,8 @@ export class RegisterPage implements OnInit {
         catchError(error => {
           console.error('Registration error:', error);
           this.errorMessage = error.error?.message || 'Registration failed. Please try again.';
-          
-          if (!this.isMobile && this.captchaInitialized) {
+
+          if (!this.isMobile && !environment.bypassCaptcha && this.captchaInitialized) {
             this.captchaService.reset();
           }
           return of(null);
