@@ -1,6 +1,6 @@
 import { Component, ElementRef, OnInit, ViewChild, ChangeDetectorRef, AfterViewInit } from '@angular/core';
 import { FormBuilder, FormGroup, Validators, ReactiveFormsModule } from '@angular/forms';
-import { Router } from '@angular/router';
+import { Router, RouterLink } from '@angular/router';
 import { IonContent, IonHeader, IonToolbar, IonTitle, IonButton, 
          IonItem, IonLabel, IonInput, IonText, IonCard, 
          IonCardContent, IonSpinner } from '@ionic/angular/standalone';
@@ -8,6 +8,7 @@ import { AuthService } from '../../../core/auth/services/auth.service';
 import { CommonModule } from '@angular/common';
 import { CaptchaService } from '../../../core/services/captcha.service';
 import { Platform } from '@ionic/angular';
+import { environment } from '../../../../environments/environment';
 import { catchError, finalize } from 'rxjs/operators';
 import { of } from 'rxjs';
 
@@ -19,6 +20,7 @@ import { of } from 'rxjs';
     imports: [
       CommonModule,
       ReactiveFormsModule,
+      RouterLink,
       IonContent,
       IonHeader,
       IonToolbar,
@@ -59,7 +61,7 @@ export class LoginPage implements OnInit, AfterViewInit {
   }
 
   async ngOnInit() {
-    if (!this.isMobile) {
+    if (!this.isMobile && !environment.bypassCaptcha) {
       try {
         await this.captchaService.loadScript();
       } catch (error) {
@@ -71,7 +73,7 @@ export class LoginPage implements OnInit, AfterViewInit {
   }
 
   async ngAfterViewInit() {
-    if (!this.isMobile && this.recaptchaElement) {
+    if (!this.isMobile && !environment.bypassCaptcha && this.recaptchaElement) {
       try {
         await this.captchaService.render(this.recaptchaElement.nativeElement);
         this.captchaInitialized = true;
@@ -112,7 +114,7 @@ export class LoginPage implements OnInit, AfterViewInit {
     try {
       let captchaToken = '';
       
-      if (!this.isMobile && this.captchaInitialized) {
+      if (!this.isMobile && !environment.bypassCaptcha && this.captchaInitialized) {
         try {
           captchaToken = await this.captchaService.execute();
         } catch (error) {
@@ -132,7 +134,7 @@ export class LoginPage implements OnInit, AfterViewInit {
           console.error('Login error:', error);
           this.errorMessage = error.error?.message || 'Login failed. Please try again.';
           
-          if (!this.isMobile && this.captchaInitialized) {
+          if (!this.isMobile && !environment.bypassCaptcha && this.captchaInitialized) {
             this.captchaService.reset();
           }
           return of(null);

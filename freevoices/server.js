@@ -44,7 +44,7 @@ const app = express();
 // Middleware
 app.use(cors());
 app.use(bodyParser.json());
-app.use(express.static(path.join(__dirname, 'dist/www')));
+app.use(express.static(path.join(__dirname, 'www')));
 
 const emailService = new EmailService({
   SMTP_HOST: process.env.SMTP_HOST,
@@ -2473,7 +2473,7 @@ cron.schedule('5 0 * * *', processRecurringInvoices);
 
 // Catch-all route for Angular app
 app.get('*', (req, res) => {
-  res.sendFile(path.join(__dirname, 'dist/www/index.html'));
+  res.sendFile(path.join(__dirname, 'www/index.html'));
 });
 
 // Start server
