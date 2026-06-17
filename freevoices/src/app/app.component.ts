@@ -4,25 +4,16 @@ import { IonApp, IonSplitPane, IonMenu, IonContent, IonList,
          IonMenuToggle, IonItem, IonIcon, IonLabel, IonFooter,
          IonRouterOutlet, MenuController } from '@ionic/angular/standalone';
 import { AuthService } from './core/auth/services/auth.service';
+import { CommonModule } from '@angular/common';
 import {
-  walletOutline,
-  gridOutline,
-  cashOutline,
-  businessOutline,
-  barChartOutline,
-  logOutOutline,
-  notificationsOutline,
-  personCircleOutline,
-  addCircleOutline,
-  personAddOutline,
-  documentTextOutline,
-  alertCircleOutline,
-  peopleOutline,
-  receiptOutline,
-  cubeOutline,
-  settingsOutline
+  walletOutline, gridOutline, cashOutline, businessOutline,
+  barChartOutline, logOutOutline, notificationsOutline,
+  personCircleOutline, addCircleOutline, personAddOutline,
+  documentTextOutline, alertCircleOutline, peopleOutline,
+  receiptOutline, cubeOutline, settingsOutline
 } from 'ionicons/icons';
 import { addIcons } from 'ionicons';
+import { Observable } from 'rxjs';
 
 @Component({
   selector: 'app-root',
@@ -31,6 +22,7 @@ import { addIcons } from 'ionicons';
   standalone: true,
   imports: [
     RouterModule,
+    CommonModule,
     IonApp,
     IonSplitPane,
     IonMenu,
@@ -45,11 +37,14 @@ import { addIcons } from 'ionicons';
   ]
 })
 export class AppComponent {
+  isLoggedIn$: Observable<any>;
+
   constructor(
     private authService: AuthService,
     private router: Router,
     private menuCtrl: MenuController
   ) {
+    this.isLoggedIn$ = this.authService.currentUser$;
     addIcons({
       'wallet-outline': walletOutline,
       'grid-outline': gridOutline,

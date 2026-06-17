@@ -1,6 +1,8 @@
 <!-- app.component.html -->
 <ion-app>
-  <ion-split-pane contentId="main-content">
+
+  <!-- Show menu layout only when logged in -->
+  <ion-split-pane contentId="main-content" *ngIf="isLoggedIn$ | async">
     <ion-menu contentId="main-content">
       <ion-content>
         <div class="menu-header" routerLink="/dashboard" (click)="closeMenu()">
@@ -59,4 +61,8 @@
       <ion-router-outlet></ion-router-outlet>
     </div>
   </ion-split-pane>
+
+  <!-- Show plain router outlet when NOT logged in (login, register pages) -->
+  <ion-router-outlet *ngIf="!(isLoggedIn$ | async)"></ion-router-outlet>
+
 </ion-app>
