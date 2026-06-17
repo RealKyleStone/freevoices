@@ -124,15 +124,13 @@ function buildInvoicePdf(invoice, items, user) {
 
     // ── LINE ITEMS TABLE ──────────────────────────────────────────────────────
     const tableTop = doc.y;
-    // Columns must fit within col.left (50) → col.right (545) = 495px total
-    // Using 8px padding (4px each side) for text within columns
     const PAD = 4;
     const cols = {
-      desc:     { x: col.left,       w: 200 },  // Description
-      qty:      { x: col.left + 200, w: 50  },  // Quantity
-      price:    { x: col.left + 250, w: 85  },  // Unit Price
-      vat:      { x: col.left + 335, w: 55  },  // VAT %
-      total:    { x: col.left + 390, w: 105 }   // Total (wider column for currency)
+      desc:     { x: col.left,       w: 200 },
+      qty:      { x: col.left + 200, w: 50  },
+      price:    { x: col.left + 250, w: 85  },
+      vat:      { x: col.left + 335, w: 55  },
+      total:    { x: col.left + 390, w: 105 }
     };
 
     // Header row
@@ -155,7 +153,6 @@ function buildInvoicePdf(invoice, items, user) {
 
       doc.fillColor(DARK).fontSize(9).font('Helvetica');
       doc.text(item.description,                  cols.desc.x  + PAD, rowY + 6, { width: cols.desc.w - PAD * 2 });
-      // Use Courier for numbers to ensure consistent width and alignment
       doc.font('Courier');
       doc.text(String(parseFloat(item.quantity)), cols.qty.x   + PAD, rowY + 6, { width: cols.qty.w - PAD * 2,   align: 'right' });
       doc.text(fmt(item.unit_price),              cols.price.x + PAD, rowY + 6, { width: cols.price.w - PAD * 2, align: 'right' });
@@ -166,15 +163,13 @@ function buildInvoicePdf(invoice, items, user) {
       rowY += 20;
     }
 
-    // Border around entire table
     doc.rect(col.left, tableTop, pageWidth, rowY - tableTop).stroke(DIVIDER);
-
     rowY += 12;
 
     // ── TOTALS ────────────────────────────────────────────────────────────────
     const totalsLabelX = col.right - 200;
     const totalsValueX = col.right - 100;
-    const totalsW      = 95;  // Wider to accommodate formatted currency
+    const totalsW      = 95;
 
     const totalsRows = [
       ['Subtotal',    fmt(invoice.subtotal),    DARK,    false],
@@ -250,4 +245,221 @@ function buildInvoicePdf(invoice, items, user) {
   });
 }
 
-module.exports = { buildInvoicePdf };
+/**
+ * Build a PDF receipt buffer for a paid invoice.
+ * @param {object} invoice  - Full invoice row (documents JOIN customers)
+ * @param {Array}  items    - document_items rows
+ * @param {object} user     - users row (company info)
+ * @param {Array}  payments - payments rows for this invoice
+ * @returns {Promise<Buffer>}
+ */
+function buildReceiptPdf(invoice, items, user, payments) {
+  return new Promise((resolve, reject) => {
+    const doc = new PDFDocument({ margin: 50, size: 'A4' });
+    const chunks = [];
+    doc.on('data', chunk => chunks.push(chunk));
+    doc.on('end',  ()    => resolve(Buffer.concat(chunks)));
+    doc.on('error', reject);
+
+    const pageWidth = doc.page.width - 100;
+    const col = {
+      left:  50,
+      right: doc.page.width - 50,
+      mid:   doc.page.width / 2
+    };
+
+    const formatDate = (d) => {
+      if (!d) return '—';
+      return new Date(d).toLocaleDateString('en-ZA', { day: '2-digit', month: 'short', year: 'numeric' });
+    };
+
+    const currSym = invoice.currency_symbol || 'R';
+    const fmt = (n) => `${currSym} ${parseFloat(n).toLocaleString('en-ZA', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+
+    // ── HEADER ────────────────────────────────────────────────────────────────
+    doc.rect(0, 0, doc.page.width, 90).fill(DARK);
+
+    const LOGO_MAX_W = 120;
+    const LOGO_MAX_H = 70;
+    let textX = col.left;
+
+    if (user.logo_path) {
+      try {
+        doc.image(user.logo_path, col.left, 10, { fit: [LOGO_MAX_W, LOGO_MAX_H] });
+        textX = col.left + LOGO_MAX_W + 14;
+      } catch (_) {}
+    }
+
+    const textW = 300 - (textX - col.left);
+    doc.fillColor('#ffffff').fontSize(22).font('Helvetica-Bold')
+       .text(user.company_name || 'Your Company', textX, 28, { width: textW });
+
+    if (user.vat_number) {
+      doc.fontSize(9).font('Helvetica').fillColor('#aaaacc')
+         .text(`VAT Reg: ${user.vat_number}`, textX, 55);
+    }
+
+    // Receipt badge — green instead of blue to show it's paid
+    const badgeX = doc.page.width - 160;
+    doc.fillColor(SUCCESS).rect(badgeX, 0, 160, 90).fill();
+    doc.fillColor('#ffffff').fontSize(10).font('Helvetica-Bold')
+       .text('RECEIPT', badgeX, 30, { width: 155, align: 'center' });
+    doc.fontSize(13).font('Helvetica-Bold')
+       .text(invoice.document_number, badgeX, 48, { width: 155, align: 'center' });
+
+    doc.y = 110;
+
+    // ── RECEIPT TO / DETAILS ──────────────────────────────────────────────────
+    const detailsY = doc.y;
+
+    doc.fillColor(MEDIUM).fontSize(8).font('Helvetica-Bold')
+       .text('RECEIPT TO', col.left, detailsY);
+    doc.fillColor(DARK).fontSize(11).font('Helvetica-Bold')
+       .text(invoice.customer_name, col.left, detailsY + 14);
+    if (invoice.customer_email) {
+      doc.fillColor(MEDIUM).fontSize(9).font('Helvetica')
+         .text(invoice.customer_email, col.left, doc.y + 2);
+    }
+    if (invoice.customer_billing_address) {
+      doc.fillColor(MEDIUM).fontSize(9).font('Helvetica')
+         .text(invoice.customer_billing_address, col.left, doc.y + 2, { width: 200 });
+    }
+
+    // Right: receipt meta
+    const metaX = col.mid + 20;
+    const metaLabelW = 100;
+    const metaValueX = metaX + metaLabelW + 5;
+
+    const metaRows = [
+      ['Invoice No:',   invoice.document_number],
+      ['Issue Date:',   formatDate(invoice.issue_date)],
+      ['Receipt Date:', formatDate(new Date())],
+    ];
+
+    let metaY = detailsY;
+    for (const [label, value] of metaRows) {
+      doc.fillColor(MEDIUM).fontSize(9).font('Helvetica-Bold').text(label, metaX, metaY, { width: metaLabelW });
+      doc.fillColor(DARK).fontSize(9).font('Helvetica').text(value, metaValueX, metaY);
+      metaY += 16;
+    }
+
+    doc.y = Math.max(doc.y, metaY) + 20;
+
+    // ── PAID STAMP ────────────────────────────────────────────────────────────
+    // Draw a big green "PAID" watermark in the center of the page
+    doc.save();
+    doc.translate(doc.page.width / 2, doc.page.height / 2);
+    doc.rotate(-45);
+    doc.fillColor(SUCCESS).opacity(0.08).fontSize(120).font('Helvetica-Bold')
+       .text('PAID', -120, -60);
+    doc.restore();
+    doc.opacity(1);
+
+    // ── LINE ITEMS TABLE ──────────────────────────────────────────────────────
+    const tableTop = doc.y;
+    const PAD = 4;
+    const cols = {
+      desc:  { x: col.left,       w: 200 },
+      qty:   { x: col.left + 200, w: 50  },
+      price: { x: col.left + 250, w: 85  },
+      vat:   { x: col.left + 335, w: 55  },
+      total: { x: col.left + 390, w: 105 }
+    };
+
+    doc.rect(col.left, tableTop, pageWidth, 22).fill(DARK);
+    doc.fillColor('#ffffff').fontSize(9).font('Helvetica-Bold');
+    doc.text('DESCRIPTION', cols.desc.x  + PAD, tableTop + 7, { width: cols.desc.w - PAD * 2 });
+    doc.text('QTY',         cols.qty.x   + PAD, tableTop + 7, { width: cols.qty.w - PAD * 2,   align: 'right' });
+    doc.text('UNIT PRICE',  cols.price.x + PAD, tableTop + 7, { width: cols.price.w - PAD * 2, align: 'right' });
+    doc.text('VAT %',       cols.vat.x   + PAD, tableTop + 7, { width: cols.vat.w - PAD * 2,   align: 'right' });
+    doc.text('TOTAL',       cols.total.x + PAD, tableTop + 7, { width: cols.total.w - PAD * 2, align: 'right' });
+
+    let rowY = tableTop + 22;
+
+    for (let i = 0; i < items.length; i++) {
+      const item = items[i];
+      const bg = i % 2 === 0 ? '#ffffff' : LIGHT_BG;
+      doc.rect(col.left, rowY, pageWidth, 20).fill(bg);
+      doc.fillColor(DARK).fontSize(9).font('Helvetica');
+      doc.text(item.description,                  cols.desc.x  + PAD, rowY + 6, { width: cols.desc.w - PAD * 2 });
+      doc.font('Courier');
+      doc.text(String(parseFloat(item.quantity)), cols.qty.x   + PAD, rowY + 6, { width: cols.qty.w - PAD * 2,   align: 'right' });
+      doc.text(fmt(item.unit_price),              cols.price.x + PAD, rowY + 6, { width: cols.price.w - PAD * 2, align: 'right' });
+      doc.text(`${parseFloat(item.vat_rate)}%`,   cols.vat.x   + PAD, rowY + 6, { width: cols.vat.w - PAD * 2,   align: 'right' });
+      doc.text(fmt(item.total),                   cols.total.x + PAD, rowY + 6, { width: cols.total.w - PAD * 2, align: 'right' });
+      doc.font('Helvetica');
+      rowY += 20;
+    }
+
+    doc.rect(col.left, tableTop, pageWidth, rowY - tableTop).stroke(DIVIDER);
+    rowY += 12;
+
+    // ── TOTALS ────────────────────────────────────────────────────────────────
+    const totalsLabelX = col.right - 200;
+    const totalsValueX = col.right - 100;
+    const totalsW      = 95;
+
+    const totalsRows = [
+      ['Subtotal', fmt(invoice.subtotal),   DARK,  false],
+      ['VAT',      fmt(invoice.vat_amount), DARK,  false],
+      ['TOTAL',    fmt(invoice.total),      DARK,  true ],
+    ];
+
+    for (const [label, value, color, bold] of totalsRows) {
+      if (bold) {
+        const bannerX = totalsLabelX - 8;
+        doc.rect(bannerX, rowY - 2, col.right - bannerX, 22).fill(SUCCESS);
+        doc.fillColor('#ffffff').fontSize(11).font('Helvetica-Bold')
+           .text(label, totalsLabelX, rowY + 3, { width: 90 });
+        doc.font('Courier-Bold')
+           .text(value, totalsValueX, rowY + 3, { width: totalsW, align: 'right' });
+        rowY += 24;
+      } else {
+        doc.fillColor(MEDIUM).fontSize(9).font('Helvetica')
+           .text(label, totalsLabelX, rowY, { width: 90 });
+        doc.fillColor(color).font('Courier')
+           .text(value, totalsValueX, rowY, { width: totalsW, align: 'right' });
+        rowY += 18;
+      }
+    }
+
+    rowY += 16;
+
+    // ── PAYMENT DETAILS ───────────────────────────────────────────────────────
+    // This section only exists on receipts — shows HOW the invoice was paid
+    if (payments && payments.length > 0) {
+      doc.rect(col.left, rowY, pageWidth, 16).fill(SUCCESS);
+      doc.fillColor('#ffffff').fontSize(8).font('Helvetica-Bold')
+         .text('PAYMENT DETAILS', col.left + 4, rowY + 4);
+      rowY += 20;
+
+      for (const payment of payments) {
+        const paymentMethod = payment.payment_method.replace(/_/g, ' ');
+        const fields = [
+          `Date: ${formatDate(payment.payment_date)}`,
+          `Method: ${paymentMethod}`,
+          `Amount: ${fmt(payment.amount)}`,
+          payment.transaction_reference ? `Ref: ${payment.transaction_reference}` : null,
+        ].filter(Boolean).join('   ·   ');
+
+        doc.fillColor(DARK).fontSize(9).font('Helvetica')
+           .text(fields, col.left, rowY, { width: pageWidth });
+        rowY = doc.y + 8;
+      }
+    }
+
+    // ── FOOTER ────────────────────────────────────────────────────────────────
+    const pageHeight = doc.page.height;
+    doc.rect(0, pageHeight - 36, doc.page.width, 36).fill(DARK);
+    doc.fillColor('#aaaacc').fontSize(8).font('Helvetica')
+       .text(
+         `Generated by FreeVoices  ·  ${user.company_name || ''}  ·  ${user.email || ''}`,
+         0, pageHeight - 23,
+         { width: doc.page.width, align: 'center' }
+       );
+
+    doc.end();
+  });
+}
+
+module.exports = { buildInvoicePdf, buildReceiptPdf };

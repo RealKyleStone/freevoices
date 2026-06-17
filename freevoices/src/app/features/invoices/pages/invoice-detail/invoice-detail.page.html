@@ -104,20 +104,32 @@
     <ion-card>
       <ion-card-content>
         <div class="actions">
+
+          <!-- Always visible: download the invoice PDF -->
           <ion-button expand="block" fill="outline" color="medium" (click)="confirmDownload()" [disabled]="isDownloading">
             <ion-spinner *ngIf="isDownloading" slot="start" name="crescent"></ion-spinner>
             <ion-icon *ngIf="!isDownloading" slot="start" name="download-outline"></ion-icon>
             {{ isDownloading ? 'Generating...' : 'Download PDF' }}
           </ion-button>
+
+          <!-- Only shown when invoice is PAID — downloads the receipt PDF -->
+          <ion-button *ngIf="invoice.status === 'PAID'" expand="block" fill="outline" color="success" (click)="downloadReceipt()" [disabled]="isDownloadingReceipt">
+            <ion-spinner *ngIf="isDownloadingReceipt" slot="start" name="crescent"></ion-spinner>
+            <ion-icon *ngIf="!isDownloadingReceipt" slot="start" name="checkmark-circle-outline"></ion-icon>
+            {{ isDownloadingReceipt ? 'Generating...' : 'Download Receipt' }}
+          </ion-button>
+
           <ion-button *ngIf="canSend" expand="block" fill="outline" (click)="confirmSend()" [disabled]="isSending">
             <ion-spinner *ngIf="isSending" slot="start" name="crescent"></ion-spinner>
             <ion-icon *ngIf="!isSending" slot="start" name="send-outline"></ion-icon>
             {{ isSending ? 'Sending...' : 'Email to Customer' }}
           </ion-button>
+
           <ion-button *ngIf="canMarkPaid" expand="block" fill="outline" color="success" (click)="togglePaymentForm()">
             <ion-icon slot="start" name="cash-outline"></ion-icon>
             {{ showPaymentForm ? 'Cancel' : 'Record Payment' }}
           </ion-button>
+
           <ion-button expand="block" fill="outline" color="tertiary" (click)="generateShareLink()" [disabled]="isSharing">
             <ion-spinner *ngIf="isSharing" slot="start" name="crescent"></ion-spinner>
             <ion-icon *ngIf="!isSharing" slot="start" name="share-social-outline"></ion-icon>

@@ -28,6 +28,7 @@ export class InvoiceDetailPage implements OnInit {
   isSubmittingPayment = false;
   isSending = false;
   isDownloading = false;
+  isDownloadingReceipt = false; // NEW: tracks loading state for receipt button
   isSharing = false;
   shareLink: string | null = null;
 
@@ -148,12 +149,38 @@ export class InvoiceDetailPage implements OnInit {
       a.download = `${this.invoice?.document_number || 'invoice'}.pdf`;
       a.click();
       URL.revokeObjectURL(blobUrl);
-      if (markSent) this.loadInvoice(); // Refresh to show updated status
+      if (markSent) this.loadInvoice();
     } catch {
       const toast = await this.toastCtrl.create({ message: 'Failed to download PDF', duration: 3000, color: 'danger', position: 'bottom' });
       await toast.present();
     } finally {
       this.isDownloading = false;
+    }
+  }
+
+  // NEW: Downloads a receipt PDF — only available when invoice status is PAID
+  // Works exactly like downloadPdf() but calls the /receipt endpoint instead
+  async downloadReceipt() {
+    this.isDownloadingReceipt = true;
+    const token = localStorage.getItem('token');
+    try {
+      const url = `${environment.apiUrl}/invoices/${this.invoiceId}/receipt`;
+      const response = await fetch(url, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      if (!response.ok) throw new Error('Failed to generate receipt');
+      const blob = await response.blob();
+      const blobUrl = URL.createObjectURL(blob);
+      const a    = document.createElement('a');
+      a.href     = blobUrl;
+      a.download = `RECEIPT-${this.invoice?.document_number || 'receipt'}.pdf`;
+      a.click();
+      URL.revokeObjectURL(blobUrl);
+    } catch {
+      const toast = await this.toastCtrl.create({ message: 'Failed to download receipt', duration: 3000, color: 'danger', position: 'bottom' });
+      await toast.present();
+    } finally {
+      this.isDownloadingReceipt = false;
     }
   }
 
