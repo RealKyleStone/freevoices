@@ -99,16 +99,26 @@
     <ion-card>
       <ion-card-content>
         <div class="actions">
+
+          <!-- Download the quote as a PDF — always visible -->
+          <ion-button expand="block" fill="outline" color="medium" (click)="downloadPdf()" [disabled]="isDownloading">
+            <ion-spinner *ngIf="isDownloading" slot="start" name="crescent"></ion-spinner>
+            <ion-icon *ngIf="!isDownloading" slot="start" name="download-outline"></ion-icon>
+            {{ isDownloading ? 'Generating...' : 'Download Quote' }}
+          </ion-button>
+
           <ion-button *ngIf="canSend" expand="block" fill="outline" (click)="confirmSend()">
             <ion-icon slot="start" name="send-outline"></ion-icon>
             Mark as Sent
           </ion-button>
+
           <ion-button *ngIf="canConvert" expand="block" fill="outline" color="success"
                       (click)="confirmConvert()" [disabled]="isConverting">
             <ion-spinner *ngIf="isConverting" slot="start" name="crescent"></ion-spinner>
             <ion-icon *ngIf="!isConverting" slot="start" name="document-text-outline"></ion-icon>
             Convert to Invoice
           </ion-button>
+
         </div>
       </ion-card-content>
     </ion-card>

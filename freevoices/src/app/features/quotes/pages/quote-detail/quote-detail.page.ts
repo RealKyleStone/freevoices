@@ -2,7 +2,13 @@ import { Component, OnInit } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { RouterModule, ActivatedRoute, Router } from '@angular/router';
 import { IonicModule, AlertController, ToastController } from '@ionic/angular';
+import { addIcons } from 'ionicons';
+import {
+  createOutline, calendarOutline, timerOutline, timeOutline,
+  sendOutline, documentTextOutline, downloadOutline
+} from 'ionicons/icons';
 import { QuoteService, QuoteDetail } from '../../services/quote.service';
+import { environment } from '../../../../../environments/environment';
 
 @Component({
   selector: 'app-quote-detail',
@@ -15,6 +21,7 @@ export class QuoteDetailPage implements OnInit {
   quote?: QuoteDetail;
   isLoading = true;
   isConverting = false;
+  isDownloading = false; // NEW: tracks loading state for download button
   quoteId!: number;
 
   constructor(
@@ -23,7 +30,12 @@ export class QuoteDetailPage implements OnInit {
     private quoteService: QuoteService,
     private alertCtrl: AlertController,
     private toastCtrl: ToastController
-  ) {}
+  ) {
+    addIcons({
+      createOutline, calendarOutline, timerOutline, timeOutline,
+      sendOutline, documentTextOutline, downloadOutline
+    });
+  }
 
   ngOnInit() {
     this.quoteId = Number(this.route.snapshot.paramMap.get('id'));
@@ -45,7 +57,7 @@ export class QuoteDetailPage implements OnInit {
 
   getStatusColor(status: string): string {
     const map: Record<string, string> = {
-      DRAFT: 'medium', SENT: 'primary', PAID: 'success', OVERDUE: 'warning', CANCELLED: 'danger'
+      DRAFT: 'medium', SENT: 'primary', ACCEPTED: 'success', EXPIRED: 'warning', CANCELLED: 'danger'
     };
     return map[status] ?? 'medium';
   }
@@ -78,6 +90,33 @@ export class QuoteDetailPage implements OnInit {
         await toast.present();
       }
     });
+  }
+
+  // NEW: Downloads the quote as a PDF
+  // Works the same way as downloadPdf() on the invoice detail page
+  // It calls the backend endpoint /api/quotes/:id/pdf and triggers a file download in the browser
+  async downloadPdf() {
+    this.isDownloading = true;
+    const token = localStorage.getItem('token');
+    try {
+      const url = `${environment.apiUrl}/quotes/${this.quoteId}/pdf`;
+      const response = await fetch(url, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      if (!response.ok) throw new Error('Failed to generate PDF');
+      const blob = await response.blob();
+      const blobUrl = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = blobUrl;
+      a.download = `${this.quote?.document_number || 'quote'}.pdf`;
+      a.click();
+      URL.revokeObjectURL(blobUrl);
+    } catch {
+      const toast = await this.toastCtrl.create({ message: 'Failed to download quote', duration: 3000, color: 'danger', position: 'bottom' });
+      await toast.present();
+    } finally {
+      this.isDownloading = false;
+    }
   }
 
   async confirmConvert() {

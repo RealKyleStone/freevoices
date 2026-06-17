@@ -3,7 +3,7 @@ const axios = require('axios');
 const cron = require('node-cron');
 
 const EmailService = require('./src/services/email.service');
-const { buildInvoicePdf, buildReceiptPdf } = require('./src/services/pdf.service');
+const { buildInvoicePdf, buildReceiptPdf, buildQuotePdf } = require('./src/services/pdf.service');
 const express = require('express');
 const path = require('path');
 const fs = require('fs');
@@ -1221,6 +1221,49 @@ app.post('/api/invoices/:id/share', authenticateToken, async (req, res) => {
   }
 });
 
+// GET /api/quotes/:id/pdf — generate a PDF for a quote
+app.get('/api/quotes/:id/pdf', authenticateToken, async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    const [quotes, items, users, logoRows] = await Promise.all([
+      executeQuery(
+        `SELECT d.*, c.name AS customer_name, c.email AS customer_email,
+                c.billing_address AS customer_billing_address,
+                c.vat_number AS customer_vat_number,
+                cur.symbol AS currency_symbol, cur.code AS currency_code
+         FROM documents d
+         JOIN customers c ON c.id = d.customer_id
+         LEFT JOIN currencies cur ON cur.id = d.currency_id
+         WHERE d.id = ? AND d.user_id = ? AND d.type = 'QUOTE'`,
+        [id, req.user.id]
+      ),
+      executeQuery('SELECT * FROM document_items WHERE document_id = ? ORDER BY id ASC', [id]),
+      executeQuery('SELECT * FROM users WHERE id = ?', [req.user.id]),
+      executeQuery("SELECT setting_value FROM settings WHERE user_id = ? AND setting_key = 'company_logo'", [req.user.id])
+    ]);
+
+    if (quotes.length === 0) return res.status(404).json({ message: 'Quote not found' });
+
+    const logoRelPath = logoRows[0]?.setting_value || null;
+    const user = { ...users[0], logo_path: logoRelPath ? path.join(__dirname, logoRelPath) : null };
+    const pdfBuffer = await buildQuotePdf(quotes[0], items, user);
+
+    await executeQuery(
+      `INSERT INTO document_tracking (document_id, event_type) VALUES (?, 'DOWNLOADED')`, [id]
+    );
+
+    res.set({
+      'Content-Type':        'application/pdf',
+      'Content-Disposition': `attachment; filename="${quotes[0].document_number}.pdf"`,
+      'Content-Length':      pdfBuffer.length
+    });
+    res.send(pdfBuffer);
+  } catch (error) {
+    logger.error('Error generating quote PDF:', error);
+    res.status(500).json({ message: 'Failed to generate quote PDF' });
+  }
+});
 // ─────────────────────────────────────────────────────────────────────────────
 // Quotes
 
