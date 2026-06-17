@@ -496,7 +496,7 @@ app.post('/api/auth/reset-password', async (req, res) => {
 app.get('/api/banks', async (req, res) => {
   try {
     const activeOnly = req.query.active === 'true';
-    const sql = 'SELECT * FROM banks WHERE 1=1' + (activeOnly ? ' AND is_active = true' : '') + ' ORDER BY name';
+    const sql = 'SELECT * FROM banks WHERE 1=1' + (activeOnly ? ' AND active = true' : '') + ' ORDER BY name';
     const banks = await executeQuery(sql);
     res.json(banks);
   } catch (error) {
@@ -763,7 +763,7 @@ app.post('/api/invoices', authenticateToken, async (req, res) => {
     const document_number = await getNextDocumentNumber(req.user.id, 'INVOICE');
     let currency_id = 1;
     if (reqCurrencyId) {
-      const currRows = await executeQuery('SELECT id FROM currencies WHERE id = ? AND is_active = 1', [reqCurrencyId]);
+      const currRows = await executeQuery('SELECT id FROM currencies WHERE id = ? AND active = 1', [reqCurrencyId]);
       if (currRows.length > 0) currency_id = reqCurrencyId;
     } else {
       // Fall back to user's default currency from settings
@@ -984,7 +984,7 @@ app.put('/api/invoices/:id', authenticateToken, async (req, res) => {
 
       let newCurrencyId = existing[0].currency_id;
       if (reqCurrencyId) {
-        const currRows = await executeQuery('SELECT id FROM currencies WHERE id = ? AND is_active = 1', [reqCurrencyId]);
+        const currRows = await executeQuery('SELECT id FROM currencies WHERE id = ? AND active = 1', [reqCurrencyId]);
         if (currRows.length > 0) newCurrencyId = reqCurrencyId;
       }
 
@@ -1350,7 +1350,7 @@ app.post('/api/quotes', authenticateToken, async (req, res) => {
     const document_number = await getNextDocumentNumber(req.user.id, 'QUOTE');
     let currency_id = 1;
     if (reqCurrencyId) {
-      const currRows = await executeQuery('SELECT id FROM currencies WHERE id = ? AND is_active = 1', [reqCurrencyId]);
+      const currRows = await executeQuery('SELECT id FROM currencies WHERE id = ? AND active = 1', [reqCurrencyId]);
       if (currRows.length > 0) currency_id = reqCurrencyId;
     } else {
       const defRows = await executeQuery(
@@ -1501,7 +1501,7 @@ app.put('/api/quotes/:id', authenticateToken, async (req, res) => {
 
       let newCurrencyId = existing[0].currency_id;
       if (reqCurrencyId) {
-        const currRows = await executeQuery('SELECT id FROM currencies WHERE id = ? AND is_active = 1', [reqCurrencyId]);
+        const currRows = await executeQuery('SELECT id FROM currencies WHERE id = ? AND active = 1', [reqCurrencyId]);
         if (currRows.length > 0) newCurrencyId = reqCurrencyId;
       }
 
@@ -1679,7 +1679,7 @@ app.post('/api/quotes/:id/convert-to-invoice', authenticateToken, async (req, re
 
 app.get('/api/currencies', authenticateToken, async (req, res) => {
   try {
-    const currencies = await executeQuery('SELECT * FROM currencies WHERE is_active = 1 ORDER BY code ASC');
+    const currencies = await executeQuery('SELECT * FROM currencies WHERE active = 1 ORDER BY code ASC');
     res.json(currencies);
   } catch (error) {
     logger.error('Error fetching currencies:', error);
@@ -1697,8 +1697,8 @@ app.get('/api/products', authenticateToken, async (req, res) => {
     const limit  = Math.min(100, parseInt(req.query.limit) || 20);
     const offset = (page - 1) * limit;
 
-    let sql    = 'SELECT * FROM products WHERE user_id = ? AND is_active = 1';
-    let cntSql = 'SELECT COUNT(*) AS total FROM products WHERE user_id = ? AND is_active = 1';
+    let sql    = 'SELECT * FROM products WHERE user_id = ? AND active = 1';
+    let cntSql = 'SELECT COUNT(*) AS total FROM products WHERE user_id = ? AND active = 1';
     const params    = [req.user.id];
     const cntParams = [req.user.id];
 
@@ -1750,7 +1750,7 @@ app.get('/api/products/:id', authenticateToken, async (req, res) => {
   try {
     const { id } = req.params;
     const product = await executeQuery(
-      'SELECT * FROM products WHERE id = ? AND user_id = ? AND is_active = 1',
+      'SELECT * FROM products WHERE id = ? AND user_id = ? AND active = 1',
       [id, req.user.id]
     );
     if (product.length === 0) {
@@ -1773,7 +1773,7 @@ app.put('/api/products/:id', authenticateToken, async (req, res) => {
     }
 
     const existing = await executeQuery(
-      'SELECT id FROM products WHERE id = ? AND user_id = ? AND is_active = 1',
+      'SELECT id FROM products WHERE id = ? AND user_id = ? AND active = 1',
       [id, req.user.id]
     );
     if (existing.length === 0) {
@@ -1797,7 +1797,7 @@ app.delete('/api/products/:id', authenticateToken, async (req, res) => {
   try {
     const { id } = req.params;
     const existing = await executeQuery(
-      'SELECT id FROM products WHERE id = ? AND user_id = ? AND is_active = 1',
+      'SELECT id FROM products WHERE id = ? AND user_id = ? AND active = 1',
       [id, req.user.id]
     );
     if (existing.length === 0) {
@@ -1805,7 +1805,7 @@ app.delete('/api/products/:id', authenticateToken, async (req, res) => {
     }
 
     await executeQuery(
-      'UPDATE products SET is_active = 0, updated_at = NOW() WHERE id = ? AND user_id = ?',
+      'UPDATE products SET active = 0, updated_at = NOW() WHERE id = ? AND user_id = ?',
       [id, req.user.id]
     );
     res.json({ message: 'Product deleted successfully' });
@@ -1834,7 +1834,7 @@ app.get('/api/dashboard/summary', authenticateToken, async (req, res) => {
       ),
       // Total active customers
       executeQuery(
-        `SELECT COUNT(*) AS total FROM customers WHERE user_id = ? AND is_active = 1`,
+        `SELECT COUNT(*) AS total FROM customers WHERE user_id = ? AND active = 1`,
         [userId]
       ),
       // Open (sent but not yet paid) invoices
@@ -1849,7 +1849,7 @@ app.get('/api/dashboard/summary', authenticateToken, async (req, res) => {
       ),
       // Recent tracking activity (last 5 events across all documents)
       executeQuery(
-        `SELECT dt.event_type, dt.event_date, d.document_number, d.type AS document_type, c.company_name AS customer_name
+        `SELECT dt.event_type, dt.event_date, d.document_number, d.type AS document_type, c.name AS customer_name
          FROM document_tracking dt
          JOIN documents d ON dt.document_id = d.id
          JOIN customers c ON d.customer_id = c.id
