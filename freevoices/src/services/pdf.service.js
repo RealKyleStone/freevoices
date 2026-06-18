@@ -506,12 +506,14 @@ function buildReceiptPdf(invoice, items, user, payments) {
     doc.y = Math.max(doc.y, metaY) + 20;
 
     // ── PAID STAMP ────────────────────────────────────────────────────────────
+    const stampY = doc.y;
     doc.save();
     doc.translate(doc.page.width / 2, doc.page.height / 2);
     doc.rotate(-45);
     doc.fillColor(SUCCESS).opacity(0.08).fontSize(120).font('Helvetica-Bold').text('PAID', -120, -60);
     doc.restore();
     doc.opacity(1);
+    doc.y = stampY;
 
     // ── LINE ITEMS TABLE ──────────────────────────────────────────────────────
     const tableTop = doc.y;
