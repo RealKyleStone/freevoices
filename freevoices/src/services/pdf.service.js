@@ -131,7 +131,10 @@ function buildInvoicePdf(invoice, items, user) {
     for (let i = 0; i < items.length; i++) {
       const item = items[i];
       const bg = i % 2 === 0 ? '#ffffff' : LIGHT_BG;
-      doc.rect(col.left, rowY, pageWidth, 20).fill(bg);
+      doc.fontSize(9).font('Helvetica');
+      const descHeight = doc.heightOfString(item.description, { width: cols.desc.w - PAD * 2 });
+      const rowH = Math.max(20, descHeight + 12);
+      doc.rect(col.left, rowY, pageWidth, rowH).fill(bg);
       doc.fillColor(DARK).fontSize(9).font('Helvetica');
       doc.text(item.description,                  cols.desc.x  + PAD, rowY + 6, { width: cols.desc.w - PAD * 2 });
       doc.font('Courier');
@@ -140,7 +143,7 @@ function buildInvoicePdf(invoice, items, user) {
       doc.text(`${parseFloat(item.vat_rate)}%`,   cols.vat.x   + PAD, rowY + 6, { width: cols.vat.w - PAD * 2,   align: 'right' });
       doc.text(fmt(item.total),                   cols.total.x + PAD, rowY + 6, { width: cols.total.w - PAD * 2, align: 'right' });
       doc.font('Helvetica');
-      rowY += 20;
+      rowY += rowH;
     }
 
     doc.rect(col.left, tableTop, pageWidth, rowY - tableTop).stroke(DIVIDER);
@@ -341,7 +344,10 @@ function buildQuotePdf(quote, items, user) {
     for (let i = 0; i < items.length; i++) {
       const item = items[i];
       const bg = i % 2 === 0 ? '#ffffff' : LIGHT_BG;
-      doc.rect(col.left, rowY, pageWidth, 20).fill(bg);
+      doc.fontSize(9).font('Helvetica');
+      const descHeight = doc.heightOfString(item.description, { width: cols.desc.w - PAD * 2 });
+      const rowH = Math.max(20, descHeight + 12);
+      doc.rect(col.left, rowY, pageWidth, rowH).fill(bg);
       doc.fillColor(DARK).fontSize(9).font('Helvetica');
       doc.text(item.description,                  cols.desc.x  + PAD, rowY + 6, { width: cols.desc.w - PAD * 2 });
       doc.font('Courier');
@@ -350,7 +356,7 @@ function buildQuotePdf(quote, items, user) {
       doc.text(`${parseFloat(item.vat_rate)}%`,   cols.vat.x   + PAD, rowY + 6, { width: cols.vat.w - PAD * 2,   align: 'right' });
       doc.text(fmt(item.total),                   cols.total.x + PAD, rowY + 6, { width: cols.total.w - PAD * 2, align: 'right' });
       doc.font('Helvetica');
-      rowY += 20;
+      rowY += rowH;
     }
 
     doc.rect(col.left, tableTop, pageWidth, rowY - tableTop).stroke(DIVIDER);
@@ -539,7 +545,10 @@ function buildReceiptPdf(invoice, items, user, payments) {
     for (let i = 0; i < items.length; i++) {
       const item = items[i];
       const bg = i % 2 === 0 ? '#ffffff' : LIGHT_BG;
-      doc.rect(col.left, rowY, pageWidth, 20).fill(bg);
+      doc.fontSize(9).font('Helvetica');
+      const descHeight = doc.heightOfString(item.description, { width: cols.desc.w - PAD * 2 });
+      const rowH = Math.max(20, descHeight + 12);
+      doc.rect(col.left, rowY, pageWidth, rowH).fill(bg);
       doc.fillColor(DARK).fontSize(9).font('Helvetica');
       doc.text(item.description,                  cols.desc.x  + PAD, rowY + 6, { width: cols.desc.w - PAD * 2 });
       doc.font('Courier');
@@ -548,7 +557,7 @@ function buildReceiptPdf(invoice, items, user, payments) {
       doc.text(`${parseFloat(item.vat_rate)}%`,   cols.vat.x   + PAD, rowY + 6, { width: cols.vat.w - PAD * 2,   align: 'right' });
       doc.text(fmt(item.total),                   cols.total.x + PAD, rowY + 6, { width: cols.total.w - PAD * 2, align: 'right' });
       doc.font('Helvetica');
-      rowY += 20;
+      rowY += rowH;
     }
 
     doc.rect(col.left, tableTop, pageWidth, rowY - tableTop).stroke(DIVIDER);
