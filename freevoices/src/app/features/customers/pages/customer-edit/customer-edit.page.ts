@@ -67,9 +67,36 @@ export class CustomerEditPage implements OnInit {
     return !!ctrl && ctrl.invalid && (ctrl.dirty || ctrl.touched || this.submitted);
   }
 
+  getError(field: string): string {
+    const ctrl = this.form.get(field);
+    if (!ctrl || !ctrl.errors) return '';
+    if (ctrl.errors['required'])  return `${this.fieldLabel(field)} is required`;
+    if (ctrl.errors['email'])     return 'Please enter a valid email address';
+    if (ctrl.errors['minlength']) return `${this.fieldLabel(field)} is too short`;
+    return 'Invalid value';
+  }
+
+  private fieldLabel(field: string): string {
+    const labels: Record<string, string> = {
+      name: 'Name', email: 'Email', billing_address: 'Billing address',
+      phone: 'Phone', payment_terms: 'Payment terms'
+    };
+    return labels[field] || field;
+  }
+
   async onSubmit() {
     this.submitted = true;
-    if (this.form.invalid) { this.form.markAllAsTouched(); return; }
+    this.form.markAllAsTouched();
+
+    if (this.form.invalid) {
+      const firstInvalidField = Object.keys(this.form.controls)
+        .find(key => this.form.controls[key].invalid);
+      const message = firstInvalidField
+        ? this.getError(firstInvalidField)
+        : 'Please fill in all required fields correctly';
+      await this.showToast(message, 'danger');
+      return;
+    }
 
     this.isLoading = true;
     this.customerService.updateCustomer(this.customerId, this.form.value).subscribe({

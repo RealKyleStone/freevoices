@@ -3,7 +3,7 @@ const axios = require('axios');
 const cron = require('node-cron');
 
 const EmailService = require('./src/services/email.service');
-const { buildInvoicePdf, buildReceiptPdf, buildQuotePdf } = require('./src/services/pdf.service');
+const { buildInvoicePdf } = require('./src/services/pdf.service');
 const express = require('express');
 const path = require('path');
 const fs = require('fs');
@@ -44,7 +44,7 @@ const app = express();
 // Middleware
 app.use(cors());
 app.use(bodyParser.json());
-app.use(express.static(path.join(__dirname, 'www')));
+app.use(express.static(path.join(__dirname, 'dist/www')));
 
 const emailService = new EmailService({
   SMTP_HOST: process.env.SMTP_HOST,
@@ -306,7 +306,14 @@ process.on('SIGINT', () => {
 });
 
 // Registration endpoint
-app.post('/api/auth/register', async (req, res) => {
+app.post('/api/auth/register', validate([
+  body('email').isEmail().normalizeEmail().withMessage('A valid email address is required'),
+  body('password').isLength({ min: 8 }).withMessage('Password must be at least 8 characters'),
+  body('company_name').trim().notEmpty().withMessage('Company name is required'),
+  body('contact_person').trim().notEmpty().withMessage('Contact person is required'),
+  body('phone').trim().notEmpty().withMessage('Phone number is required'),
+  body('address').trim().notEmpty().withMessage('Address is required'),
+]), async (req, res) => {
   try {
     const {
       email,
@@ -458,7 +465,10 @@ app.post('/api/auth/forgot-password', async (req, res) => {
 });
 
 // Reset password — validate token and update password
-app.post('/api/auth/reset-password', async (req, res) => {
+app.post('/api/auth/reset-password', validate([
+  body('token').trim().notEmpty().withMessage('Reset token is required'),
+  body('password').isLength({ min: 8 }).withMessage('Password must be at least 8 characters'),
+]), async (req, res) => {
   try {
     const { token, password } = req.body;
     if (!token || !password) {
@@ -496,7 +506,7 @@ app.post('/api/auth/reset-password', async (req, res) => {
 app.get('/api/banks', async (req, res) => {
   try {
     const activeOnly = req.query.active === 'true';
-    const sql = 'SELECT * FROM banks WHERE 1=1' + (activeOnly ? ' AND active = true' : '') + ' ORDER BY name';
+    const sql = 'SELECT * FROM banks WHERE 1=1' + (activeOnly ? ' AND is_active = true' : '') + ' ORDER BY name';
     const banks = await executeQuery(sql);
     res.json(banks);
   } catch (error) {
@@ -544,7 +554,14 @@ app.get('/api/customers', authenticateToken, async (req, res) => {
 });
 
 // POST /api/customers — create
-app.post('/api/customers', authenticateToken, async (req, res) => {
+app.post('/api/customers', authenticateToken, validate([
+  body('name').trim().notEmpty().withMessage('Name is required'),
+  body('email').isEmail().normalizeEmail().withMessage('A valid email address is required'),
+  body('billing_address').trim().notEmpty().withMessage('Billing address is required'),
+  body('phone').optional().trim(),
+  body('vat_number').optional().trim(),
+  body('payment_terms').optional().isInt({ min: 0 }).withMessage('Payment terms must be a positive number'),
+]), async (req, res) => {
   try {
     const { name, email, phone, vat_number, billing_address, shipping_address, payment_terms, notes } = req.body;
 
@@ -593,7 +610,14 @@ app.get('/api/customers/:id', authenticateToken, async (req, res) => {
 });
 
 // PUT /api/customers/:id — update
-app.put('/api/customers/:id', authenticateToken, async (req, res) => {
+app.put('/api/customers/:id', authenticateToken, validate([
+  body('name').trim().notEmpty().withMessage('Name is required'),
+  body('email').isEmail().normalizeEmail().withMessage('A valid email address is required'),
+  body('billing_address').trim().notEmpty().withMessage('Billing address is required'),
+  body('phone').optional().trim(),
+  body('vat_number').optional().trim(),
+  body('payment_terms').optional().isInt({ min: 0 }).withMessage('Payment terms must be a positive number'),
+]), async (req, res) => {
   try {
     const { id } = req.params;
     const { name, email, phone, vat_number, billing_address, shipping_address, payment_terms, notes } = req.body;
@@ -727,7 +751,17 @@ app.get('/api/invoices', authenticateToken, async (req, res) => {
   }
 });
 
-app.post('/api/invoices', authenticateToken, async (req, res) => {
+app.post('/api/invoices', authenticateToken, validate([
+  body('customer_id').isInt({ min: 1 }).withMessage('A valid customer is required'),
+  body('issue_date').isDate().withMessage('A valid issue date is required'),
+  body('due_date').optional({ nullable: true }).isDate().withMessage('Due date must be a valid date'),
+  body('payment_terms').optional({ nullable: true }).isInt({ min: 0 }).withMessage('Payment terms must be a positive number'),
+  body('items').isArray({ min: 1 }).withMessage('At least one line item is required'),
+  body('items.*.description').trim().notEmpty().withMessage('Each item must have a description'),
+  body('items.*.quantity').isFloat({ min: 0.01 }).withMessage('Quantity must be greater than 0'),
+  body('items.*.unit_price').isFloat({ min: 0 }).withMessage('Unit price must be a positive number'),
+  body('items.*.vat_rate').isFloat({ min: 0, max: 100 }).withMessage('VAT rate must be between 0 and 100'),
+]), async (req, res) => {
   try {
     const {
       customer_id, issue_date, due_date, payment_terms, notes, terms_conditions, items,
@@ -763,7 +797,7 @@ app.post('/api/invoices', authenticateToken, async (req, res) => {
     const document_number = await getNextDocumentNumber(req.user.id, 'INVOICE');
     let currency_id = 1;
     if (reqCurrencyId) {
-      const currRows = await executeQuery('SELECT id FROM currencies WHERE id = ? AND active = 1', [reqCurrencyId]);
+      const currRows = await executeQuery('SELECT id FROM currencies WHERE id = ? AND is_active = 1', [reqCurrencyId]);
       if (currRows.length > 0) currency_id = reqCurrencyId;
     } else {
       // Fall back to user's default currency from settings
@@ -932,7 +966,17 @@ app.get('/api/invoices/:id/pdf', authenticateToken, async (req, res) => {
   }
 });
 
-app.put('/api/invoices/:id', authenticateToken, async (req, res) => {
+app.put('/api/invoices/:id', authenticateToken, validate([
+  body('customer_id').isInt({ min: 1 }).withMessage('A valid customer is required'),
+  body('issue_date').isDate().withMessage('A valid issue date is required'),
+  body('due_date').optional({ nullable: true }).isDate().withMessage('Due date must be a valid date'),
+  body('payment_terms').optional({ nullable: true }).isInt({ min: 0 }).withMessage('Payment terms must be a positive number'),
+  body('items').isArray({ min: 1 }).withMessage('At least one line item is required'),
+  body('items.*.description').trim().notEmpty().withMessage('Each item must have a description'),
+  body('items.*.quantity').isFloat({ min: 0.01 }).withMessage('Quantity must be greater than 0'),
+  body('items.*.unit_price').isFloat({ min: 0 }).withMessage('Unit price must be a positive number'),
+  body('items.*.vat_rate').isFloat({ min: 0, max: 100 }).withMessage('VAT rate must be between 0 and 100'),
+]), async (req, res) => {
   try {
     const { id } = req.params;
     const {
@@ -984,7 +1028,7 @@ app.put('/api/invoices/:id', authenticateToken, async (req, res) => {
 
       let newCurrencyId = existing[0].currency_id;
       if (reqCurrencyId) {
-        const currRows = await executeQuery('SELECT id FROM currencies WHERE id = ? AND active = 1', [reqCurrencyId]);
+        const currRows = await executeQuery('SELECT id FROM currencies WHERE id = ? AND is_active = 1', [reqCurrencyId]);
         if (currRows.length > 0) newCurrencyId = reqCurrencyId;
       }
 
@@ -1120,7 +1164,13 @@ app.post('/api/invoices/:id/send', authenticateToken, async (req, res) => {
   }
 });
 
-app.post('/api/invoices/:id/mark-paid', authenticateToken, async (req, res) => {
+app.post('/api/invoices/:id/mark-paid', authenticateToken, validate([
+  body('amount').isFloat({ min: 0.01 }).withMessage('Amount must be greater than 0'),
+  body('payment_date').isDate().withMessage('A valid payment date is required'),
+  body('payment_method').trim().notEmpty().withMessage('Payment method is required'),
+  body('transaction_reference').optional().trim(),
+  body('notes').optional().trim(),
+]), async (req, res) => {
   try {
     const { id } = req.params;
     const { amount, payment_date, payment_method, transaction_reference, notes } = req.body;
@@ -1156,47 +1206,7 @@ app.post('/api/invoices/:id/mark-paid', authenticateToken, async (req, res) => {
     res.status(500).json({ message: 'Failed to record payment' });
   }
 });
-// GET /api/invoices/:id/receipt — generate a PDF receipt for a paid invoice
-app.get('/api/invoices/:id/receipt', authenticateToken, async (req, res) => {
-  try {
-    const { id } = req.params;
 
-    const [invoices, items, users, logoRows, payments] = await Promise.all([
-      executeQuery(
-        `SELECT d.*, c.name AS customer_name, c.email AS customer_email,
-                c.billing_address AS customer_billing_address,
-                c.vat_number AS customer_vat_number,
-                cur.symbol AS currency_symbol, cur.code AS currency_code
-         FROM documents d
-         JOIN customers c ON c.id = d.customer_id
-         LEFT JOIN currencies cur ON cur.id = d.currency_id
-         WHERE d.id = ? AND d.user_id = ? AND d.type = 'INVOICE'`,
-        [id, req.user.id]
-      ),
-      executeQuery('SELECT * FROM document_items WHERE document_id = ? ORDER BY id ASC', [id]),
-      executeQuery('SELECT * FROM users WHERE id = ?', [req.user.id]),
-      executeQuery("SELECT setting_value FROM settings WHERE user_id = ? AND setting_key = 'company_logo'", [req.user.id]),
-      executeQuery('SELECT * FROM payments WHERE document_id = ? ORDER BY payment_date ASC', [id])
-    ]);
-
-    if (invoices.length === 0) return res.status(404).json({ message: 'Invoice not found' });
-    if (invoices[0].status !== 'PAID') return res.status(400).json({ message: 'Receipt is only available for paid invoices' });
-
-    const logoRelPath = logoRows[0]?.setting_value || null;
-    const user = { ...users[0], logo_path: logoRelPath ? path.join(__dirname, logoRelPath) : null };
-    const pdfBuffer = await buildReceiptPdf(invoices[0], items, user, payments);
-
-    res.set({
-      'Content-Type':        'application/pdf',
-      'Content-Disposition': `attachment; filename="RECEIPT-${invoices[0].document_number}.pdf"`,
-      'Content-Length':      pdfBuffer.length
-    });
-    res.send(pdfBuffer);
-  } catch (error) {
-    logger.error('Error generating receipt PDF:', error);
-    res.status(500).json({ message: 'Failed to generate receipt' });
-  }
-});
 // POST /api/invoices/:id/share — generate a signed share link for the invoice
 app.post('/api/invoices/:id/share', authenticateToken, async (req, res) => {
   try {
@@ -1221,49 +1231,6 @@ app.post('/api/invoices/:id/share', authenticateToken, async (req, res) => {
   }
 });
 
-// GET /api/quotes/:id/pdf — generate a PDF for a quote
-app.get('/api/quotes/:id/pdf', authenticateToken, async (req, res) => {
-  try {
-    const { id } = req.params;
-
-    const [quotes, items, users, logoRows] = await Promise.all([
-      executeQuery(
-        `SELECT d.*, c.name AS customer_name, c.email AS customer_email,
-                c.billing_address AS customer_billing_address,
-                c.vat_number AS customer_vat_number,
-                cur.symbol AS currency_symbol, cur.code AS currency_code
-         FROM documents d
-         JOIN customers c ON c.id = d.customer_id
-         LEFT JOIN currencies cur ON cur.id = d.currency_id
-         WHERE d.id = ? AND d.user_id = ? AND d.type = 'QUOTE'`,
-        [id, req.user.id]
-      ),
-      executeQuery('SELECT * FROM document_items WHERE document_id = ? ORDER BY id ASC', [id]),
-      executeQuery('SELECT * FROM users WHERE id = ?', [req.user.id]),
-      executeQuery("SELECT setting_value FROM settings WHERE user_id = ? AND setting_key = 'company_logo'", [req.user.id])
-    ]);
-
-    if (quotes.length === 0) return res.status(404).json({ message: 'Quote not found' });
-
-    const logoRelPath = logoRows[0]?.setting_value || null;
-    const user = { ...users[0], logo_path: logoRelPath ? path.join(__dirname, logoRelPath) : null };
-    const pdfBuffer = await buildQuotePdf(quotes[0], items, user);
-
-    await executeQuery(
-      `INSERT INTO document_tracking (document_id, event_type) VALUES (?, 'DOWNLOADED')`, [id]
-    );
-
-    res.set({
-      'Content-Type':        'application/pdf',
-      'Content-Disposition': `attachment; filename="${quotes[0].document_number}.pdf"`,
-      'Content-Length':      pdfBuffer.length
-    });
-    res.send(pdfBuffer);
-  } catch (error) {
-    logger.error('Error generating quote PDF:', error);
-    res.status(500).json({ message: 'Failed to generate quote PDF' });
-  }
-});
 // ─────────────────────────────────────────────────────────────────────────────
 // Quotes
 
@@ -1318,7 +1285,17 @@ app.get('/api/quotes', authenticateToken, async (req, res) => {
   }
 });
 
-app.post('/api/quotes', authenticateToken, async (req, res) => {
+app.post('/api/quotes', authenticateToken, validate([
+  body('customer_id').isInt({ min: 1 }).withMessage('A valid customer is required'),
+  body('issue_date').isDate().withMessage('A valid issue date is required'),
+  body('valid_until').optional({ nullable: true }).isDate().withMessage('Valid until must be a valid date'),
+  body('payment_terms').optional({ nullable: true }).isInt({ min: 0 }).withMessage('Payment terms must be a positive number'),
+  body('items').isArray({ min: 1 }).withMessage('At least one line item is required'),
+  body('items.*.description').trim().notEmpty().withMessage('Each item must have a description'),
+  body('items.*.quantity').isFloat({ min: 0.01 }).withMessage('Quantity must be greater than 0'),
+  body('items.*.unit_price').isFloat({ min: 0 }).withMessage('Unit price must be a positive number'),
+  body('items.*.vat_rate').isFloat({ min: 0, max: 100 }).withMessage('VAT rate must be between 0 and 100'),
+]), async (req, res) => {
   try {
     const { customer_id, issue_date, valid_until, payment_terms, notes, terms_conditions, items, currency_id: reqCurrencyId } = req.body;
 
@@ -1350,7 +1327,7 @@ app.post('/api/quotes', authenticateToken, async (req, res) => {
     const document_number = await getNextDocumentNumber(req.user.id, 'QUOTE');
     let currency_id = 1;
     if (reqCurrencyId) {
-      const currRows = await executeQuery('SELECT id FROM currencies WHERE id = ? AND active = 1', [reqCurrencyId]);
+      const currRows = await executeQuery('SELECT id FROM currencies WHERE id = ? AND is_active = 1', [reqCurrencyId]);
       if (currRows.length > 0) currency_id = reqCurrencyId;
     } else {
       const defRows = await executeQuery(
@@ -1453,7 +1430,17 @@ app.get('/api/quotes/:id', authenticateToken, async (req, res) => {
   }
 });
 
-app.put('/api/quotes/:id', authenticateToken, async (req, res) => {
+app.put('/api/quotes/:id', authenticateToken, validate([
+  body('customer_id').isInt({ min: 1 }).withMessage('A valid customer is required'),
+  body('issue_date').isDate().withMessage('A valid issue date is required'),
+  body('valid_until').optional({ nullable: true }).isDate().withMessage('Valid until must be a valid date'),
+  body('payment_terms').optional({ nullable: true }).isInt({ min: 0 }).withMessage('Payment terms must be a positive number'),
+  body('items').isArray({ min: 1 }).withMessage('At least one line item is required'),
+  body('items.*.description').trim().notEmpty().withMessage('Each item must have a description'),
+  body('items.*.quantity').isFloat({ min: 0.01 }).withMessage('Quantity must be greater than 0'),
+  body('items.*.unit_price').isFloat({ min: 0 }).withMessage('Unit price must be a positive number'),
+  body('items.*.vat_rate').isFloat({ min: 0, max: 100 }).withMessage('VAT rate must be between 0 and 100'),
+]), async (req, res) => {
   try {
     const { id } = req.params;
     const { customer_id, issue_date, valid_until, payment_terms, notes, terms_conditions, items, currency_id: reqCurrencyId } = req.body;
@@ -1501,7 +1488,7 @@ app.put('/api/quotes/:id', authenticateToken, async (req, res) => {
 
       let newCurrencyId = existing[0].currency_id;
       if (reqCurrencyId) {
-        const currRows = await executeQuery('SELECT id FROM currencies WHERE id = ? AND active = 1', [reqCurrencyId]);
+        const currRows = await executeQuery('SELECT id FROM currencies WHERE id = ? AND is_active = 1', [reqCurrencyId]);
         if (currRows.length > 0) newCurrencyId = reqCurrencyId;
       }
 
@@ -1679,7 +1666,7 @@ app.post('/api/quotes/:id/convert-to-invoice', authenticateToken, async (req, re
 
 app.get('/api/currencies', authenticateToken, async (req, res) => {
   try {
-    const currencies = await executeQuery('SELECT * FROM currencies WHERE active = 1 ORDER BY code ASC');
+    const currencies = await executeQuery('SELECT * FROM currencies WHERE is_active = 1 ORDER BY code ASC');
     res.json(currencies);
   } catch (error) {
     logger.error('Error fetching currencies:', error);
@@ -1725,7 +1712,12 @@ app.get('/api/products', authenticateToken, async (req, res) => {
   }
 });
 
-app.post('/api/products', authenticateToken, async (req, res) => {
+app.post('/api/products', authenticateToken, validate([
+  body('name').trim().notEmpty().withMessage('Product name is required'),
+  body('price').isFloat({ min: 0 }).withMessage('Price must be a positive number'),
+  body('description').optional().trim(),
+  body('vat_inclusive').optional().isBoolean().withMessage('vat_inclusive must be true or false'),
+]), async (req, res) => {
   try {
     const { name, description, price, vat_inclusive } = req.body;
 
@@ -1763,7 +1755,12 @@ app.get('/api/products/:id', authenticateToken, async (req, res) => {
   }
 });
 
-app.put('/api/products/:id', authenticateToken, async (req, res) => {
+app.put('/api/products/:id', authenticateToken, validate([
+  body('name').trim().notEmpty().withMessage('Product name is required'),
+  body('price').isFloat({ min: 0 }).withMessage('Price must be a positive number'),
+  body('description').optional().trim(),
+  body('vat_inclusive').optional().isBoolean().withMessage('vat_inclusive must be true or false'),
+]), async (req, res) => {
   try {
     const { id } = req.params;
     const { name, description, price, vat_inclusive } = req.body;
@@ -1834,7 +1831,7 @@ app.get('/api/dashboard/summary', authenticateToken, async (req, res) => {
       ),
       // Total active customers
       executeQuery(
-        `SELECT COUNT(*) AS total FROM customers WHERE user_id = ? AND active = 1`,
+        `SELECT COUNT(*) AS total FROM customers WHERE user_id = ? AND is_active = 1`,
         [userId]
       ),
       // Open (sent but not yet paid) invoices
@@ -1849,7 +1846,7 @@ app.get('/api/dashboard/summary', authenticateToken, async (req, res) => {
       ),
       // Recent tracking activity (last 5 events across all documents)
       executeQuery(
-        `SELECT dt.event_type, dt.event_date, d.document_number, d.type AS document_type, c.name AS customer_name
+        `SELECT dt.event_type, dt.event_date, d.document_number, d.type AS document_type, c.company_name AS customer_name
          FROM document_tracking dt
          JOIN documents d ON dt.document_id = d.id
          JOIN customers c ON d.customer_id = c.id
@@ -1916,7 +1913,12 @@ app.get('/api/settings', authenticateToken, async (req, res) => {
 });
 
 // PUT /api/settings/profile — update name, email, phone, optional password
-app.put('/api/settings/profile', authenticateToken, async (req, res) => {
+app.put('/api/settings/profile', authenticateToken, validate([
+  body('contact_person').trim().notEmpty().withMessage('Name is required'),
+  body('email').isEmail().normalizeEmail().withMessage('A valid email address is required'),
+  body('phone').optional().trim(),
+  body('new_password').optional().isLength({ min: 8 }).withMessage('Password must be at least 8 characters'),
+]), async (req, res) => {
   try {
     const userId = req.user.id;
     const { contact_person, email, phone, current_password, new_password } = req.body;
@@ -1958,7 +1960,12 @@ app.put('/api/settings/profile', authenticateToken, async (req, res) => {
 });
 
 // PUT /api/settings/company — update company info
-app.put('/api/settings/company', authenticateToken, async (req, res) => {
+app.put('/api/settings/company', authenticateToken, validate([
+  body('company_name').optional().trim(),
+  body('company_registration').optional().trim(),
+  body('vat_number').optional().trim(),
+  body('address').optional().trim(),
+]), async (req, res) => {
   try {
     const userId = req.user.id;
     const { company_name, company_registration, vat_number, address } = req.body;
@@ -2473,7 +2480,7 @@ cron.schedule('5 0 * * *', processRecurringInvoices);
 
 // Catch-all route for Angular app
 app.get('*', (req, res) => {
-  res.sendFile(path.join(__dirname, 'www/index.html'));
+  res.sendFile(path.join(__dirname, 'dist/www/index.html'));
 });
 
 // Start server

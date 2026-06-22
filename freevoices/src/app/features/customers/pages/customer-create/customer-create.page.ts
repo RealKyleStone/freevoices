@@ -40,9 +40,45 @@ export class CustomerCreatePage {
     return !!ctrl && ctrl.invalid && (ctrl.dirty || ctrl.touched || this.submitted);
   }
 
+  // Returns the first validation error message for a field
+  getError(field: string): string {
+    const ctrl = this.form.get(field);
+    if (!ctrl || !ctrl.errors) return '';
+    if (ctrl.errors['required'])  return `${this.fieldLabel(field)} is required`;
+    if (ctrl.errors['email'])     return 'Please enter a valid email address';
+    if (ctrl.errors['minlength']) return `${this.fieldLabel(field)} is too short`;
+    return 'Invalid value';
+  }
+
+  private fieldLabel(field: string): string {
+    const labels: Record<string, string> = {
+      name: 'Name', email: 'Email', billing_address: 'Billing address',
+      phone: 'Phone', payment_terms: 'Payment terms'
+    };
+    return labels[field] || field;
+  }
+
   async onSubmit() {
     this.submitted = true;
-    if (this.form.invalid) { this.form.markAllAsTouched(); return; }
+    this.form.markAllAsTouched();
+
+    if (this.form.invalid) {
+      // Find the first invalid field and show its error as a toast
+      const firstInvalidField = Object.keys(this.form.controls)
+        .find(key => this.form.controls[key].invalid);
+      const message = firstInvalidField
+        ? this.getError(firstInvalidField)
+        : 'Please fill in all required fields correctly';
+
+      const toast = await this.toastCtrl.create({
+        message,
+        duration: 3000,
+        color: 'danger',
+        position: 'bottom'
+      });
+      await toast.present();
+      return;
+    }
 
     this.isLoading = true;
     this.customerService.createCustomer(this.form.value).subscribe({
