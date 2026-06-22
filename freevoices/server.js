@@ -2477,6 +2477,54 @@ async function processRecurringInvoices() {
 cron.schedule('5 0 * * *', processRecurringInvoices);
 
 // ─────────────────────────────────────────────────────────────────────────────
+// Overdue invoice cron — runs daily at 00:10
+// Finds all SENT invoices whose due_date has passed and marks them OVERDUE
+
+async function processOverdueInvoices() {
+  logger.info('Overdue invoice cron: starting');
+  try {
+    // Find all invoices that are SENT and past their due date
+    const overdueInvoices = await executeQuery(
+      `SELECT id, document_number, user_id
+       FROM documents
+       WHERE type = 'INVOICE'
+         AND status = 'SENT'
+         AND due_date IS NOT NULL
+         AND due_date < CURDATE()`
+    );
+
+    logger.info(`Overdue invoice cron: ${overdueInvoices.length} invoice(s) to mark overdue`);
+
+    // Process each overdue invoice
+    for (const invoice of overdueInvoices) {
+      try {
+        // Update status to OVERDUE
+        await executeQuery(
+          `UPDATE documents SET status = 'OVERDUE', updated_at = NOW() WHERE id = ?`,
+          [invoice.id]
+        );
+
+        // Record the status change in the tracking table
+        await executeQuery(
+          `INSERT INTO document_tracking (document_id, event_type) VALUES (?, 'OVERDUE')`,
+          [invoice.id]
+        );
+
+        logger.info(`Overdue invoice cron: marked ${invoice.document_number} as OVERDUE`);
+      } catch (itemError) {
+        logger.error(`Overdue invoice cron: failed to process invoice #${invoice.id}:`, itemError);
+      }
+    }
+
+    logger.info('Overdue invoice cron: completed');
+  } catch (error) {
+    logger.error('Overdue invoice cron: fatal error:', error);
+  }
+}
+
+cron.schedule('10 0 * * *', processOverdueInvoices);
+
+// ─────────────────────────────────────────────────────────────────────────────
 
 // Catch-all route for Angular app
 app.get('*', (req, res) => {
