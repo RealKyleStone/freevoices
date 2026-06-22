@@ -1697,8 +1697,8 @@ app.get('/api/products', authenticateToken, async (req, res) => {
     const limit  = Math.min(100, parseInt(req.query.limit) || 20);
     const offset = (page - 1) * limit;
 
-    let sql    = 'SELECT * FROM products WHERE user_id = ? AND active = 1';
-    let cntSql = 'SELECT COUNT(*) AS total FROM products WHERE user_id = ? AND active = 1';
+    let sql    = 'SELECT * FROM products WHERE user_id = ? AND is_active = 1';
+    let cntSql = 'SELECT COUNT(*) AS total FROM products WHERE user_id = ? AND is_active = 1';
     const params    = [req.user.id];
     const cntParams = [req.user.id];
 
@@ -1750,7 +1750,7 @@ app.get('/api/products/:id', authenticateToken, async (req, res) => {
   try {
     const { id } = req.params;
     const product = await executeQuery(
-      'SELECT * FROM products WHERE id = ? AND user_id = ? AND active = 1',
+      'SELECT * FROM products WHERE id = ? AND user_id = ? AND is_active = 1',
       [id, req.user.id]
     );
     if (product.length === 0) {
@@ -1773,7 +1773,7 @@ app.put('/api/products/:id', authenticateToken, async (req, res) => {
     }
 
     const existing = await executeQuery(
-      'SELECT id FROM products WHERE id = ? AND user_id = ? AND active = 1',
+      'SELECT id FROM products WHERE id = ? AND user_id = ? AND is_active = 1',
       [id, req.user.id]
     );
     if (existing.length === 0) {
@@ -1797,7 +1797,7 @@ app.delete('/api/products/:id', authenticateToken, async (req, res) => {
   try {
     const { id } = req.params;
     const existing = await executeQuery(
-      'SELECT id FROM products WHERE id = ? AND user_id = ? AND active = 1',
+      'SELECT id FROM products WHERE id = ? AND user_id = ? AND is_active = 1',
       [id, req.user.id]
     );
     if (existing.length === 0) {
@@ -1805,7 +1805,7 @@ app.delete('/api/products/:id', authenticateToken, async (req, res) => {
     }
 
     await executeQuery(
-      'UPDATE products SET active = 0, updated_at = NOW() WHERE id = ? AND user_id = ?',
+      'UPDATE products SET is_active = 0, updated_at = NOW() WHERE id = ? AND user_id = ?',
       [id, req.user.id]
     );
     res.json({ message: 'Product deleted successfully' });
