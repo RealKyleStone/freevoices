@@ -1,14 +1,22 @@
 import { TestBed } from '@angular/core/testing';
-import { provideRouter } from '@angular/router';
 import { AppComponent } from './app.component';
+import { HttpClientTestingModule } from '@angular/common/http/testing';
+import { RouterTestingModule } from '@angular/router/testing';
+import { IonicModule } from '@ionic/angular';
 
 describe('AppComponent', () => {
-  it('should create the app', async () => {
+  beforeEach(async () => {
     await TestBed.configureTestingModule({
-      imports: [AppComponent],
-      providers: [provideRouter([])]
+      imports: [
+        AppComponent,
+        HttpClientTestingModule,
+        RouterTestingModule,
+        IonicModule.forRoot()
+      ]
     }).compileComponents();
-    
+  });
+
+  it('should create the app', () => {
     const fixture = TestBed.createComponent(AppComponent);
     const app = fixture.componentInstance;
     expect(app).toBeTruthy();
