@@ -11,6 +11,7 @@ import {
 } from 'ionicons/icons';
 import { InvoiceService, InvoiceDetail } from '../../services/invoice.service';
 import { environment } from '../../../../../environments/environment';
+import { BrowserNotificationService } from '../../../../core/services/browser-notification.service';
 
 @Component({
   selector: 'app-invoice-detail',
@@ -28,7 +29,7 @@ export class InvoiceDetailPage implements OnInit {
   isSubmittingPayment = false;
   isSending = false;
   isDownloading = false;
-  isDownloadingReceipt = false; // NEW: tracks loading state for receipt button
+  isDownloadingReceipt = false;
   isSharing = false;
   shareLink: string | null = null;
 
@@ -46,7 +47,8 @@ export class InvoiceDetailPage implements OnInit {
     private invoiceService: InvoiceService,
     private alertCtrl: AlertController,
     private toastCtrl: ToastController,
-    private fb: FormBuilder
+    private fb: FormBuilder,
+    private browserNotifications: BrowserNotificationService
   ) {
     addIcons({
       createOutline, calendarOutline, alarmOutline, timeOutline, sendOutline,
@@ -123,6 +125,11 @@ export class InvoiceDetailPage implements OnInit {
         const color = res.emailFailed ? 'warning' : 'success';
         const toast = await this.toastCtrl.create({ message: res.message || 'Invoice sent', duration: 4000, color, position: 'bottom' });
         await toast.present();
+        // Browser notification — fires even if tab is minimized
+        this.browserNotifications.notify(
+          'Invoice Sent',
+          `Invoice ${this.invoice?.document_number} has been sent to ${this.invoice?.customer_email}.`
+        );
         this.loadInvoice();
       },
       error: async (err) => {
@@ -138,14 +145,12 @@ export class InvoiceDetailPage implements OnInit {
     const token = localStorage.getItem('token');
     try {
       const url = `${environment.apiUrl}/invoices/${this.invoiceId}/pdf${markSent ? '?markSent=true' : ''}`;
-      const response = await fetch(url, {
-        headers: { Authorization: `Bearer ${token}` }
-      });
+      const response = await fetch(url, { headers: { Authorization: `Bearer ${token}` } });
       if (!response.ok) throw new Error('Failed to generate PDF');
       const blob = await response.blob();
       const blobUrl = URL.createObjectURL(blob);
-      const a    = document.createElement('a');
-      a.href     = blobUrl;
+      const a = document.createElement('a');
+      a.href = blobUrl;
       a.download = `${this.invoice?.document_number || 'invoice'}.pdf`;
       a.click();
       URL.revokeObjectURL(blobUrl);
@@ -158,24 +163,25 @@ export class InvoiceDetailPage implements OnInit {
     }
   }
 
-  // NEW: Downloads a receipt PDF — only available when invoice status is PAID
-  // Works exactly like downloadPdf() but calls the /receipt endpoint instead
   async downloadReceipt() {
     this.isDownloadingReceipt = true;
     const token = localStorage.getItem('token');
     try {
       const url = `${environment.apiUrl}/invoices/${this.invoiceId}/receipt`;
-      const response = await fetch(url, {
-        headers: { Authorization: `Bearer ${token}` }
-      });
+      const response = await fetch(url, { headers: { Authorization: `Bearer ${token}` } });
       if (!response.ok) throw new Error('Failed to generate receipt');
       const blob = await response.blob();
       const blobUrl = URL.createObjectURL(blob);
-      const a    = document.createElement('a');
-      a.href     = blobUrl;
+      const a = document.createElement('a');
+      a.href = blobUrl;
       a.download = `RECEIPT-${this.invoice?.document_number || 'receipt'}.pdf`;
       a.click();
       URL.revokeObjectURL(blobUrl);
+      // Browser notification — fires when receipt is successfully downloaded
+      this.browserNotifications.notify(
+        'Receipt Downloaded',
+        `Receipt for invoice ${this.invoice?.document_number} has been downloaded.`
+      );
     } catch {
       const toast = await this.toastCtrl.create({ message: 'Failed to download receipt', duration: 3000, color: 'danger', position: 'bottom' });
       await toast.present();
@@ -212,6 +218,11 @@ export class InvoiceDetailPage implements OnInit {
         this.showPaymentForm = false;
         const toast = await this.toastCtrl.create({ message: 'Payment recorded', duration: 2500, color: 'success', position: 'bottom' });
         await toast.present();
+        // Browser notification — fires when payment is recorded
+        this.browserNotifications.notify(
+          'Invoice Paid',
+          `Invoice ${this.invoice?.document_number} has been marked as paid.`
+        );
         this.loadInvoice();
         this.isSubmittingPayment = false;
       },
@@ -227,21 +238,10 @@ export class InvoiceDetailPage implements OnInit {
     return (this.invoice?.payments || []).reduce((s, p) => s + +p.amount, 0);
   }
 
-  get canEdit(): boolean {
-    return this.invoice?.status === 'DRAFT';
-  }
-
-  get canSend(): boolean {
-    return ['DRAFT', 'SENT'].includes(this.invoice?.status ?? '');
-  }
-
-  get canMarkPaid(): boolean {
-    return !['PAID', 'CANCELLED'].includes(this.invoice?.status ?? '');
-  }
-
-  get currencySymbol(): string {
-    return this.invoice?.currency_symbol || 'R';
-  }
+  get canEdit(): boolean { return this.invoice?.status === 'DRAFT'; }
+  get canSend(): boolean { return ['DRAFT', 'SENT'].includes(this.invoice?.status ?? ''); }
+  get canMarkPaid(): boolean { return !['PAID', 'CANCELLED'].includes(this.invoice?.status ?? ''); }
+  get currencySymbol(): string { return this.invoice?.currency_symbol || 'R'; }
 
   async generateShareLink() {
     this.isSharing = true;
