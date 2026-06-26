@@ -9,6 +9,7 @@ import {
 } from 'ionicons/icons';
 import { QuoteService, QuoteDetail } from '../../services/quote.service';
 import { environment } from '../../../../../environments/environment';
+import { BrowserNotificationService } from '../../../../core/services/browser-notification.service';
 
 @Component({
   selector: 'app-quote-detail',
@@ -21,7 +22,7 @@ export class QuoteDetailPage implements OnInit {
   quote?: QuoteDetail;
   isLoading = true;
   isConverting = false;
-  isDownloading = false; // NEW: tracks loading state for download button
+  isDownloading = false;
   quoteId!: number;
 
   constructor(
@@ -29,7 +30,8 @@ export class QuoteDetailPage implements OnInit {
     private router: Router,
     private quoteService: QuoteService,
     private alertCtrl: AlertController,
-    private toastCtrl: ToastController
+    private toastCtrl: ToastController,
+    private browserNotifications: BrowserNotificationService
   ) {
     addIcons({
       createOutline, calendarOutline, timerOutline, timeOutline,
@@ -84,7 +86,14 @@ export class QuoteDetailPage implements OnInit {
 
   sendQuote() {
     this.quoteService.sendQuote(this.quoteId).subscribe({
-      next: () => this.loadQuote(),
+      next: async () => {
+        // Browser notification — fires when quote is marked as sent
+        this.browserNotifications.notify(
+          'Quote Sent',
+          `Quote ${this.quote?.document_number} has been marked as sent to ${this.quote?.customer_name}.`
+        );
+        this.loadQuote();
+      },
       error: async () => {
         const toast = await this.toastCtrl.create({ message: 'Failed to update quote', duration: 3000, color: 'danger', position: 'bottom' });
         await toast.present();
@@ -92,17 +101,12 @@ export class QuoteDetailPage implements OnInit {
     });
   }
 
-  // NEW: Downloads the quote as a PDF
-  // Works the same way as downloadPdf() on the invoice detail page
-  // It calls the backend endpoint /api/quotes/:id/pdf and triggers a file download in the browser
   async downloadPdf() {
     this.isDownloading = true;
     const token = localStorage.getItem('token');
     try {
       const url = `${environment.apiUrl}/quotes/${this.quoteId}/pdf`;
-      const response = await fetch(url, {
-        headers: { Authorization: `Bearer ${token}` }
-      });
+      const response = await fetch(url, { headers: { Authorization: `Bearer ${token}` } });
       if (!response.ok) throw new Error('Failed to generate PDF');
       const blob = await response.blob();
       const blobUrl = URL.createObjectURL(blob);
@@ -111,6 +115,11 @@ export class QuoteDetailPage implements OnInit {
       a.download = `${this.quote?.document_number || 'quote'}.pdf`;
       a.click();
       URL.revokeObjectURL(blobUrl);
+      // Browser notification — fires when quote PDF is downloaded
+      this.browserNotifications.notify(
+        'Quote Downloaded',
+        `Quote ${this.quote?.document_number} has been downloaded as a PDF.`
+      );
     } catch {
       const toast = await this.toastCtrl.create({ message: 'Failed to download quote', duration: 3000, color: 'danger', position: 'bottom' });
       await toast.present();
@@ -138,6 +147,11 @@ export class QuoteDetailPage implements OnInit {
         this.isConverting = false;
         const toast = await this.toastCtrl.create({ message: 'Invoice created from quote', duration: 2500, color: 'success', position: 'bottom' });
         await toast.present();
+        // Browser notification — fires when quote is converted to invoice
+        this.browserNotifications.notify(
+          'Quote Converted',
+          `Quote ${this.quote?.document_number} has been successfully converted to an invoice.`
+        );
         this.router.navigate(['/invoices', res.invoice_id]);
       },
       error: async (err) => {
