@@ -16,6 +16,7 @@ import { addIcons } from 'ionicons';
 import { Observable } from 'rxjs';
 import { filter, take } from 'rxjs/operators';
 import { LocalNotificationService } from './core/services/local-notification.service';
+import { BrowserNotificationService } from './core/services/browser-notification.service';
 import { InvoiceService } from './features/invoices/services/invoice.service';
 
 @Component({
@@ -47,6 +48,7 @@ export class AppComponent implements OnInit {
     private router: Router,
     private menuCtrl: MenuController,
     private localNotifications: LocalNotificationService,
+    private browserNotifications: BrowserNotificationService,
     private invoiceService: InvoiceService
   ) {
     this.isLoggedIn$ = this.authService.currentUser$;
@@ -71,26 +73,38 @@ export class AppComponent implements OnInit {
   }
 
   ngOnInit(): void {
-    // Wait for the user to be logged in before checking invoices
-    // filter(Boolean) skips null/undefined (not logged in)
-    // take(1) means we only do this once per app launch
+    // Request browser notification permission immediately on app load
+    this.browserNotifications.requestPermission();
+
+    // Wait for user to be logged in before checking invoices
     this.authService.currentUser$.pipe(
       filter(user => !!user),
       take(1)
     ).subscribe(() => {
-      this.scheduleInvoiceNotifications();
+      this.checkInvoicesOnStartup();
     });
   }
 
-  // Fetch all SENT and OVERDUE invoices and pass them to the notification service
-  private scheduleInvoiceNotifications(): void {
+  // Fetch invoices on startup — schedule local notifications (native Android)
+  // and fire browser notifications for any overdue invoices
+  private checkInvoicesOnStartup(): void {
     this.invoiceService.getInvoices('', '', 1, 100).subscribe({
       next: (response) => {
-        // Only care about invoices that are SENT or OVERDUE
         const relevant = response.data.filter(inv =>
           ['SENT', 'OVERDUE'].includes(inv.status)
         );
+
+        // Schedule native local notifications (Android/iOS)
         this.localNotifications.initNotifications(relevant);
+
+        // Fire browser notifications for every overdue invoice
+        const overdue = relevant.filter(inv => inv.status === 'OVERDUE');
+        overdue.forEach(inv => {
+          this.browserNotifications.notify(
+            'Invoice Overdue',
+            `Invoice ${inv.document_number} is overdue. Follow up with your customer.`
+          );
+        });
       },
       error: (err) => console.error('Failed to fetch invoices for notifications:', err)
     });
@@ -101,7 +115,6 @@ export class AppComponent implements OnInit {
   }
 
   async logout() {
-    // Cancel all scheduled notifications on logout
     await this.localNotifications.cancelAll();
     await this.authService.logout();
     this.router.navigate(['/login']);
