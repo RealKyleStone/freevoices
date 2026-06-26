@@ -40,13 +40,16 @@
         </div>
 
         <!-- File picker -->
-        <div class="logo-upload-area" *ngIf="!logoPreview">
-          <label for="logoFile" class="upload-label">
+        <!-- On web: clicking the label opens the file input -->
+        <!-- On native Android/iOS: onLogoTap() shows camera/gallery action sheet -->
+        <div class="logo-upload-area" *ngIf="!logoPreview" (click)="onLogoTap()">
+          <label class="upload-label">
             <ion-icon name="cloud-upload-outline"></ion-icon>
             <span>{{ logoUrl ? 'Replace Logo' : 'Choose Logo' }}</span>
           </label>
+          <!-- Hidden file input used on web only — triggered programmatically by onLogoTap() -->
           <input
-            id="logoFile"
+            id="logoFileInput"
             type="file"
             accept="image/*"
             style="display:none"

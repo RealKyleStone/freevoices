@@ -1,11 +1,13 @@
 import { Component, OnInit } from '@angular/core';
 import { CommonModule } from '@angular/common';
-import { ReactiveFormsModule, FormBuilder, FormGroup, Validators } from '@angular/forms';
-import { IonicModule, ToastController } from '@ionic/angular';
+import { ReactiveFormsModule, FormBuilder, FormGroup } from '@angular/forms';
+import { IonicModule, ToastController, ActionSheetController } from '@ionic/angular';
 import { addIcons } from 'ionicons';
-import { businessOutline, imageOutline, trashOutline, cloudUploadOutline } from 'ionicons/icons';
+import { businessOutline, imageOutline, trashOutline, cloudUploadOutline, cameraOutline, imagesOutline } from 'ionicons/icons';
 import { SettingsService } from '../../services/settings.service';
 import { environment } from '../../../../../environments/environment';
+import { Camera, CameraResultType, CameraSource } from '@capacitor/camera';
+import { Capacitor } from '@capacitor/core';
 
 @Component({
   selector: 'app-company-settings',
@@ -28,9 +30,10 @@ export class CompanySettingsPage implements OnInit {
   constructor(
     private fb: FormBuilder,
     private settingsService: SettingsService,
-    private toastCtrl: ToastController
+    private toastCtrl: ToastController,
+    private actionSheetCtrl: ActionSheetController
   ) {
-    addIcons({ businessOutline, imageOutline, trashOutline, cloudUploadOutline });
+    addIcons({ businessOutline, imageOutline, trashOutline, cloudUploadOutline, cameraOutline, imagesOutline });
   }
 
   ngOnInit() {
@@ -65,6 +68,68 @@ export class CompanySettingsPage implements OnInit {
     return environment.apiUrl.replace('/api', '');
   }
 
+  // Called when user taps the logo upload area
+  // On native Android/iOS: show action sheet with camera/gallery options
+  // On web: fall through to the regular file input
+  async onLogoTap() {
+    if (!Capacitor.isNativePlatform()) {
+      // On web, trigger the hidden file input
+      document.getElementById('logoFileInput')?.click();
+      return;
+    }
+
+    // On native — show action sheet with camera and gallery options
+    const actionSheet = await this.actionSheetCtrl.create({
+      header: 'Select Logo',
+      buttons: [
+        {
+          text: 'Take Photo',
+          icon: 'camera-outline',
+          handler: () => this.captureImage(CameraSource.Camera)
+        },
+        {
+          text: 'Choose from Gallery',
+          icon: 'images-outline',
+          handler: () => this.captureImage(CameraSource.Photos)
+        },
+        {
+          text: 'Cancel',
+          role: 'cancel'
+        }
+      ]
+    });
+    await actionSheet.present();
+  }
+
+  // Use Capacitor Camera plugin to take a photo or pick from gallery
+  private async captureImage(source: CameraSource) {
+    try {
+      const image = await Camera.getPhoto({
+        quality: 90,
+        allowEditing: false,
+        resultType: CameraResultType.DataUrl, // returns base64 data URL
+        source
+      });
+
+      if (!image.dataUrl) return;
+
+      // Show preview immediately
+      this.logoPreview = image.dataUrl;
+
+      // Convert base64 data URL to a File object so we can reuse uploadLogo()
+      const response = await fetch(image.dataUrl);
+      const blob = await response.blob();
+      this.selectedFile = new File([blob], `logo_${Date.now()}.jpg`, { type: 'image/jpeg' });
+
+    } catch (error: any) {
+      // User cancelled — don't show an error
+      if (error?.message !== 'User cancelled photos app') {
+        this.showToast('Failed to capture image', 'danger');
+      }
+    }
+  }
+
+  // Handles web file input selection
   onFileSelected(event: Event) {
     const input = event.target as HTMLInputElement;
     if (!input.files?.length) return;
