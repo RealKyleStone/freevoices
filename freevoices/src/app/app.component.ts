@@ -1,4 +1,4 @@
-import { Component, OnInit } from '@angular/core';
+import { Component } from '@angular/core';
 import { Router, RouterModule } from '@angular/router';
 import { IonApp, IonSplitPane, IonMenu, IonContent, IonList,
          IonMenuToggle, IonItem, IonIcon, IonLabel, IonFooter,
@@ -14,7 +14,6 @@ import {
 } from 'ionicons/icons';
 import { addIcons } from 'ionicons';
 import { Observable } from 'rxjs';
-import { PushNotificationService } from './core/services/push-notification.service';
 
 @Component({
   selector: 'app-root',
@@ -37,14 +36,13 @@ import { PushNotificationService } from './core/services/push-notification.servi
     IonRouterOutlet
   ]
 })
-export class AppComponent implements OnInit {
+export class AppComponent {
   isLoggedIn$: Observable<any>;
 
   constructor(
     private authService: AuthService,
     private router: Router,
-    private menuCtrl: MenuController,
-    private pushNotifications: PushNotificationService
+    private menuCtrl: MenuController
   ) {
     this.isLoggedIn$ = this.authService.currentUser$;
     addIcons({
@@ -65,12 +63,6 @@ export class AppComponent implements OnInit {
       'cube-outline': cubeOutline,
       'settings-outline': settingsOutline
     });
-  }
-
-  // ngOnInit runs after the component is fully initialised
-  // This is the right place to kick off push notification setup
-  ngOnInit(): void {
-    this.pushNotifications.initPush();
   }
 
   async closeMenu() {
