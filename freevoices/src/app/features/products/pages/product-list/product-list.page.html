@@ -1,64 +1,87 @@
-<ion-header>
+<ion-header class="ion-no-border">
   <ion-toolbar>
     <ion-title>Products</ion-title>
-    <ion-buttons slot="end">
-      <ion-button routerLink="/products/new" color="primary">
-        <ion-icon slot="icon-only" name="add-outline"></ion-icon>
-      </ion-button>
-    </ion-buttons>
-  </ion-toolbar>
-  <ion-toolbar>
-    <ion-searchbar
-      [(ngModel)]="searchTerm"
-      (ionInput)="onSearchChange()"
-      placeholder="Search by name or description"
-      debounce="0">
-    </ion-searchbar>
   </ion-toolbar>
 </ion-header>
 
 <ion-content>
-  <ion-list *ngIf="!isLoading && products.length > 0">
-    <ion-item *ngFor="let product of products" [routerLink]="['/products', product.id]" detail="false" button>
-      <ion-icon name="cube-outline" slot="start" color="primary"></ion-icon>
-      <ion-label>
-        <h2>{{ product.name }}</h2>
-        <p *ngIf="product.description">{{ product.description }}</p>
-        <p>
-          R {{ product.price | number:'1.2-2' }}
-          <ion-badge *ngIf="product.vat_inclusive" color="medium" style="margin-left: 0.5rem; font-size: 0.7rem;">VAT incl.</ion-badge>
-        </p>
-      </ion-label>
-      <div slot="end" class="row-actions">
-        <ion-button fill="clear" [routerLink]="['/products', product.id, 'edit']" (click)="$event.stopPropagation()">
-          <ion-icon slot="icon-only" name="create-outline"></ion-icon>
-        </ion-button>
-        <ion-button fill="clear" color="danger" (click)="$event.stopPropagation(); confirmDelete(product)">
-          <ion-icon slot="icon-only" name="trash-outline"></ion-icon>
-        </ion-button>
+  <div class="list-container">
+
+    <div class="search-wrap">
+      <ion-searchbar
+        [(ngModel)]="searchTerm"
+        (ionInput)="onSearchChange()"
+        placeholder="Search by name or description"
+        debounce="0"
+        class="custom-searchbar">
+      </ion-searchbar>
+    </div>
+
+    <p class="results-count" *ngIf="!isLoading && products.length > 0">
+      {{ total }} product{{ total === 1 ? '' : 's' }}
+    </p>
+
+    <div class="invoice-list" *ngIf="!isLoading && products.length > 0">
+      <ion-item
+        *ngFor="let product of products"
+        [routerLink]="['/products', product.id]"
+        detail="false"
+        button
+        class="invoice-item">
+        <div slot="start" class="doc-icon-wrap">
+          <ion-icon name="cube-outline"></ion-icon>
+        </div>
+        <ion-label>
+          <h2 class="doc-number">{{ product.name }}</h2>
+          <p class="doc-customer" *ngIf="product.description">{{ product.description }}</p>
+          <p class="doc-date">
+            R {{ product.price | number:'1.2-2' }}
+            <span *ngIf="product.vat_inclusive" class="vat-tag">VAT incl.</span>
+          </p>
+        </ion-label>
+        <div slot="end" class="row-actions">
+          <ion-button fill="clear" class="action-btn" [routerLink]="['/products', product.id, 'edit']" (click)="$event.stopPropagation()">
+            <ion-icon slot="icon-only" name="create-outline"></ion-icon>
+          </ion-button>
+          <ion-button fill="clear" color="danger" class="action-btn" (click)="$event.stopPropagation(); confirmDelete(product)">
+            <ion-icon slot="icon-only" name="trash-outline"></ion-icon>
+          </ion-button>
+        </div>
+      </ion-item>
+    </div>
+
+    <div class="empty-state" *ngIf="!isLoading && products.length === 0">
+      <div class="empty-icon-wrap">
+        <ion-icon name="cube-outline"></ion-icon>
       </div>
-    </ion-item>
-  </ion-list>
+      <h3>{{ searchTerm ? 'No results found' : 'No products yet' }}</h3>
+      <p>{{ searchTerm ? 'No products match "' + searchTerm + '"' : 'Add your first product to get started.' }}</p>
+      <ion-button *ngIf="!searchTerm" routerLink="/products/new" color="primary">
+        <ion-icon name="add-outline" slot="start"></ion-icon>
+        Add product
+      </ion-button>
+    </div>
 
-  <div class="empty-state" *ngIf="!isLoading && products.length === 0">
-    <ion-icon name="cube-outline"></ion-icon>
-    <p *ngIf="searchTerm">No products match "{{ searchTerm }}"</p>
-    <p *ngIf="!searchTerm">No products yet. Add your first one!</p>
-    <ion-button routerLink="/products/new" fill="outline">Add Product</ion-button>
-  </div>
+    <div class="loading-list" *ngIf="isLoading">
+      <ion-item class="invoice-item" *ngFor="let _ of [1,2,3,4]">
+        <ion-skeleton-text animated slot="start" class="skeleton-icon"></ion-skeleton-text>
+        <ion-label>
+          <ion-skeleton-text animated class="skeleton-title"></ion-skeleton-text>
+          <ion-skeleton-text animated class="skeleton-sub"></ion-skeleton-text>
+        </ion-label>
+      </ion-item>
+    </div>
 
-  <div class="loading-state" *ngIf="isLoading">
-    <ion-spinner></ion-spinner>
-  </div>
+    <div class="pagination" *ngIf="!isLoading && totalPages > 1">
+      <ion-button fill="clear" [disabled]="page === 1" (click)="prevPage()">
+        <ion-icon slot="icon-only" name="chevron-back-outline"></ion-icon>
+      </ion-button>
+      <span class="page-label">{{ page }} of {{ totalPages }}</span>
+      <ion-button fill="clear" [disabled]="page === totalPages" (click)="nextPage()">
+        <ion-icon slot="icon-only" name="chevron-forward-outline"></ion-icon>
+      </ion-button>
+    </div>
 
-  <div class="pagination" *ngIf="!isLoading && totalPages > 1">
-    <ion-button fill="clear" [disabled]="page === 1" (click)="prevPage()">
-      <ion-icon slot="icon-only" name="chevron-back-outline"></ion-icon>
-    </ion-button>
-    <span>{{ page }} / {{ totalPages }}</span>
-    <ion-button fill="clear" [disabled]="page === totalPages" (click)="nextPage()">
-      <ion-icon slot="icon-only" name="chevron-forward-outline"></ion-icon>
-    </ion-button>
   </div>
 
   <ion-fab vertical="bottom" horizontal="end" slot="fixed">
