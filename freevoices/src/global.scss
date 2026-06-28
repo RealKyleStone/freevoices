@@ -6,209 +6,172 @@
 @import url('https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700&display=swap');
 
 :root {
-  /* Light theme colors */
-  --ion-color-primary: #4ecdc4;
-  --ion-color-primary-rgb: 78, 205, 196;
+  --ion-color-primary: #0f766e;
+  --ion-color-primary-rgb: 15, 118, 110;
   --ion-color-primary-contrast: #ffffff;
   --ion-color-primary-contrast-rgb: 255, 255, 255;
-  --ion-color-primary-shade: #45b4ac;
-  --ion-color-primary-tint: #60d2ca;
+  --ion-color-primary-shade: #0d6860;
+  --ion-color-primary-tint: #27847d;
 
-  --ion-color-secondary: #ff6b6b;
-  --ion-color-secondary-rgb: 255, 107, 107;
+  --ion-color-secondary: #14b8a6;
+  --ion-color-secondary-rgb: 20, 184, 166;
   --ion-color-secondary-contrast: #ffffff;
   --ion-color-secondary-contrast-rgb: 255, 255, 255;
-  --ion-color-secondary-shade: #e05e5e;
-  --ion-color-secondary-tint: #ff7a7a;
+  --ion-color-secondary-shade: #0f9e8e;
+  --ion-color-secondary-tint: #2ec4b3;
 
   --ion-background-color: #ffffff;
   --ion-background-color-rgb: 255, 255, 255;
-  --ion-text-color: #1a1a2e;
-  --ion-text-color-rgb: 26, 26, 46;
-
+  --ion-text-color: #111827;
+  --ion-text-color-rgb: 17, 24, 39;
   --ion-item-background: #ffffff;
   --ion-card-background: #ffffff;
+
+  --fv-teal-tint: #ccfbf1;
+  --fv-teal-text: #0f5e58;
+  --fv-success-bg: #dcfce7;
+  --fv-success-text: #166534;
+  --fv-warning-bg: #fef9c3;
+  --fv-warning-text: #854d0e;
+  --fv-danger-bg: #fee2e2;
+  --fv-danger-text: #991b1b;
+  --fv-info-bg: #dbeafe;
+  --fv-info-text: #1e40af;
+  --fv-medium-bg: #f3f4f6;
+  --fv-medium-text: #374151;
 }
 
-/* Dark theme overrides */
-@media (prefers-color-scheme: dark) {
-  :root {
-    --ion-background-color: #1a1a2e;
-    --ion-background-color-rgb: 26, 26, 46;
-    --ion-text-color: #ffffff;
-    --ion-text-color-rgb: 255, 255, 255;
+/* ── Dark mode ── */
+.ion-palette-dark {
+  --ion-background-color: #111111;
+  --ion-background-color-rgb: 17, 17, 17;
+  --ion-text-color: #f9fafb;
+  --ion-text-color-rgb: 249, 250, 251;
+  --ion-item-background: #1a1a1a;
+  --ion-card-background: #1e1e1e;
 
-    --ion-item-background: #16213e;
-    --ion-card-background: #16213e;
-  }
+  --ion-color-step-50:  #1d1d1d;
+  --ion-color-step-100: #2a2a2a;
+  --ion-color-step-150: #363636;
+  --ion-color-step-200: #414141;
+  --ion-color-step-250: #4d4d4d;
+  --ion-color-step-300: #595959;
+  --ion-color-step-350: #656565;
+  --ion-color-step-400: #717171;
+  --ion-color-step-450: #7d7d7d;
+  --ion-color-step-500: #898989;
+  --ion-color-step-550: #949494;
+  --ion-color-step-600: #a0a0a0;
+  --ion-color-step-650: #acacac;
+  --ion-color-step-700: #b8b8b8;
+  --ion-color-step-750: #c4c4c4;
+  --ion-color-step-800: #d0d0d0;
+  --ion-color-step-850: #dbdbdb;
+  --ion-color-step-900: #e7e7e7;
+  --ion-color-step-950: #f3f3f3;
+
+  --ion-toolbar-background: #111111;
+  --ion-tab-bar-background: #1a1a1a;
+
+  --fv-teal-tint: #042f2e;
+  --fv-teal-text: #5eead4;
+  --fv-success-bg: #052e16;
+  --fv-success-text: #4ade80;
+  --fv-warning-bg: #422006;
+  --fv-warning-text: #fbbf24;
+  --fv-danger-bg: #450a0a;
+  --fv-danger-text: #f87171;
+  --fv-info-bg: #1e3a5f;
+  --fv-info-text: #93c5fd;
+  --fv-medium-bg: #1f2937;
+  --fv-medium-text: #9ca3af;
 }
 
 /* Global styles */
-* {
-  font-family: 'Poppins', sans-serif;
-}
+* { font-family: 'Poppins', sans-serif; }
 
-/* Sidebar styling */
-:host ion-split-pane ion-menu.md,
-:host ion-split-pane ion-menu.ios {
-  --width: 100px !important;
-}
-
-@media (min-width: 992px) {
-  ion-split-pane {
-    --side-width: 100px !important;
-  }
-}
+ion-split-pane { --border: none; }
 
 ion-menu {
+  --width: 240px;
 
-  ion-content {
-    --background: var(--ion-background-color);
-  }
+  ion-content { --background: var(--ion-background-color); }
 
   .menu-header {
-    padding: 2rem 1rem;
-    display: flex;
-    justify-content: center;
-    border-bottom: 1px solid rgba(var(--ion-color-medium-rgb), 0.1);
+    padding: 1rem 0.5rem;
+    text-align: center;
+    cursor: pointer;
+    &:hover { opacity: 0.8; }
+    h1 {
+      margin: 0;
+      font-size: 1rem;
+      font-weight: 700;
+      color: var(--ion-color-primary);
+    }
   }
 
   ion-list {
-    background: transparent;
-    padding: 1rem 0.5rem;
+    padding-top: 1rem;
+    background: none;
 
     ion-item {
       --background: transparent;
-      --background-hover: rgba(var(--ion-color-primary-rgb), 0.1);
-      --background-activated: rgba(var(--ion-color-primary-rgb), 0.15);
+      --background-hover: rgba(15, 118, 110, 0.1);
+      --background-activated: rgba(15, 118, 110, 0.15);
       --padding-start: 1rem;
-      --padding-end: 1rem;
       --border-radius: 8px;
       margin-bottom: 0.5rem;
+      transition: background 0.15s ease;
+
+      &:hover:not(.selected) {
+        --background: rgba(15, 118, 110, 0.08);
+        cursor: pointer;
+      }
 
       &.selected {
-          --background: var(--ion-color-primary);
-          --color: #fff;
-          font-weight: 600;
-          box-shadow: 0 2px 8px rgba(var(--ion-color-primary-rgb), 0.10);
-          border-radius: 10px;
-          transition: background 0.2s, color 0.2s;
-
-          ion-icon {
-            color: #fff;
-          }
+        --background: var(--ion-color-primary);
+        --color: #fff;
+        font-weight: 600;
+        border-radius: 10px;
+        ion-icon { color: #fff; }
       }
 
-        ion-icon {
-          font-size: 1.25rem;
-          margin-right: 0.75rem;
-          color: var(--ion-text-color);
-          transition: color 0.2s;
+      ion-icon {
+        font-size: 1.25rem;
+        margin-right: 0.75rem;
+        color: var(--ion-text-color);
       }
-      
-        &:hover:not(.selected) {
-          --background: rgba(var(--ion-color-primary-rgb), 0.10);
-          --color: var(--ion-color-primary);
-          font-weight: 500;
-          cursor: pointer;
-        }
-      
-        font-size: 1.08rem;
-        font-weight: 500;
-        letter-spacing: 0.01em;
+
+      font-size: 1rem;
+      font-weight: 500;
     }
   }
 
   ion-footer {
     padding: 1rem 0.5rem;
-    border-top: 1px solid rgba(var(--ion-color-medium-rgb), 0.1);
-
-    ion-item {
-      --background: transparent;
-      --background-hover: rgba(var(--ion-color-danger-rgb), 0.1);
-      --color: var(--ion-color-danger);
-      --border-radius: 8px;
-
-      ion-icon {
-        color: var(--ion-color-danger);
-      }
-    }
+    border-top: 1px solid rgba(128, 128, 128, 0.15);
   }
 }
 
-/* Card styling */
 ion-card {
-  border-radius: 20px;
+  border-radius: 16px;
   background: var(--ion-card-background);
-  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1);
-  -webkit-backdrop-filter: blur(10px);
-  backdrop-filter: blur(10px);
-  transition: transform 0.3s ease;
-
-  &:hover {
-    transform: translateY(-2px);
-  }
+  box-shadow: 0 2px 8px rgba(0,0,0,0.08);
 }
 
-/* Button styling */
 ion-button {
   --border-radius: 10px;
-  --box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
   font-weight: 500;
   text-transform: none;
 }
 
-/* Input styling */
 ion-input, ion-textarea {
   --padding-start: 16px;
   --padding-end: 16px;
   --border-radius: 10px;
-  --background: var(--ion-item-background);
 }
 
-/* Animations */
-@keyframes fadeIn {
-  from { opacity: 0; transform: translateY(20px); }
-  to { opacity: 1; transform: translateY(0); }
-}
-
-.page-transition {
-  animation: fadeIn 0.3s ease-out;
-}
-
-/* Title gradient effect */
-.gradient-title {
-  background: linear-gradient(45deg, var(--ion-color-primary), var(--ion-color-secondary));
-  -webkit-background-clip: text;
-  -webkit-text-fill-color: transparent;
-  font-weight: 600;
-}
-
-/* Container layouts */
-.flex-center {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-
-.grid-container {
-  display: grid;
-  gap: 1rem;
-  padding: 1rem;
-}
-
-/* Responsive adjustments */
-@media (max-width: 768px) {
-  ion-card {
-    margin: 1rem;
-  }
-
-  .grid-container {
-    grid-template-columns: 1fr;
-  }
-}
-
-/* Core CSS required for Ionic components */
+/* Core CSS */
 @import "@ionic/angular/css/core.css";
 @import "@ionic/angular/css/normalize.css";
 @import "@ionic/angular/css/structure.css";
@@ -219,4 +182,21 @@ ion-input, ion-textarea {
 @import "@ionic/angular/css/text-alignment.css";
 @import "@ionic/angular/css/text-transformation.css";
 @import "@ionic/angular/css/flex-utils.css";
-@import '@ionic/angular/css/palettes/dark.system.css';
+
+/* ── Dark mode input fix ── */
+/* Only set text color, never background — labels stay visible */
+.ion-palette-dark ion-input,
+.ion-palette-dark ion-textarea,
+.ion-palette-dark ion-select {
+  --color: #ffffff;
+  --placeholder-color: #6b7280;
+}
+
+.ion-palette-dark ion-label {
+  --color: #d1d5db;
+}
+
+.ion-palette-dark ion-item {
+  --color: #ffffff;
+  --border-color: rgba(255,255,255,0.2);
+}
