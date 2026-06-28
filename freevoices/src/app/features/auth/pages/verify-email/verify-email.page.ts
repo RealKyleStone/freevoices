@@ -3,7 +3,7 @@ import { Component, OnInit } from '@angular/core';
 import { ActivatedRoute, Router, RouterModule } from '@angular/router';
 import { DatabaseService } from 'src/services/database.service';
 import { CommonModule } from '@angular/common';
-import { IonContent, IonCard, IonCardContent, IonButton, IonIcon, IonSpinner } from '@ionic/angular/standalone';
+import { IonContent, IonButton, IonIcon, IonSpinner } from '@ionic/angular/standalone';
 
 @Component({
   selector: 'app-verify-email',
@@ -11,14 +11,8 @@ import { IonContent, IonCard, IonCardContent, IonButton, IonIcon, IonSpinner } f
   styleUrls: ['./verify-email.page.scss'],
   standalone: true,
   imports: [
-    CommonModule,
-    RouterModule,
-    IonContent,
-    IonCard,
-    IonCardContent,
-    IonButton,
-    IonIcon,
-    IonSpinner
+    CommonModule, RouterModule,
+    IonContent, IonButton, IonIcon, IonSpinner
   ]
 })
 export class VerifyEmailPage implements OnInit {
