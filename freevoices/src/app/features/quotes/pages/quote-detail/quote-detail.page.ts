@@ -5,7 +5,8 @@ import { IonicModule, AlertController, ToastController } from '@ionic/angular';
 import { addIcons } from 'ionicons';
 import {
   createOutline, calendarOutline, timerOutline, timeOutline,
-  sendOutline, documentTextOutline, downloadOutline
+  sendOutline, documentTextOutline, downloadOutline,
+  documentOutline, eyeOutline, checkmarkCircleOutline, closeCircleOutline, ellipseOutline
 } from 'ionicons/icons';
 import { QuoteService, QuoteDetail } from '../../services/quote.service';
 import { environment } from '../../../../../environments/environment';
@@ -35,7 +36,8 @@ export class QuoteDetailPage implements OnInit {
   ) {
     addIcons({
       createOutline, calendarOutline, timerOutline, timeOutline,
-      sendOutline, documentTextOutline, downloadOutline
+      sendOutline, documentTextOutline, downloadOutline,
+      documentOutline, eyeOutline, checkmarkCircleOutline, closeCircleOutline, ellipseOutline
     });
   }
 
