@@ -1,2 +1,98 @@
+// FreeVoices Theme — Primary: Teal #0f766e
 // For information on how to create your own theme, please see:
 // http://ionicframework.com/docs/theming/
+
+:root {
+  // ─── Primary (Teal) ───────────────────────────────────────────
+  --ion-color-primary: #0f766e;
+  --ion-color-primary-rgb: 15, 118, 110;
+  --ion-color-primary-contrast: #ffffff;
+  --ion-color-primary-contrast-rgb: 255, 255, 255;
+  --ion-color-primary-shade: #0d6860;
+  --ion-color-primary-tint: #27847d;
+
+  // Tint helpers used in stat cards and badges
+  --fv-teal-tint: #ccfbf1;
+  --fv-teal-text: #0f5e58;
+
+  // ─── Secondary ────────────────────────────────────────────────
+  --ion-color-secondary: #0e9f6e;
+  --ion-color-secondary-rgb: 14, 159, 110;
+  --ion-color-secondary-contrast: #ffffff;
+  --ion-color-secondary-contrast-rgb: 255, 255, 255;
+  --ion-color-secondary-shade: #0c8c60;
+  --ion-color-secondary-tint: #26a97d;
+
+  // ─── Semantic colours (keep Ionic defaults) ───────────────────
+  --ion-color-success: #16a34a;
+  --ion-color-success-rgb: 22, 163, 74;
+  --ion-color-success-contrast: #ffffff;
+  --ion-color-success-shade: #138040;
+  --ion-color-success-tint: #2db360;
+
+  --ion-color-warning: #ca8a04;
+  --ion-color-warning-rgb: 202, 138, 4;
+  --ion-color-warning-contrast: #ffffff;
+  --ion-color-warning-shade: #a16c00;
+  --ion-color-warning-tint: #d4970f;
+
+  --ion-color-danger: #dc2626;
+  --ion-color-danger-rgb: 220, 38, 38;
+  --ion-color-danger-contrast: #ffffff;
+  --ion-color-danger-shade: #b91c1c;
+  --ion-color-danger-tint: #ef4444;
+
+  --ion-color-medium: #6b7280;
+  --ion-color-medium-rgb: 107, 114, 128;
+  --ion-color-medium-contrast: #ffffff;
+  --ion-color-medium-shade: #4b5563;
+  --ion-color-medium-tint: #9ca3af;
+
+  --ion-color-dark: #111827;
+  --ion-color-dark-rgb: 17, 24, 39;
+  --ion-color-dark-contrast: #ffffff;
+  --ion-color-dark-shade: #030712;
+  --ion-color-dark-tint: #1f2937;
+
+  --ion-color-light: #f9fafb;
+  --ion-color-light-rgb: 249, 250, 251;
+  --ion-color-light-contrast: #111827;
+  --ion-color-light-shade: #f3f4f6;
+  --ion-color-light-tint: #ffffff;
+
+  // ─── Tint backgrounds for badges & stat icons ─────────────────
+  --fv-success-bg: #dcfce7;
+  --fv-success-text: #166534;
+  --fv-warning-bg: #fef9c3;
+  --fv-warning-text: #854d0e;
+  --fv-danger-bg: #fee2e2;
+  --fv-danger-text: #991b1b;
+  --fv-info-bg: #dbeafe;
+  --fv-info-text: #1e40af;
+  --fv-medium-bg: #f3f4f6;
+  --fv-medium-text: #374151;
+}
+
+// ─── Dark mode ────────────────────────────────────────────────────
+@media (prefers-color-scheme: dark) {
+  :root {
+    --ion-color-primary: #14b8a6;
+    --ion-color-primary-rgb: 20, 184, 166;
+    --ion-color-primary-shade: #0f9e8e;
+    --ion-color-primary-tint: #2ec4b3;
+
+    --fv-teal-tint: #042f2e;
+    --fv-teal-text: #5eead4;
+
+    --fv-success-bg: #052e16;
+    --fv-success-text: #4ade80;
+    --fv-warning-bg: #422006;
+    --fv-warning-text: #fbbf24;
+    --fv-danger-bg: #450a0a;
+    --fv-danger-text: #f87171;
+    --fv-info-bg: #1e3a5f;
+    --fv-info-text: #93c5fd;
+    --fv-medium-bg: #1f2937;
+    --fv-medium-text: #9ca3af;
+  }
+}
