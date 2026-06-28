@@ -3,6 +3,11 @@ import { CommonModule } from '@angular/common';
 import { RouterModule, ActivatedRoute, Router } from '@angular/router';
 import { IonicModule, AlertController, ToastController } from '@ionic/angular';
 import { CustomerService, CustomerWithDocuments } from '../../services/customer.service';
+import { addIcons } from 'ionicons';
+import {
+  mailOutline, callOutline, locationOutline, navigateOutline,
+  timeOutline, documentTextOutline, createOutline, trashOutline
+} from 'ionicons/icons';
 
 @Component({
   selector: 'app-customer-detail',
@@ -22,7 +27,12 @@ export class CustomerDetailPage implements OnInit {
     private customerService: CustomerService,
     private alertCtrl: AlertController,
     private toastCtrl: ToastController
-  ) {}
+  ) {
+    addIcons({
+      mailOutline, callOutline, locationOutline, navigateOutline,
+      timeOutline, documentTextOutline, createOutline, trashOutline
+    });
+  }
 
   ngOnInit() {
     this.customerId = Number(this.route.snapshot.paramMap.get('id'));
@@ -51,11 +61,7 @@ export class CustomerDetailPage implements OnInit {
       message: `Remove ${this.customer?.name} from your customers? Their invoice history will be preserved.`,
       buttons: [
         { text: 'Cancel', role: 'cancel' },
-        {
-          text: 'Delete',
-          role: 'destructive',
-          handler: () => this.deleteCustomer()
-        }
+        { text: 'Delete', role: 'destructive', handler: () => this.deleteCustomer() }
       ]
     });
     await alert.present();
@@ -77,11 +83,7 @@ export class CustomerDetailPage implements OnInit {
 
   getStatusColor(status: string): string {
     const map: Record<string, string> = {
-      DRAFT: 'medium',
-      SENT: 'primary',
-      PAID: 'success',
-      OVERDUE: 'warning',
-      CANCELLED: 'danger'
+      DRAFT: 'medium', SENT: 'primary', PAID: 'success', OVERDUE: 'danger', CANCELLED: 'medium'
     };
     return map[status] ?? 'medium';
   }
