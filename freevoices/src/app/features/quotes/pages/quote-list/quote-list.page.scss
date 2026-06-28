@@ -1,38 +1,154 @@
-.quote-end {
+ion-toolbar {
+  --background: var(--ion-background-color);
+  --border-width: 0;
+
+  ion-title { font-size: 1.1rem; font-weight: 600; }
+}
+
+.list-container {
+  padding: 0 1rem 6rem;
+}
+
+.search-wrap {
+  padding: 0.75rem 0 0.25rem;
+
+  .custom-searchbar {
+    --background: var(--ion-color-light);
+    --border-radius: 12px;
+    --box-shadow: none;
+    --placeholder-color: var(--ion-color-medium);
+    --color: var(--ion-text-color);
+    --icon-color: var(--ion-color-medium);
+    padding: 0;
+    font-size: 0.875rem;
+  }
+}
+
+.segment-wrap {
+  padding: 0.5rem 0;
+
+  .custom-segment {
+    --background: var(--ion-color-light);
+    border-radius: 10px;
+
+    ion-segment-button {
+      --color: var(--ion-color-medium);
+      --color-checked: var(--ion-color-primary);
+      --indicator-color: var(--ion-color-primary);
+      font-size: 0.78rem;
+      text-transform: none;
+      font-weight: 500;
+      min-width: 0;
+    }
+  }
+}
+
+.results-count {
+  font-size: 0.75rem;
+  color: var(--ion-color-medium);
+  margin: 0.25rem 0.5rem 0.5rem;
+}
+
+.invoice-list, .loading-list {
+  border-radius: 16px;
+  overflow: hidden;
+  border: 1px solid rgba(var(--ion-color-medium-rgb), 0.15);
+  background: var(--ion-card-background);
+}
+
+.invoice-item {
+  --padding-start: 1rem;
+  --padding-end: 0.75rem;
+  --inner-padding-end: 0;
+  --border-color: rgba(var(--ion-color-medium-rgb), 0.12);
+  --background-hover: rgba(var(--ion-color-primary-rgb), 0.04);
+
+  .doc-icon-wrap {
+    width: 36px;
+    height: 36px;
+    border-radius: 8px;
+    background: var(--fv-teal-tint);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin-right: 0.75rem;
+    flex-shrink: 0;
+
+    ion-icon { font-size: 18px; color: var(--fv-teal-text); }
+  }
+
+  .doc-number { font-size: 0.875rem; font-weight: 500; color: var(--ion-text-color); margin: 0 0 2px; }
+  .doc-customer { font-size: 0.78rem; color: var(--ion-color-medium); margin: 0; }
+  .doc-date { font-size: 0.75rem; color: var(--ion-color-medium); margin: 2px 0 0; }
+}
+
+.invoice-end {
   display: flex;
   flex-direction: column;
   align-items: flex-end;
-  gap: 0.4rem;
+  gap: 4px;
+}
 
-  .amount {
-    font-weight: 600;
-    color: var(--ion-color-dark);
-    margin: 0;
-    font-size: 0.95rem;
-  }
+.doc-amount {
+  margin: 0;
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--ion-text-color);
+}
+
+.activity-badge {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 20px;
+  font-size: 0.68rem;
+  font-weight: 600;
+  white-space: nowrap;
+
+  &.badge-success { background: var(--fv-success-bg); color: var(--fv-success-text); }
+  &.badge-danger { background: var(--fv-danger-bg); color: var(--fv-danger-text); }
+  &.badge-warning { background: var(--fv-warning-bg); color: var(--fv-warning-text); }
+  &.badge-medium { background: var(--fv-medium-bg); color: var(--fv-medium-text); }
+  &.badge-primary { background: var(--fv-teal-tint); color: var(--fv-teal-text); }
 }
 
 .empty-state {
   display: flex;
   flex-direction: column;
   align-items: center;
-  justify-content: center;
   padding: 4rem 2rem;
   text-align: center;
-  color: var(--ion-color-medium);
+  gap: 0.5rem;
 
-  ion-icon { font-size: 4rem; margin-bottom: 1rem; }
-  p { margin-bottom: 1.5rem; }
+  .empty-icon-wrap {
+    width: 64px;
+    height: 64px;
+    border-radius: 16px;
+    background: var(--fv-teal-tint);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin-bottom: 0.75rem;
+
+    ion-icon { font-size: 2rem; color: var(--fv-teal-text); }
+  }
+
+  h3 { margin: 0; font-size: 1rem; font-weight: 600; color: var(--ion-text-color); }
+  p { margin: 0; font-size: 0.85rem; color: var(--ion-color-medium); margin-bottom: 0.5rem; }
+
+  ion-button { --border-radius: 10px; text-transform: none; font-weight: 500; margin-top: 0.5rem; }
 }
 
-.loading-state { display: flex; justify-content: center; padding: 3rem; }
+.skeleton-icon { width: 36px; height: 36px; border-radius: 8px; margin-right: 0.75rem; }
+.skeleton-title { width: 140px; height: 14px; border-radius: 4px; margin-bottom: 6px; }
+.skeleton-sub { width: 100px; height: 12px; border-radius: 4px; }
+.skeleton-badge { width: 52px; height: 22px; border-radius: 10px; }
 
 .pagination {
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: 1rem;
+  gap: 0.5rem;
   padding: 1rem;
-  color: var(--ion-color-medium);
-  font-size: 0.9rem;
+
+  .page-label { font-size: 0.85rem; color: var(--ion-color-medium); min-width: 60px; text-align: center; }
 }
