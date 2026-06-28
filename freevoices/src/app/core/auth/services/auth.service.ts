@@ -41,7 +41,7 @@ export class AuthService {
 
   async logout(): Promise<void> {
     try {
-      await this.dbService.create('auth/logout', {}).toPromise();
+      await this.dbService.create('logout', {}).toPromise();
     } catch (error) {
       console.error('Logout error:', error);
     } finally {
