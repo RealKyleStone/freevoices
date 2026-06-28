@@ -1,165 +1,224 @@
-// src/app/features/dashboard/pages/dashboard/dashboard.page.scss
-:host {
-    display: block;
-    --padding-top: 1rem;
-    --padding-bottom: 1rem;
-    --padding-start: 1rem;
-    --padding-end: 1rem;
-  }
-  
-  .dashboard-container {
-    padding: var(--padding-top) var(--padding-end) var(--padding-bottom) var(--padding-start);
-  }
-  
-  .header {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    margin-bottom: 2rem;
-  }
-  
-  .logo-container {
-    .logo {
-      height: 40px;
-      width: auto;
-    }
-  }
-  
-  .actions {
-    display: flex;
-    gap: 0.5rem;
-  
-    ion-badge {
-      position: absolute;
-      top: 0;
-      right: 0;
-      transform: translate(25%, -25%);
-    }
-  }
-  
-  .quick-actions {
-    display: flex;
-    gap: 1rem;
-    margin: 2rem 1.5rem;
-    flex-wrap: wrap;
-  
-    .new-invoice-btn {
-      --background: var(--ion-color-primary);
-      --color: var(--ion-color-primary-contrast);
-    }
-  }
-  
-  .stat-card {
-    height: 100%;
+ion-toolbar {
+  --background: var(--ion-background-color);
+  --border-width: 0;
+  padding: 0.5rem 1rem;
+}
+
+.toolbar-greeting {
+  padding-left: 0.5rem;
+
+  h2 {
     margin: 0;
-    
-    ion-card-content {
-      display: flex;
-      align-items: center;
-      padding: 1.5rem;
-    }
-  
-    .stat-icon {
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      width: 48px;
-      height: 48px;
-      border-radius: 12px;
-      margin-right: 1rem;
-  
-      ion-icon {
-        font-size: 24px;
-        color: white;
-      }
-  
-      &.revenue {
-        background: var(--ion-color-success);
-      }
-  
-      &.customers {
-        background: var(--ion-color-primary);
-      }
-  
-      &.pending {
-        background: var(--ion-color-warning);
-      }
-  
-      &.overdue {
-        background: var(--ion-color-danger);
-      }
-    }
-  
-    .stat-info {
-      h3 {
-        margin: 0;
-        font-size: 0.875rem;
-        color: var(--ion-color-medium);
-      }
-  
-      p {
-        margin: 0.25rem 0 0;
-        font-size: 1.5rem;
-        font-weight: 600;
-        color: var(--ion-color-dark);
-      }
-    }
-  }
-  
-  .chart-card, .recent-activity {
-    height: 100%;
-    margin: 0;
-  
-    ion-card-header {
-      padding: 1rem;
-    }
-  
-    ion-card-content {
-      padding: 1rem;
-    }
-  }
-  
-  .chart-placeholder {
-    background: var(--ion-color-light);
-    height: 300px;
-    border-radius: 8px;
-  }
-  
-  .activity-placeholder {
-    background: var(--ion-color-light);
-    height: 300px;
-    border-radius: 8px;
+    font-size: 1.3rem;
+    font-weight: 700;
+    color: var(--ion-text-color);
+    letter-spacing: -0.02em;
   }
 
-  .skeleton-stat {
-    width: 80px;
-    height: 20px;
-  }
-
-  .skeleton-stat-sm {
-    width: 40px;
-    height: 20px;
-  }
-
-  .skeleton-row {
-    width: 100%;
-    height: 40px;
-  }
-
-  .no-activity {
+  p {
+    margin: 2px 0 0;
+    font-size: 0.8rem;
     color: var(--ion-color-medium);
-    text-align: center;
-    padding: 1rem 0;
+  }
+}
+
+.toolbar-icon-btn {
+  --border-radius: 8px;
+  --background: var(--ion-color-light);
+  --color: var(--ion-color-medium);
+  margin-left: 4px;
+  width: 36px;
+  height: 36px;
+}
+
+.dashboard-container {
+  padding: 1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.quick-actions {
+  display: flex;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+
+  ion-button {
+    --border-radius: 10px;
+    font-size: 0.875rem;
+    font-weight: 500;
+    text-transform: none;
+    letter-spacing: 0;
+  }
+}
+
+.stats-grid {
+  padding: 0;
+
+  ion-col { padding: 4px 0; }
+}
+
+.stat-card {
+  margin: 0;
+  border-radius: 16px;
+  box-shadow: none;
+  border: 1px solid rgba(128, 128, 128, 0.15);
+  height: 100%;
+
+  ion-card-content {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+    padding: 1.25rem;
+    height: 100%;
+    box-sizing: border-box;
   }
 
-  // Dark mode adjustments
-  :host-context(.dark-theme) {
-    .stat-info p {
-      color: var(--ion-color-light);
+  .stat-icon {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 48px;
+    height: 48px;
+    border-radius: 12px;
+    flex-shrink: 0;
+    ion-icon { font-size: 22px; }
+
+    &.teal { background: var(--fv-teal-tint); ion-icon { color: var(--fv-teal-text); } }
+    &.success { background: var(--fv-success-bg); ion-icon { color: var(--fv-success-text); } }
+    &.warning { background: var(--fv-warning-bg); ion-icon { color: var(--fv-warning-text); } }
+    &.danger { background: var(--fv-danger-bg); ion-icon { color: var(--fv-danger-text); } }
+  }
+
+  .stat-info {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    min-width: 0;
+    flex: 1;
+  }
+
+  .stat-label {
+    margin: 0;
+    font-size: 0.72rem;
+    color: var(--ion-color-medium);
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    font-weight: 500;
+  }
+
+  .stat-value {
+    margin: 0;
+    font-size: 1.1rem;
+    font-weight: 600;
+    color: var(--ion-text-color);
+    line-height: 1.2;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .overdue-value { color: var(--fv-danger-text); }
+
+  .stat-sub {
+    margin: 0;
+    font-size: 0.72rem;
+    color: var(--ion-color-medium);
+  }
+
+  .skeleton-value {
+    width: 80px;
+    height: 24px;
+    border-radius: 4px;
+  }
+}
+
+ion-row {
+  align-items: stretch;
+}
+
+.activity-card {
+  margin: 0;
+  border-radius: 16px;
+  box-shadow: none;
+  border: 1px solid rgba(128, 128, 128, 0.15);
+
+  .activity-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+
+    ion-card-title {
+      font-size: 1rem;
+      font-weight: 600;
     }
-  
-    .chart-placeholder,
-    .activity-placeholder {
-      background: var(--ion-color-medium);
+
+    ion-button {
+      --color: var(--ion-color-primary);
+      font-size: 0.8rem;
+      text-transform: none;
+      letter-spacing: 0;
     }
   }
+}
+
+.activity-item {
+  --padding-start: 1rem;
+  --padding-end: 1rem;
+  --inner-padding-end: 0;
+
+  .activity-dot {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 34px;
+    height: 34px;
+    border-radius: 50%;
+    margin-right: 0.75rem;
+    flex-shrink: 0;
+    ion-icon { font-size: 16px; }
+
+    &.dot-success { background: var(--fv-success-bg); ion-icon { color: var(--fv-success-text); } }
+    &.dot-danger { background: var(--fv-danger-bg); ion-icon { color: var(--fv-danger-text); } }
+    &.dot-primary { background: var(--fv-info-bg); ion-icon { color: var(--fv-info-text); } }
+    &.dot-medium { background: var(--fv-medium-bg); ion-icon { color: var(--fv-medium-text); } }
+  }
+
+  ion-label {
+    h3 { font-size: 0.875rem; font-weight: 500; color: var(--ion-text-color); margin: 0 0 2px; }
+    p { font-size: 0.75rem; color: var(--ion-color-medium); margin: 0; }
+  }
+}
+
+.activity-badge {
+  display: inline-block;
+  padding: 3px 10px;
+  border-radius: 20px;
+  font-size: 0.7rem;
+  font-weight: 600;
+  white-space: nowrap;
+
+  &.badge-success { background: var(--fv-success-bg); color: var(--fv-success-text); }
+  &.badge-danger { background: var(--fv-danger-bg); color: var(--fv-danger-text); }
+  &.badge-info { background: var(--fv-teal-tint); color: var(--fv-teal-text); }
+  &.badge-medium { background: var(--fv-medium-bg); color: var(--fv-medium-text); }
+}
+
+.empty-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 2.5rem 1rem;
+  text-align: center;
+  gap: 0.5rem;
+
+  ion-icon { font-size: 2.5rem; color: var(--ion-color-medium); }
+  p { margin: 0; font-size: 0.9rem; font-weight: 500; color: var(--ion-text-color); }
+  span { font-size: 0.8rem; color: var(--ion-color-medium); }
+}
+
+.skeleton-dot { width: 34px; height: 34px; border-radius: 50%; }
+.skeleton-title { width: 160px; height: 14px; border-radius: 4px; }
+.skeleton-sub { width: 100px; height: 12px; border-radius: 4px; }
+.skeleton-badge { width: 52px; height: 22px; border-radius: 10px; }

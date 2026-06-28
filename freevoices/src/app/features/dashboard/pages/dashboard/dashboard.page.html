@@ -1,128 +1,167 @@
-<ion-header>
-    <ion-toolbar>
-      <ion-buttons slot="end">
-        <ion-button>
-          <ion-icon slot="icon-only" name="notifications-outline"></ion-icon>
-        </ion-button>
-        <ion-button>
-          <ion-icon slot="icon-only" name="person-circle-outline"></ion-icon>
-        </ion-button>
-      </ion-buttons>
-    </ion-toolbar>
-  </ion-header>
-
-  <ion-content>
-    <div class="dashboard-container">
-      <!-- Quick Actions -->
-      <div class="quick-actions">
-        <ion-button color="primary" class="new-invoice-btn" routerLink="/invoices/new">
-          <ion-icon name="add-circle-outline" slot="start"></ion-icon>
-          New Invoice
-        </ion-button>
-        <ion-button fill="outline" routerLink="/customers/new">
-          <ion-icon name="person-add-outline" slot="start"></ion-icon>
-          Add Customer
-        </ion-button>
-      </div>
-
-      <!-- Stats Cards -->
-      <ion-grid>
-        <ion-row>
-          <ion-col size="12" size-md="6" size-lg="3">
-            <ion-card class="stat-card">
-              <ion-card-content>
-                <div class="stat-icon revenue">
-                  <ion-icon name="wallet-outline"></ion-icon>
-                </div>
-                <div class="stat-info">
-                  <h3>Revenue This Month</h3>
-                  <p *ngIf="!isLoading">{{ summary.monthRevenue | currency:selectedCurrency }}</p>
-                  <ion-skeleton-text *ngIf="isLoading" animated class="skeleton-stat"></ion-skeleton-text>
-                </div>
-              </ion-card-content>
-            </ion-card>
-          </ion-col>
-
-          <ion-col size="12" size-md="6" size-lg="3">
-            <ion-card class="stat-card">
-              <ion-card-content>
-                <div class="stat-icon customers">
-                  <ion-icon name="people-outline"></ion-icon>
-                </div>
-                <div class="stat-info">
-                  <h3>Total Customers</h3>
-                  <p *ngIf="!isLoading">{{ summary.totalCustomers }}</p>
-                  <ion-skeleton-text *ngIf="isLoading" animated class="skeleton-stat-sm"></ion-skeleton-text>
-                </div>
-              </ion-card-content>
-            </ion-card>
-          </ion-col>
-
-          <ion-col size="12" size-md="6" size-lg="3">
-            <ion-card class="stat-card">
-              <ion-card-content>
-                <div class="stat-icon pending">
-                  <ion-icon name="document-text-outline"></ion-icon>
-                </div>
-                <div class="stat-info">
-                  <h3>Open Invoices</h3>
-                  <p *ngIf="!isLoading">{{ summary.openInvoices }}</p>
-                  <ion-skeleton-text *ngIf="isLoading" animated class="skeleton-stat-sm"></ion-skeleton-text>
-                </div>
-              </ion-card-content>
-            </ion-card>
-          </ion-col>
-
-          <ion-col size="12" size-md="6" size-lg="3">
-            <ion-card class="stat-card">
-              <ion-card-content>
-                <div class="stat-icon overdue">
-                  <ion-icon name="alert-circle-outline"></ion-icon>
-                </div>
-                <div class="stat-info">
-                  <h3>Overdue</h3>
-                  <p *ngIf="!isLoading">{{ summary.overdueInvoices }}</p>
-                  <ion-skeleton-text *ngIf="isLoading" animated class="skeleton-stat-sm"></ion-skeleton-text>
-                </div>
-              </ion-card-content>
-            </ion-card>
-          </ion-col>
-        </ion-row>
-      </ion-grid>
-
-      <!-- Recent Activity -->
-      <ion-card class="recent-activity">
-        <ion-card-header>
-          <ion-card-title>Recent Activity</ion-card-title>
-        </ion-card-header>
-        <ion-card-content>
-          <ng-container *ngIf="!isLoading">
-            <ion-list *ngIf="summary.recentActivity.length > 0" lines="none">
-              <ion-item *ngFor="let item of summary.recentActivity">
-                <ion-icon
-                  slot="start"
-                  [name]="item.event_type === 'PAID' ? 'checkmark-circle-outline' :
-                          item.event_type === 'SENT' ? 'send-outline' :
-                          item.event_type === 'CANCELLED' ? 'close-circle-outline' :
-                          'document-outline'"
-                  [color]="item.event_type === 'PAID' ? 'success' :
-                           item.event_type === 'OVERDUE' ? 'danger' :
-                           item.event_type === 'CANCELLED' ? 'medium' : 'primary'">
-                </ion-icon>
-                <ion-label>
-                  <h3>{{ item.document_number }} — {{ item.customer_name }}</h3>
-                  <p>{{ formatEventType(item.event_type) }} · {{ item.event_date | date:'d MMM y, HH:mm' }}</p>
-                </ion-label>
-              </ion-item>
-            </ion-list>
-            <p *ngIf="summary.recentActivity.length === 0" class="no-activity">No recent activity yet.</p>
-          </ng-container>
-          <ng-container *ngIf="isLoading">
-            <ion-item *ngFor="let _ of [1,2,3]">
-              <ion-skeleton-text animated class="skeleton-row"></ion-skeleton-text>
-            </ion-item>
-          </ng-container>
-        </ion-card-content>
-      </ion-card>
+<!-- src/app/features/dashboard/pages/dashboard/dashboard.page.html -->
+<ion-header class="ion-no-border">
+  <ion-toolbar>
+    <!-- Greeting on the left -->
+    <div slot="start" class="toolbar-greeting">
+      <h2>{{ getGreeting() }}<span *ngIf="companyName">, {{ companyName }}</span> 👋</h2>
+      <p>{{ today | date:'EEEE, d MMMM y' }} · {{ today | date:'HH:mm' }}</p>
     </div>
-  </ion-content>
+    <!-- Action icons on the right -->
+    <ion-buttons slot="end">
+      <ion-button class="toolbar-icon-btn" (click)="openNotifications()">
+        <ion-icon slot="icon-only" name="notifications-outline"></ion-icon>
+      </ion-button>
+      <ion-button class="toolbar-icon-btn" (click)="openProfile($event)">
+        <ion-icon slot="icon-only" name="person-circle-outline"></ion-icon>
+      </ion-button>
+    </ion-buttons>
+  </ion-toolbar>
+</ion-header>
+
+<ion-content>
+  <div class="dashboard-container">
+
+    <!-- Quick Actions -->
+    <div class="quick-actions">
+      <ion-button color="primary" routerLink="/invoices/new">
+        <ion-icon name="add-circle-outline" slot="start"></ion-icon>
+        New invoice
+      </ion-button>
+      <ion-button fill="outline" color="primary" routerLink="/customers/new">
+        <ion-icon name="person-add-outline" slot="start"></ion-icon>
+        Add customer
+      </ion-button>
+    </div>
+
+    <!-- Stat Cards -->
+    <ion-grid class="stats-grid">
+      <ion-row>
+
+        <!-- Revenue -->
+        <ion-col size="12" size-sm="6" size-lg="3">
+          <ion-card class="stat-card">
+            <ion-card-content>
+              <div class="stat-icon teal">
+                <ion-icon name="wallet-outline"></ion-icon>
+              </div>
+              <div class="stat-info">
+                <p class="stat-label">Revenue this month</p>
+                <h2 class="stat-value" *ngIf="!isLoading">
+                  {{ summary.monthRevenue | currency:selectedCurrency:'symbol':'1.2-2' }}
+                </h2>
+                <ion-skeleton-text *ngIf="isLoading" animated class="skeleton-value"></ion-skeleton-text>
+                <p class="stat-sub">Paid invoices</p>
+              </div>
+            </ion-card-content>
+          </ion-card>
+        </ion-col>
+
+        <!-- Customers -->
+        <ion-col size="12" size-sm="6" size-lg="3">
+          <ion-card class="stat-card">
+            <ion-card-content>
+              <div class="stat-icon success">
+                <ion-icon name="people-outline"></ion-icon>
+              </div>
+              <div class="stat-info">
+                <p class="stat-label">Total customers</p>
+                <h2 class="stat-value" *ngIf="!isLoading">{{ summary.totalCustomers }}</h2>
+                <ion-skeleton-text *ngIf="isLoading" animated class="skeleton-value"></ion-skeleton-text>
+                <p class="stat-sub">Active accounts</p>
+              </div>
+            </ion-card-content>
+          </ion-card>
+        </ion-col>
+
+        <!-- Open Invoices -->
+        <ion-col size="12" size-sm="6" size-lg="3">
+          <ion-card class="stat-card">
+            <ion-card-content>
+              <div class="stat-icon warning">
+                <ion-icon name="document-text-outline"></ion-icon>
+              </div>
+              <div class="stat-info">
+                <p class="stat-label">Open invoices</p>
+                <h2 class="stat-value" *ngIf="!isLoading">{{ summary.openInvoices }}</h2>
+                <ion-skeleton-text *ngIf="isLoading" animated class="skeleton-value"></ion-skeleton-text>
+                <p class="stat-sub">Awaiting payment</p>
+              </div>
+            </ion-card-content>
+          </ion-card>
+        </ion-col>
+
+        <!-- Overdue -->
+        <ion-col size="12" size-sm="6" size-lg="3">
+          <ion-card class="stat-card">
+            <ion-card-content>
+              <div class="stat-icon danger">
+                <ion-icon name="alert-circle-outline"></ion-icon>
+              </div>
+              <div class="stat-info">
+                <p class="stat-label">Overdue</p>
+                <h2 class="stat-value overdue-value" *ngIf="!isLoading">{{ summary.overdueInvoices }}</h2>
+                <ion-skeleton-text *ngIf="isLoading" animated class="skeleton-value"></ion-skeleton-text>
+                <p class="stat-sub">Needs attention</p>
+              </div>
+            </ion-card-content>
+          </ion-card>
+        </ion-col>
+
+      </ion-row>
+    </ion-grid>
+
+    <!-- Recent Activity -->
+    <ion-card class="activity-card">
+      <ion-card-header>
+        <div class="activity-header">
+          <ion-card-title>Recent activity</ion-card-title>
+          <ion-button fill="clear" size="small" color="primary" routerLink="/invoices">
+            See all
+          </ion-button>
+        </div>
+      </ion-card-header>
+
+      <ion-card-content class="ion-no-padding">
+
+        <!-- Loaded state -->
+        <ion-list *ngIf="!isLoading" lines="full">
+          <ion-item *ngFor="let item of summary.recentActivity" class="activity-item">
+            <div slot="start" class="activity-dot" [ngClass]="'dot-' + getActivityColor(item.event_type)">
+              <ion-icon [name]="getActivityIcon(item.event_type)"></ion-icon>
+            </div>
+            <ion-label>
+              <h3>{{ item.document_number }} — {{ item.customer_name }}</h3>
+              <p>{{ item.event_date | date:'d MMM y, HH:mm' }}</p>
+            </ion-label>
+            <div slot="end">
+              <span class="activity-badge" [ngClass]="getActivityBadgeClass(item.event_type)">
+                {{ formatEventType(item.event_type) }}
+              </span>
+            </div>
+          </ion-item>
+
+          <!-- Empty state -->
+          <div *ngIf="summary.recentActivity.length === 0" class="empty-state">
+            <ion-icon name="document-outline"></ion-icon>
+            <p>No recent activity yet.</p>
+            <span>Your invoice and quote history will appear here.</span>
+          </div>
+        </ion-list>
+
+        <!-- Loading skeletons -->
+        <ion-list *ngIf="isLoading" lines="full">
+          <ion-item *ngFor="let _ of [1,2,3]" class="activity-item">
+            <ion-skeleton-text animated slot="start" class="skeleton-dot"></ion-skeleton-text>
+            <ion-label>
+              <ion-skeleton-text animated class="skeleton-title"></ion-skeleton-text>
+              <ion-skeleton-text animated class="skeleton-sub"></ion-skeleton-text>
+            </ion-label>
+            <ion-skeleton-text animated slot="end" class="skeleton-badge"></ion-skeleton-text>
+          </ion-item>
+        </ion-list>
+
+      </ion-card-content>
+    </ion-card>
+
+  </div>
+</ion-content>
