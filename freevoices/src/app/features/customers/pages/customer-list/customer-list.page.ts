@@ -8,7 +8,7 @@ import { Customer } from '../../../../../models/database.models';
 import { Subject } from 'rxjs';
 import { debounceTime, distinctUntilChanged } from 'rxjs/operators';
 import { addIcons } from 'ionicons';
-import { addOutline, peopleOutline, createOutline, trashOutline, chevronBackOutline, chevronForwardOutline } from 'ionicons/icons';
+import { add, addOutline, peopleOutline, createOutline, trashOutline, chevronBackOutline, chevronForwardOutline } from 'ionicons/icons';
 
 @Component({
   selector: 'app-customer-list',
@@ -32,7 +32,7 @@ export class CustomerListPage implements OnInit {
     private alertCtrl: AlertController,
     private toastCtrl: ToastController
   ) {
-    addIcons({ addOutline, peopleOutline, createOutline, trashOutline, chevronBackOutline, chevronForwardOutline });
+    addIcons({ add, addOutline, peopleOutline, createOutline, trashOutline, chevronBackOutline, chevronForwardOutline });
   }
 
   ngOnInit() {
