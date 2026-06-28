@@ -5,14 +5,21 @@ import { IonApp, IonSplitPane, IonMenu, IonContent, IonList,
          IonRouterOutlet, MenuController } from '@ionic/angular/standalone';
 import { AuthService } from './core/auth/services/auth.service';
 import { CommonModule } from '@angular/common';
+import { addIcons } from 'ionicons';
 import {
   walletOutline, gridOutline, cashOutline, businessOutline,
   barChartOutline, logOutOutline, notificationsOutline,
   personCircleOutline, addCircleOutline, personAddOutline,
   documentTextOutline, alertCircleOutline, peopleOutline,
-  receiptOutline, cubeOutline, settingsOutline
+  receiptOutline, cubeOutline, settingsOutline,
+  sunnyOutline, moonOutline, add, addOutline,
+  chevronBackOutline, chevronForwardOutline, createOutline,
+  trashOutline, sendOutline, downloadOutline,
+  checkmarkCircleOutline, closeCircleOutline, eyeOutline,
+  shareSocialOutline, copyOutline, calendarOutline, alarmOutline,
+  timeOutline, documentOutline, mailOutline, callOutline,
+  locationOutline, navigateOutline, pricetagOutline, timerOutline
 } from 'ionicons/icons';
-import { addIcons } from 'ionicons';
 import { Observable } from 'rxjs';
 import { filter, take } from 'rxjs/operators';
 import { LocalNotificationService } from './core/services/local-notification.service';
@@ -25,23 +32,15 @@ import { InvoiceService } from './features/invoices/services/invoice.service';
   styleUrls: ['./app.component.scss'],
   standalone: true,
   imports: [
-    RouterModule,
-    CommonModule,
-    IonApp,
-    IonSplitPane,
-    IonMenu,
-    IonContent,
-    IonList,
-    IonMenuToggle,
-    IonItem,
-    IonIcon,
-    IonLabel,
-    IonFooter,
+    RouterModule, CommonModule,
+    IonApp, IonSplitPane, IonMenu, IonContent, IonList,
+    IonMenuToggle, IonItem, IonIcon, IonLabel, IonFooter,
     IonRouterOutlet
   ]
 })
 export class AppComponent implements OnInit {
   isLoggedIn$: Observable<any>;
+  isDarkMode = false;
 
   constructor(
     private authService: AuthService,
@@ -53,69 +52,71 @@ export class AppComponent implements OnInit {
   ) {
     this.isLoggedIn$ = this.authService.currentUser$;
     addIcons({
-      'wallet-outline': walletOutline,
-      'grid-outline': gridOutline,
-      'cash-outline': cashOutline,
-      'business-outline': businessOutline,
-      'bar-chart-outline': barChartOutline,
-      'log-out-outline': logOutOutline,
-      'notifications-outline': notificationsOutline,
-      'person-circle-outline': personCircleOutline,
-      'add-circle-outline': addCircleOutline,
-      'person-add-outline': personAddOutline,
-      'document-text-outline': documentTextOutline,
-      'alert-circle-outline': alertCircleOutline,
-      'people-outline': peopleOutline,
-      'receipt-outline': receiptOutline,
-      'cube-outline': cubeOutline,
-      'settings-outline': settingsOutline
+      walletOutline, gridOutline, cashOutline, businessOutline,
+      barChartOutline, logOutOutline, notificationsOutline,
+      personCircleOutline, addCircleOutline, personAddOutline,
+      documentTextOutline, alertCircleOutline, peopleOutline,
+      receiptOutline, cubeOutline, settingsOutline,
+      sunnyOutline, moonOutline, add, addOutline,
+      chevronBackOutline, chevronForwardOutline, createOutline,
+      trashOutline, sendOutline, downloadOutline,
+      checkmarkCircleOutline, closeCircleOutline, eyeOutline,
+      shareSocialOutline, copyOutline, calendarOutline, alarmOutline,
+      timeOutline, documentOutline, mailOutline, callOutline,
+      locationOutline, navigateOutline, pricetagOutline, timerOutline
     });
   }
 
   ngOnInit(): void {
-    // Request browser notification permission immediately on app load
+    this.initTheme();
     this.browserNotifications.requestPermission();
-
-    // Wait for user to be logged in before checking invoices
-    this.authService.currentUser$.pipe(
-      filter(user => !!user),
-      take(1)
-    ).subscribe(() => {
+    this.authService.currentUser$.pipe(filter(user => !!user), take(1)).subscribe(() => {
       this.checkInvoicesOnStartup();
     });
   }
 
-  // Fetch invoices on startup — schedule local notifications (native Android)
-  // and fire browser notifications for any overdue invoices
+  initTheme() {
+    const saved = localStorage.getItem('fv-theme');
+    if (saved) {
+      this.isDarkMode = saved === 'dark';
+    } else {
+      const hour = new Date().getHours();
+      this.isDarkMode = hour >= 18 || hour < 6;
+    }
+    this.applyTheme();
+  }
+
+  toggleTheme() {
+    this.isDarkMode = !this.isDarkMode;
+    localStorage.setItem('fv-theme', this.isDarkMode ? 'dark' : 'light');
+    this.applyTheme();
+  }
+
+  applyTheme() {
+    const toggle = this.isDarkMode;
+    document.body.classList.toggle('ion-palette-dark', toggle);
+    document.documentElement.classList.toggle('ion-palette-dark', toggle);
+    const ionApp = document.querySelector('ion-app');
+    if (ionApp) ionApp.classList.toggle('ion-palette-dark', toggle);
+  }
+
   private checkInvoicesOnStartup(): void {
     this.invoiceService.getInvoices('', '', 1, 100).subscribe({
       next: (response) => {
-        const relevant = response.data.filter(inv =>
-          ['SENT', 'OVERDUE'].includes(inv.status)
-        );
-
-        // Schedule native local notifications (Android/iOS)
+        const relevant = response.data.filter((inv: any) => ['SENT', 'OVERDUE'].includes(inv.status));
         this.localNotifications.initNotifications(relevant);
-
-        // Fire browser notifications for every overdue invoice
-        const overdue = relevant.filter(inv => inv.status === 'OVERDUE');
-        overdue.forEach(inv => {
-          this.browserNotifications.notify(
-            'Invoice Overdue',
-            `Invoice ${inv.document_number} is overdue. Follow up with your customer.`
-          );
+        const overdue = relevant.filter((inv: any) => inv.status === 'OVERDUE');
+        overdue.forEach((inv: any) => {
+          this.browserNotifications.notify('Invoice Overdue', `Invoice ${inv.document_number} is overdue.`);
         });
       },
       error: (err) => console.error('Failed to fetch invoices for notifications:', err)
     });
   }
 
-  async closeMenu() {
-    await this.menuCtrl.close();
-  }
+  async closeMenu() { await this.menuCtrl.close(); }
 
   async logout() {
-    await this.localNotifications.cancelAll();
     await this.authService.logout();
     this.router.navigate(['/login']);
   }

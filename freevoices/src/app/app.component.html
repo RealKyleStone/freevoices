@@ -1,7 +1,5 @@
-<!-- app.component.html -->
 <ion-app>
 
-  <!-- Show menu layout only when logged in -->
   <ion-split-pane contentId="main-content" *ngIf="isLoggedIn$ | async">
     <ion-menu contentId="main-content">
       <ion-content>
@@ -15,32 +13,26 @@
               <ion-icon name="grid-outline" slot="start"></ion-icon>
               <ion-label>Dashboard</ion-label>
             </ion-item>
-
             <ion-item routerLink="/customers" routerLinkActive="selected" detail="false">
               <ion-icon name="people-outline" slot="start"></ion-icon>
               <ion-label>Customers</ion-label>
             </ion-item>
-
             <ion-item routerLink="/invoices" routerLinkActive="selected" detail="false">
               <ion-icon name="document-text-outline" slot="start"></ion-icon>
               <ion-label>Invoices</ion-label>
             </ion-item>
-
             <ion-item routerLink="/quotes" routerLinkActive="selected" detail="false">
               <ion-icon name="receipt-outline" slot="start"></ion-icon>
               <ion-label>Quotes</ion-label>
             </ion-item>
-
             <ion-item routerLink="/products" routerLinkActive="selected" detail="false">
               <ion-icon name="cube-outline" slot="start"></ion-icon>
               <ion-label>Products</ion-label>
             </ion-item>
-
             <ion-item routerLink="/reports" routerLinkActive="selected" detail="false">
               <ion-icon name="bar-chart-outline" slot="start"></ion-icon>
               <ion-label>Reports</ion-label>
             </ion-item>
-
             <ion-item routerLink="/settings" routerLinkActive="selected" detail="false">
               <ion-icon name="settings-outline" slot="start"></ion-icon>
               <ion-label>Settings</ion-label>
@@ -50,9 +42,14 @@
       </ion-content>
 
       <ion-footer>
+        <!-- Theme toggle in sidebar -->
+        <ion-item button (click)="toggleTheme()" detail="false">
+          <ion-icon [name]="isDarkMode ? 'sunny-outline' : 'moon-outline'" slot="start"></ion-icon>
+          <ion-label>{{ isDarkMode ? 'Light mode' : 'Dark mode' }}</ion-label>
+        </ion-item>
         <ion-item button (click)="logout()">
           <ion-icon name="log-out-outline" slot="start"></ion-icon>
-          <ion-label>Logout</ion-label>
+          <ion-label>Sign out</ion-label>
         </ion-item>
       </ion-footer>
     </ion-menu>
@@ -62,7 +59,6 @@
     </div>
   </ion-split-pane>
 
-  <!-- Show plain router outlet when NOT logged in (login, register pages) -->
   <ion-router-outlet *ngIf="!(isLoggedIn$ | async)"></ion-router-outlet>
 
 </ion-app>
