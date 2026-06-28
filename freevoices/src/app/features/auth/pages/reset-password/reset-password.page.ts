@@ -90,7 +90,7 @@ export class ResetPasswordPage implements OnInit {
     ).subscribe(res => {
       if (res) {
         this.done = true;
-        setTimeout(() => this.router.navigate(['/auth/login']), 3000);
+        setTimeout(() => this.router.navigate(['/login']), 3000);
       }
     });
   }
