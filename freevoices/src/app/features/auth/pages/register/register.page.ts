@@ -1,7 +1,7 @@
 // src/app/features/auth/pages/register/register.page.ts
 import { Component, ElementRef, OnInit, ViewChild, ChangeDetectorRef } from '@angular/core';
 import { FormBuilder, FormGroup, Validators, ReactiveFormsModule, AbstractControl } from '@angular/forms';
-import { Router } from '@angular/router';
+import { Router, RouterLink } from '@angular/router';
 import { IonContent, IonHeader, IonToolbar, IonTitle, IonButton, 
          IonItem, IonLabel, IonInput, IonText, IonCard, 
          IonCardContent, IonProgressBar, IonSpinner, IonSelect, IonSelectOption } from '@ionic/angular/standalone';
@@ -29,6 +29,7 @@ interface Bank {
   imports: [
     CommonModule,
     ReactiveFormsModule,
+    RouterLink,
     IonContent,
     IonHeader,
     IonToolbar,

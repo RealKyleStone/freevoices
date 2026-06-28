@@ -1,165 +1,135 @@
-<ion-content class="ion-padding">
-  <div class="register-container">
-    <ion-card class="register-card">
-      <ion-card-content>
-        <h1 class="register-title">Create Account</h1>
-        
+<ion-content class="auth-content">
+  <div class="auth-layout register-layout">
+
+    <div class="auth-left-panel">
+      <div class="auth-brand">
+        <div class="auth-brand-icon">
+          <svg viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg"><rect x="6" y="2" width="30" height="38" rx="4" stroke="currentColor" stroke-width="2.5" fill="none"/><path d="M6 34 L6 40 Q6 46 12 46 L36 46 Q42 46 42 40 L42 14 L36 14" stroke="currentColor" stroke-width="2.5" fill="none" stroke-linejoin="round"/><line x1="13" y1="13" x2="29" y2="13" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><line x1="13" y1="19" x2="29" y2="19" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><line x1="13" y1="25" x2="24" y2="25" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><line x1="13" y1="31" x2="21" y2="31" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+        </div>
+        <span class="auth-brand-name">FreeVoices</span>
+      </div>
+      <div>
+        <p class="auth-eyebrow">Join FreeVoices</p>
+        <h1 class="auth-headline">Start getting<br><span class="auth-headline-accent">paid today.</span></h1>
+        <p class="auth-hero-sub">Set up your account in minutes. No credit card required.</p>
+      </div>
+      <ul class="auth-feature-list">
+        <li><span class="auth-feat-dot"></span>Free to get started</li>
+        <li><span class="auth-feat-dot"></span>Professional PDF invoices instantly</li>
+        <li><span class="auth-feat-dot"></span>Built for South African businesses</li>
+      </ul>
+      <p class="auth-copyright">© 2026 FreeVoices</p>
+    </div>
+
+    <div class="auth-right-panel register-right">
+      <div class="auth-form-card register-card">
+
+        <div class="auth-mobile-brand">
+          <div class="auth-brand-icon-sm">
+            <svg viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg"><rect x="6" y="2" width="30" height="38" rx="4" stroke="currentColor" stroke-width="2.5" fill="none"/><path d="M6 34 L6 40 Q6 46 12 46 L36 46 Q42 46 42 40 L42 14 L36 14" stroke="currentColor" stroke-width="2.5" fill="none" stroke-linejoin="round"/><line x1="13" y1="13" x2="29" y2="13" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><line x1="13" y1="19" x2="29" y2="19" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><line x1="13" y1="25" x2="24" y2="25" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><line x1="13" y1="31" x2="21" y2="31" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+          </div>
+          <span class="auth-brand-name-dark">FreeVoices</span>
+        </div>
+
+        <h2 class="auth-form-title">Create your account</h2>
+        <p class="auth-form-sub">Already have an account? <a class="inline-link" routerLink="/login">Sign in</a></p>
+
         <form [formGroup]="registerForm" (ngSubmit)="validateAndSubmit($event)">
-          <div class="form-section">
-            <h2>Account Information</h2>
-            <ion-item>
-              <ion-label position="floating">Email</ion-label>
-              <ion-input 
-                type="email" 
-                formControlName="email"
-                [clearInput]="true"
-              ></ion-input>
-              <ion-text color="danger" *ngIf="isFieldInvalid('email')">
-                <small>{{ getFieldError('email') }}</small>
-              </ion-text>
-              </ion-item>
-            </div>
 
-            <ion-item>
-              <ion-label position="floating">Password</ion-label>
-              <ion-input 
-                type="password" 
-                formControlName="password">
-              </ion-input>
-              <ion-text color="danger" *ngIf="isFieldInvalid('password')">
-                <small>{{getPasswordErrorMessage()}}</small>
-              </ion-text>
-            </ion-item>
-            
-            <ion-item>
-              <ion-label position="floating">Confirm Password</ion-label>
-              <ion-input 
-                type="password" 
-                formControlName="confirmPassword">
-              </ion-input>
-              <ion-text color="danger" *ngIf="registerForm.hasError('mismatch') && registerForm.get('confirmPassword')?.touched">
-                <small>Passwords do not match</small>
-              </ion-text>
-            </ion-item>
-
-          <div class="form-section">
-            <h2>Company Information</h2>
-            <ion-item>
-              <ion-label position="floating">Company Name</ion-label>
-              <ion-input formControlName="company_name"></ion-input>
-              <ion-text color="danger" *ngIf="isFieldInvalid('company_name')">
-                <small>{{ getFieldError('company_name') }}</small>
-              </ion-text>
-            </ion-item>
-
-            <ion-item>
-              <ion-label position="floating">Company Registration (Optional)</ion-label>
-              <ion-input formControlName="company_registration"></ion-input>
-            </ion-item>
-
-            <ion-item>
-              <ion-label position="floating">VAT Number (Optional)</ion-label>
-              <ion-input formControlName="vat_number"></ion-input>
-            </ion-item>
+          <!-- Account -->
+          <p class="auth-section-title">Account</p>
+          <div class="auth-field-group">
+            <label class="auth-field-label">Email</label>
+            <ion-input type="email" formControlName="email" placeholder="you@company.com" class="auth-field-input" fill="solid" [clearInput]="true"></ion-input>
+            <p class="auth-field-error" *ngIf="isFieldInvalid('email')">{{ getFieldError('email') }}</p>
+          </div>
+          <div class="auth-field-group">
+            <label class="auth-field-label">Password</label>
+            <ion-input type="password" formControlName="password" placeholder="Min. 8 characters" class="auth-field-input" fill="solid"></ion-input>
+            <p class="auth-field-error" *ngIf="isFieldInvalid('password')">{{ getPasswordErrorMessage() }}</p>
+          </div>
+          <div class="auth-field-group">
+            <label class="auth-field-label">Confirm password</label>
+            <ion-input type="password" formControlName="confirmPassword" placeholder="Repeat your password" class="auth-field-input" fill="solid"></ion-input>
+            <p class="auth-field-error" *ngIf="registerForm.hasError('mismatch') && registerForm.get('confirmPassword')?.touched">Passwords do not match</p>
           </div>
 
-          <div class="form-section">
-            <h2>Contact Information</h2>
-            <ion-item>
-              <ion-label position="floating">Contact Person</ion-label>
-              <ion-input formControlName="contact_person"></ion-input>
-              <ion-text color="danger" *ngIf="isFieldInvalid('contact_person')">
-                <small>{{ getFieldError('contact_person') }}</small>
-              </ion-text>
-            </ion-item>
-
-            <ion-item>
-              <ion-label position="floating">Phone</ion-label>
-              <ion-input 
-                type="tel" 
-                formControlName="phone"
-                placeholder="e.g. 0821234567">
-              </ion-input>
-              <ion-text color="danger" *ngIf="isFieldInvalid('phone')">
-                <small>Please enter a valid phone number</small>
-              </ion-text>
-            </ion-item>
-
-            <ion-item>
-              <ion-label position="floating">Address</ion-label>
-              <ion-input formControlName="address"></ion-input>
-              <ion-text color="danger" *ngIf="isFieldInvalid('address')">
-                <small>{{ getFieldError('address') }}</small>
-              </ion-text>
-            </ion-item>
+          <!-- Company -->
+          <p class="auth-section-title">Company</p>
+          <div class="auth-field-group">
+            <label class="auth-field-label">Company name</label>
+            <ion-input formControlName="company_name" placeholder="Your business name" class="auth-field-input" fill="solid"></ion-input>
+            <p class="auth-field-error" *ngIf="isFieldInvalid('company_name')">{{ getFieldError('company_name') }}</p>
+          </div>
+          <div class="auth-field-group">
+            <label class="auth-field-label">Company registration (optional)</label>
+            <ion-input formControlName="company_registration" placeholder="e.g. 2024/123456/07" class="auth-field-input" fill="solid"></ion-input>
+          </div>
+          <div class="auth-field-group">
+            <label class="auth-field-label">VAT number (optional)</label>
+            <ion-input formControlName="vat_number" placeholder="e.g. 4123456789" class="auth-field-input" fill="solid"></ion-input>
           </div>
 
-          <div class="form-section">
-            <h2>Banking Details (Optional)</h2>
-            <ion-item>
-              <ion-label position="floating">Bank</ion-label>
-              <ion-select formControlName="bank_name" (ionChange)="onBankSelect($event)">
-                <ion-select-option *ngFor="let bank of banks" [value]="bank.id">
-                  {{bank.name}}
-                </ion-select-option>
-              </ion-select>
-            </ion-item>
-          
-            <ion-item>
-              <ion-label position="floating">Account Number</ion-label>
-              <ion-input 
-                formControlName="bank_account_number"
-                type="number"
-                maxlength="12">
-              </ion-input>
-              <ion-text color="danger" *ngIf="isFieldInvalid('bank_account_number')">
-                <small>Please enter a valid account number (9-12 digits)</small>
-              </ion-text>
-            </ion-item>
-          
-            <ion-item>
-              <ion-label position="floating">Branch Code</ion-label>
-              <ion-input 
-                formControlName="bank_branch_code"
-                type="text"
-                readonly>
-              </ion-input>
-            </ion-item>
-          
-            <ion-item>
-              <ion-label position="floating">Account Type</ion-label>
-              <ion-select formControlName="bank_account_type">
-                <ion-select-option *ngFor="let type of accountTypes" [value]="type.value">
-                  {{type.label}}
-                </ion-select-option>
-              </ion-select>
-            </ion-item>
+          <!-- Contact -->
+          <p class="auth-section-title">Contact</p>
+          <div class="auth-field-group">
+            <label class="auth-field-label">Contact person</label>
+            <ion-input formControlName="contact_person" placeholder="Full name" class="auth-field-input" fill="solid"></ion-input>
+            <p class="auth-field-error" *ngIf="isFieldInvalid('contact_person')">{{ getFieldError('contact_person') }}</p>
+          </div>
+          <div class="auth-field-group">
+            <label class="auth-field-label">Phone</label>
+            <ion-input type="tel" formControlName="phone" placeholder="e.g. 0821234567" class="auth-field-input" fill="solid"></ion-input>
+            <p class="auth-field-error" *ngIf="isFieldInvalid('phone')">Please enter a valid phone number</p>
+          </div>
+          <div class="auth-field-group">
+            <label class="auth-field-label">Address</label>
+            <ion-input formControlName="address" placeholder="Business address" class="auth-field-input" fill="solid"></ion-input>
+            <p class="auth-field-error" *ngIf="isFieldInvalid('address')">{{ getFieldError('address') }}</p>
           </div>
 
-          <!-- Invisible reCAPTCHA container -->
+          <!-- Banking -->
+          <p class="auth-section-title">Banking (optional)</p>
+          <div class="auth-field-group">
+            <label class="auth-field-label">Bank</label>
+            <ion-select formControlName="bank_name" (ionChange)="onBankSelect($event)" class="auth-field-input" fill="solid" placeholder="Select your bank">
+              <ion-select-option *ngFor="let bank of banks" [value]="bank.id">{{ bank.name }}</ion-select-option>
+            </ion-select>
+          </div>
+          <div class="auth-field-group">
+            <label class="auth-field-label">Account number</label>
+            <ion-input formControlName="bank_account_number" type="number" maxlength="12" placeholder="9–12 digits" class="auth-field-input" fill="solid"></ion-input>
+            <p class="auth-field-error" *ngIf="isFieldInvalid('bank_account_number')">Please enter a valid account number (9–12 digits)</p>
+          </div>
+          <div class="auth-field-group">
+            <label class="auth-field-label">Branch code</label>
+            <ion-input formControlName="bank_branch_code" type="text" readonly class="auth-field-input" fill="solid"></ion-input>
+          </div>
+          <div class="auth-field-group">
+            <label class="auth-field-label">Account type</label>
+            <ion-select formControlName="bank_account_type" class="auth-field-input" fill="solid" placeholder="Select account type">
+              <ion-select-option *ngFor="let type of accountTypes" [value]="type.value">{{ type.label }}</ion-select-option>
+            </ion-select>
+          </div>
+
           <div *ngIf="!isMobile" #recaptcha class="g-recaptcha" data-size="invisible"></div>
 
-          <ion-text color="danger" *ngIf="errorMessage">
-            <p class="error-message">{{ errorMessage }}</p>
-          </ion-text>
+          <div class="auth-error-banner" *ngIf="errorMessage">{{ errorMessage }}</div>
 
-          <div class="form-actions">
-            <ion-button 
-              expand="block" 
-              type="submit"
-              [disabled]="registerForm.invalid || isLoading"
-            >
-              <ion-spinner *ngIf="isLoading" name="crescent"></ion-spinner>
-              <span *ngIf="!isLoading">Create Account</span>
-            </ion-button>
+          <ion-button expand="block" type="submit" class="auth-submit-btn" [disabled]="registerForm.invalid || isLoading">
+            <ion-spinner *ngIf="isLoading" name="crescent" slot="start"></ion-spinner>
+            <span *ngIf="!isLoading">Create account →</span>
+            <span *ngIf="isLoading">Creating account...</span>
+          </ion-button>
+
+          <div class="auth-links">
+            <span style="color:var(--ion-color-medium)">Already have an account?</span>
+            <a routerLink="/login">Sign in</a>
           </div>
 
-          <div class="login-link">
-            <span>Already have an account? </span>
-            <a routerLink="/auth/login">Login</a>
-          </div>
         </form>
-      </ion-card-content>
-    </ion-card>
+      </div>
+    </div>
+
   </div>
 </ion-content>
