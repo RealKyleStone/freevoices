@@ -1,62 +1,81 @@
-<ion-content class="ion-padding">
-  <div class="login-container">
-    <ion-card class="login-card">
-      <ion-card-content>
-        <h1 class="login-title">Welcome Back</h1>
-        
-        <!-- Changed (ngSubmit) to use validateAndSubmit -->
+<ion-content class="auth-content">
+
+  <!-- Theme toggle button — visible on login page -->
+  <button class="login-theme-btn" (click)="toggleTheme()">
+    <ion-icon [name]="isDarkMode ? 'sunny-outline' : 'moon-outline'"></ion-icon>
+  </button>
+
+  <div class="auth-layout">
+
+    <div class="auth-left-panel">
+      <div class="auth-brand">
+        <div class="auth-brand-icon">
+          <ion-icon name="document-text-outline"></ion-icon>
+        </div>
+        <span class="auth-brand-name">FreeVoices</span>
+      </div>
+
+      <div class="auth-hero">
+        <p class="auth-eyebrow">Invoicing for Africa</p>
+        <h1 class="auth-headline">Get paid.<br><span class="auth-headline-accent">On time.</span><br>Every time.</h1>
+        <p class="auth-hero-sub">Professional invoicing that makes you look good and gets you paid faster.</p>
+      </div>
+
+      <ul class="auth-feature-list">
+        <li><span class="auth-feat-dot"></span>Invoices, quotes and receipts</li>
+        <li><span class="auth-feat-dot"></span>PDF generation and email delivery</li>
+        <li><span class="auth-feat-dot"></span>Customer payment portal</li>
+      </ul>
+
+      <p class="auth-copyright">© 2026 FreeVoices</p>
+    </div>
+
+    <div class="auth-right-panel">
+      <div class="auth-form-card">
+
+        <div class="auth-mobile-brand">
+          <div class="auth-brand-icon-sm">
+            <ion-icon name="document-text-outline"></ion-icon>
+          </div>
+          <span class="auth-brand-name-dark">FreeVoices</span>
+        </div>
+
+        <h2 class="auth-form-title">Welcome back</h2>
+        <p class="auth-form-sub">Sign in to your account</p>
+
         <form [formGroup]="loginForm" (ngSubmit)="validateAndSubmit($event)">
-          <ion-item>
-            <ion-label position="floating">Email</ion-label>
-            <ion-input 
-              type="email" 
-              formControlName="email"
-              [clearInput]="true"
-            ></ion-input>
-            <ion-text color="danger" *ngIf="isFieldInvalid('email')">
-              <small>{{ getFieldError('email') }}</small>
-            </ion-text>
-          </ion-item>
 
-          <ion-item>
-            <ion-label position="floating">Password</ion-label>
-            <ion-input 
-              type="password" 
-              formControlName="password"
-            ></ion-input>
-            <ion-text color="danger" *ngIf="isFieldInvalid('password')">
-              <small>{{ getFieldError('password') }}</small>
-            </ion-text>
-          </ion-item>
+          <div class="auth-field-group">
+            <label class="auth-field-label">Email</label>
+            <ion-input type="email" formControlName="email" placeholder="you@company.com" class="auth-field-input" fill="solid" [clearInput]="true"></ion-input>
+            <p class="auth-field-error" *ngIf="isFieldInvalid('email')">{{ getFieldError('email') }}</p>
+          </div>
 
-          <!-- Invisible reCAPTCHA container -->
+          <div class="auth-field-group">
+            <label class="auth-field-label">Password</label>
+            <ion-input type="password" formControlName="password" placeholder="••••••••••••" class="auth-field-input" fill="solid"></ion-input>
+            <p class="auth-field-error" *ngIf="isFieldInvalid('password')">{{ getFieldError('password') }}</p>
+          </div>
+
           <div *ngIf="!isMobile" #recaptcha class="g-recaptcha" data-size="invisible"></div>
 
-          <ion-text color="danger" *ngIf="errorMessage">
-            <p class="error-message">{{ errorMessage }}</p>
-          </ion-text>
+          <div class="auth-error-banner" *ngIf="errorMessage">{{ errorMessage }}</div>
 
-          <ion-button 
-            expand="block" 
-            type="submit"
-            [disabled]="loginForm.invalid || isLoading"
-          >
-            <ion-spinner *ngIf="isLoading" name="crescent"></ion-spinner>
-            <span *ngIf="!isLoading">Login</span>
+          <ion-button expand="block" type="submit" class="auth-submit-btn" [disabled]="loginForm.invalid || isLoading">
+            <ion-spinner *ngIf="isLoading" name="crescent" slot="start"></ion-spinner>
+            <span *ngIf="!isLoading">Sign in →</span>
+            <span *ngIf="isLoading">Signing in...</span>
           </ion-button>
 
-          <div class="links-container">
-            <a routerLink="/auth/forgot-password" class="forgot-password">
-              Forgot your password?
-            </a>
-
-            <div class="signup-link">
-              <span>Don't have an account? </span>
-              <a routerLink="/register">Sign up</a>
-            </div>
+          <div class="auth-links">
+            <a routerLink="/auth/forgot-password">Forgot password?</a>
+            <span class="auth-link-divider">·</span>
+            <a routerLink="/register">Create account</a>
           </div>
+
         </form>
-      </ion-card-content>
-    </ion-card>
+      </div>
+    </div>
+
   </div>
 </ion-content>
