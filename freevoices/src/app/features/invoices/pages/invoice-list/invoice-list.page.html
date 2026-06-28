@@ -1,68 +1,94 @@
-<ion-header>
+<ion-header class="ion-no-border">
   <ion-toolbar>
     <ion-title>Invoices</ion-title>
-    <ion-buttons slot="end">
-      <ion-button routerLink="/invoices/new" color="primary">
-        <ion-icon slot="icon-only" name="add-outline"></ion-icon>
-      </ion-button>
-    </ion-buttons>
-  </ion-toolbar>
-  <ion-toolbar>
-    <ion-searchbar
-      [(ngModel)]="searchTerm"
-      (ionInput)="onSearchChange()"
-      placeholder="Search by number or customer"
-      debounce="0">
-    </ion-searchbar>
-  </ion-toolbar>
-  <ion-toolbar>
-    <ion-segment [(ngModel)]="selectedStatus" (ionChange)="onStatusChange()">
-      <ion-segment-button value="">All</ion-segment-button>
-      <ion-segment-button value="DRAFT">Draft</ion-segment-button>
-      <ion-segment-button value="SENT">Sent</ion-segment-button>
-      <ion-segment-button value="PAID">Paid</ion-segment-button>
-      <ion-segment-button value="OVERDUE">Overdue</ion-segment-button>
-    </ion-segment>
   </ion-toolbar>
 </ion-header>
 
 <ion-content>
-  <ion-list *ngIf="!isLoading && invoices.length > 0">
-    <ion-item *ngFor="let invoice of invoices" [routerLink]="['/invoices', invoice.id]" button detail="true">
-      <ion-label>
-        <h2>{{ invoice.document_number }}</h2>
-        <p>{{ invoice.customer_name }}</p>
-        <p>
-          Issued {{ invoice.issue_date | date:'mediumDate' }}
-          <ng-container *ngIf="invoice.due_date"> &mdash; Due {{ invoice.due_date | date:'mediumDate' }}</ng-container>
-        </p>
-      </ion-label>
-      <div slot="end" class="invoice-end">
-        <ion-badge [color]="getStatusColor(invoice.status)">{{ invoice.status }}</ion-badge>
-        <p class="amount">R {{ invoice.total | number:'1.2-2' }}</p>
+  <div class="list-container">
+
+    <div class="search-wrap">
+      <ion-searchbar
+        [(ngModel)]="searchTerm"
+        (ionInput)="onSearchChange()"
+        placeholder="Search by number or customer"
+        debounce="0"
+        class="custom-searchbar">
+      </ion-searchbar>
+    </div>
+
+    <div class="segment-wrap">
+      <ion-segment [(ngModel)]="selectedStatus" (ionChange)="onStatusChange()" class="custom-segment">
+        <ion-segment-button value="">All</ion-segment-button>
+        <ion-segment-button value="DRAFT">Draft</ion-segment-button>
+        <ion-segment-button value="SENT">Sent</ion-segment-button>
+        <ion-segment-button value="PAID">Paid</ion-segment-button>
+        <ion-segment-button value="OVERDUE">Overdue</ion-segment-button>
+      </ion-segment>
+    </div>
+
+    <p class="results-count" *ngIf="!isLoading && invoices.length > 0">
+      {{ total }} invoice{{ total === 1 ? '' : 's' }}
+    </p>
+
+    <div class="invoice-list" *ngIf="!isLoading && invoices.length > 0">
+      <ion-item
+        *ngFor="let invoice of invoices"
+        [routerLink]="['/invoices', invoice.id]"
+        button
+        detail="false"
+        class="invoice-item">
+        <div slot="start" class="doc-icon-wrap">
+          <ion-icon name="document-text-outline"></ion-icon>
+        </div>
+        <ion-label>
+          <h2 class="doc-number">{{ invoice.document_number }}</h2>
+          <p class="doc-customer">{{ invoice.customer_name }}</p>
+          <p class="doc-date">
+            {{ invoice.issue_date | date:'d MMM y' }}
+            <ng-container *ngIf="invoice.due_date"> — Due {{ invoice.due_date | date:'d MMM y' }}</ng-container>
+          </p>
+        </ion-label>
+        <div slot="end" class="invoice-end">
+          <span class="activity-badge" [ngClass]="'badge-' + getStatusColor(invoice.status)">{{ invoice.status }}</span>
+          <p class="doc-amount">R {{ invoice.total | number:'1.2-2' }}</p>
+        </div>
+      </ion-item>
+    </div>
+
+    <div class="empty-state" *ngIf="!isLoading && invoices.length === 0">
+      <div class="empty-icon-wrap">
+        <ion-icon name="document-text-outline"></ion-icon>
       </div>
-    </ion-item>
-  </ion-list>
+      <h3>{{ searchTerm || selectedStatus ? 'No results found' : 'No invoices yet' }}</h3>
+      <p>{{ searchTerm || selectedStatus ? 'Try adjusting your search or filter.' : 'Create your first invoice to get started.' }}</p>
+      <ion-button *ngIf="!searchTerm && !selectedStatus" routerLink="/invoices/new" color="primary">
+        <ion-icon name="add-outline" slot="start"></ion-icon>
+        New invoice
+      </ion-button>
+    </div>
 
-  <div class="empty-state" *ngIf="!isLoading && invoices.length === 0">
-    <ion-icon name="document-text-outline"></ion-icon>
-    <p *ngIf="searchTerm || selectedStatus">No invoices match your filter.</p>
-    <p *ngIf="!searchTerm && !selectedStatus">No invoices yet. Create your first one!</p>
-    <ion-button routerLink="/invoices/new" fill="outline">New Invoice</ion-button>
-  </div>
+    <div class="loading-list" *ngIf="isLoading">
+      <ion-item class="invoice-item" *ngFor="let _ of [1,2,3,4]">
+        <ion-skeleton-text animated slot="start" class="skeleton-icon"></ion-skeleton-text>
+        <ion-label>
+          <ion-skeleton-text animated class="skeleton-title"></ion-skeleton-text>
+          <ion-skeleton-text animated class="skeleton-sub"></ion-skeleton-text>
+        </ion-label>
+        <ion-skeleton-text animated slot="end" class="skeleton-badge"></ion-skeleton-text>
+      </ion-item>
+    </div>
 
-  <div class="loading-state" *ngIf="isLoading">
-    <ion-spinner></ion-spinner>
-  </div>
+    <div class="pagination" *ngIf="!isLoading && totalPages > 1">
+      <ion-button fill="clear" [disabled]="page === 1" (click)="prevPage()">
+        <ion-icon slot="icon-only" name="chevron-back-outline"></ion-icon>
+      </ion-button>
+      <span class="page-label">{{ page }} of {{ totalPages }}</span>
+      <ion-button fill="clear" [disabled]="page === totalPages" (click)="nextPage()">
+        <ion-icon slot="icon-only" name="chevron-forward-outline"></ion-icon>
+      </ion-button>
+    </div>
 
-  <div class="pagination" *ngIf="!isLoading && totalPages > 1">
-    <ion-button fill="clear" [disabled]="page === 1" (click)="prevPage()">
-      <ion-icon slot="icon-only" name="chevron-back-outline"></ion-icon>
-    </ion-button>
-    <span>{{ page }} / {{ totalPages }}</span>
-    <ion-button fill="clear" [disabled]="page === totalPages" (click)="nextPage()">
-      <ion-icon slot="icon-only" name="chevron-forward-outline"></ion-icon>
-    </ion-button>
   </div>
 
   <ion-fab vertical="bottom" horizontal="end" slot="fixed">
