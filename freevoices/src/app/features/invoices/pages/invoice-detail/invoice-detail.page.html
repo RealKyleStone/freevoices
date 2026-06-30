@@ -133,6 +133,12 @@
               {{ isDownloadingReceipt ? 'Generating...' : 'Download receipt' }}
             </ion-button>
 
+            <ion-button *ngIf="invoice.status === 'PAID'" expand="block" fill="outline" color="success" (click)="confirmSendReceipt()" [disabled]="isSendingReceipt">
+              <ion-spinner *ngIf="isSendingReceipt" slot="start" name="crescent"></ion-spinner>
+              <ion-icon *ngIf="!isSendingReceipt" slot="start" name="mail-outline"></ion-icon>
+              {{ isSendingReceipt ? 'Sending...' : 'Email receipt to customer' }}
+            </ion-button>
+
             <ion-button *ngIf="canSend" expand="block" fill="outline" (click)="confirmSend()" [disabled]="isSending">
               <ion-spinner *ngIf="isSending" slot="start" name="crescent"></ion-spinner>
               <ion-icon *ngIf="!isSending" slot="start" name="send-outline"></ion-icon>

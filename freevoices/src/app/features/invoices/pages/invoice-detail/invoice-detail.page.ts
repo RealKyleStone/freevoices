@@ -7,7 +7,7 @@ import { addIcons } from 'ionicons';
 import {
   createOutline, calendarOutline, alarmOutline, timeOutline, sendOutline,
   cashOutline, documentOutline, eyeOutline, downloadOutline,
-  checkmarkCircleOutline, closeCircleOutline, ellipseOutline, shareSocialOutline, copyOutline
+  checkmarkCircleOutline, closeCircleOutline, ellipseOutline, shareSocialOutline, copyOutline, mailOutline
 } from 'ionicons/icons';
 import { InvoiceService, InvoiceDetail } from '../../services/invoice.service';
 import { environment } from '../../../../../environments/environment';
@@ -30,6 +30,7 @@ export class InvoiceDetailPage implements OnInit {
   isSending = false;
   isDownloading = false;
   isDownloadingReceipt = false;
+  isSendingReceipt = false;
   isSharing = false;
   shareLink: string | null = null;
 
@@ -54,7 +55,7 @@ export class InvoiceDetailPage implements OnInit {
       createOutline, calendarOutline, alarmOutline, timeOutline, sendOutline,
       cashOutline, documentOutline, eyeOutline, downloadOutline,
       checkmarkCircleOutline, closeCircleOutline, ellipseOutline,
-      shareSocialOutline, copyOutline
+      shareSocialOutline, copyOutline, mailOutline
     });
 
     this.paymentForm = this.fb.group({
@@ -188,6 +189,39 @@ export class InvoiceDetailPage implements OnInit {
     } finally {
       this.isDownloadingReceipt = false;
     }
+  }
+
+  async confirmSendReceipt() {
+    const alert = await this.alertCtrl.create({
+      header: 'Email Receipt',
+      message: `Send the payment receipt to ${this.invoice?.customer_email || 'the customer'}?`,
+      buttons: [
+        { text: 'Cancel', role: 'cancel' },
+        { text: 'Send Receipt', handler: () => this.sendReceipt() }
+      ]
+    });
+    await alert.present();
+  }
+
+  async sendReceipt() {
+    this.isSendingReceipt = true;
+    this.invoiceService.sendReceipt(this.invoiceId).subscribe({
+      next: async (res: any) => {
+        this.isSendingReceipt = false;
+        const color = res.emailFailed ? 'warning' : 'success';
+        const toast = await this.toastCtrl.create({ message: res.message || 'Receipt sent', duration: 4000, color, position: 'bottom' });
+        await toast.present();
+        this.browserNotifications.notify(
+          'Receipt Sent',
+          `Receipt for invoice ${this.invoice?.document_number} has been sent to ${this.invoice?.customer_email}.`
+        );
+      },
+      error: async (err) => {
+        this.isSendingReceipt = false;
+        const toast = await this.toastCtrl.create({ message: err.error?.message || 'Failed to send receipt', duration: 3000, color: 'danger', position: 'bottom' });
+        await toast.present();
+      }
+    });
   }
 
   async confirmDownload() {

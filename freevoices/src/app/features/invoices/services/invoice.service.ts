@@ -96,6 +96,10 @@ export class InvoiceService {
     return this.db.create<{ message: string }>(`invoices/${id}/mark-paid`, data);
   }
 
+  sendReceipt(id: number): Observable<{ message: string }> {
+    return this.db.create<{ message: string }>(`invoices/${id}/send-receipt`, {});
+  }
+
   shareInvoice(id: number): Observable<{ token: string; share_url: string }> {
     return this.db.create<{ token: string; share_url: string }>(`invoices/${id}/share`, {});
   }

@@ -145,6 +145,58 @@ class EmailService {
     return this.transporter.sendMail(mailOptions);
   }
 
+  async sendReceiptEmail(toEmail, invoice, pdfBuffer) {
+    const subject = `Receipt for Invoice ${invoice.document_number} from ${invoice.company_name}`;
+
+    const mailOptions = {
+      from: {
+        name: invoice.company_name || process.env.SMTP_FROM_NAME || 'Freevoices',
+        address: process.env.SMTP_FROM_ADDRESS || this.transporter.options.auth.user
+      },
+      to: toEmail,
+      subject,
+      html: `
+        <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+          <div style="background: #1a1a2e; padding: 24px; border-radius: 8px 8px 0 0;">
+            <h1 style="color: #ffffff; margin: 0; font-size: 20px;">${invoice.company_name || 'Receipt'}</h1>
+          </div>
+          <div style="background: #f9fafb; padding: 24px; border-radius: 0 0 8px 8px; border: 1px solid #e5e7eb;">
+            <p style="color: #374151;">Hi ${invoice.customer_name},</p>
+            <p style="color: #374151;">
+              Thank you for your payment. Please find attached your receipt for invoice <strong>${invoice.document_number}</strong>.
+            </p>
+            <table style="width: 100%; border-collapse: collapse; margin: 16px 0;">
+              <tr style="background: #e5e7eb;">
+                <td style="padding: 8px 12px; font-weight: bold; color: #374151;">Invoice #</td>
+                <td style="padding: 8px 12px; color: #374151;">${invoice.document_number}</td>
+              </tr>
+              <tr>
+                <td style="padding: 8px 12px; font-weight: bold; color: #374151;">Amount Paid</td>
+                <td style="padding: 8px 12px; color: #16a34a; font-size: 18px; font-weight: bold;">R ${parseFloat(invoice.total).toFixed(2)}</td>
+              </tr>
+              <tr style="background: #e5e7eb;">
+                <td style="padding: 8px 12px; font-weight: bold; color: #374151;">Status</td>
+                <td style="padding: 8px 12px; color: #16a34a; font-weight: bold;">PAID</td>
+              </tr>
+            </table>
+            <p style="color: #6b7280; font-size: 13px; margin-top: 24px;">
+              If you have any questions please reply to this email.
+            </p>
+          </div>
+        </div>
+      `,
+      attachments: [
+        {
+          filename: `RECEIPT-${invoice.document_number}.pdf`,
+          content: pdfBuffer,
+          contentType: 'application/pdf'
+        }
+      ]
+    };
+
+    return this.transporter.sendMail(mailOptions);
+  }
+
   async sendPasswordResetEmail(email, token) {
     const resetUrl = `${process.env.APP_URL}/auth/reset-password?token=${token}`;
 
