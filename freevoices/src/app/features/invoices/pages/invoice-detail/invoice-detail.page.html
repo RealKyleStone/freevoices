@@ -155,6 +155,18 @@
               <ion-icon *ngIf="!isSharing" slot="start" name="share-social-outline"></ion-icon>
               {{ isSharing ? 'Generating...' : 'Share with customer' }}
             </ion-button>
+
+            <ion-button expand="block" fill="outline" [color]="invoice.notifications_muted ? 'medium' : 'warning'" (click)="toggleNotificationMute()" [disabled]="isTogglingMute">
+              <ion-spinner *ngIf="isTogglingMute" slot="start" name="crescent"></ion-spinner>
+              <ion-icon *ngIf="!isTogglingMute" slot="start" [name]="invoice.notifications_muted ? 'notifications-outline' : 'notifications-off-outline'"></ion-icon>
+              {{ isTogglingMute ? 'Updating...' : (invoice.notifications_muted ? 'Enable notifications' : 'Mute notifications') }}
+            </ion-button>
+
+            <ion-button *ngIf="canCancel" expand="block" fill="outline" color="danger" (click)="confirmCancel()" [disabled]="isCancelling">
+              <ion-spinner *ngIf="isCancelling" slot="start" name="crescent"></ion-spinner>
+              <ion-icon *ngIf="!isCancelling" slot="start" name="ban-outline"></ion-icon>
+              {{ isCancelling ? 'Cancelling...' : 'Cancel invoice' }}
+            </ion-button>
           </div>
 
           <div class="share-panel" *ngIf="shareLink">

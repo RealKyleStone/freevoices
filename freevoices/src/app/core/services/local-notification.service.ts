@@ -44,8 +44,8 @@ export class LocalNotificationService {
     tomorrow.setDate(tomorrow.getDate() + 1);
 
     for (const invoice of invoices) {
-      // Skip invoices with no due date or already paid/cancelled
-      if (!invoice.due_date || ['PAID', 'CANCELLED'].includes(invoice.status)) continue;
+      // Skip invoices with no due date, already paid/cancelled, or notifications muted
+      if (!invoice.due_date || ['PAID', 'CANCELLED'].includes(invoice.status) || invoice.notifications_muted) continue;
 
       const dueDate = new Date(invoice.due_date);
       dueDate.setHours(0, 0, 0, 0);
@@ -96,5 +96,17 @@ export class LocalNotificationService {
     if (pending.notifications.length > 0) {
       await LocalNotifications.cancel({ notifications: pending.notifications });
     }
+  }
+
+  // Cancel all pending notifications for a specific invoice (used on cancel or mute)
+  async cancelForInvoice(invoiceId: number): Promise<void> {
+    if (!Capacitor.isNativePlatform()) return;
+    const ids = [
+      { id: invoiceId * 10 },
+      { id: invoiceId * 10 + 1 },
+    ];
+    try {
+      await LocalNotifications.cancel({ notifications: ids });
+    } catch (_) {}
   }
 }

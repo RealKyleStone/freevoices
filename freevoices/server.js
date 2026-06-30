@@ -106,6 +106,21 @@ function handleDisconnect() {
 
 handleDisconnect();
 
+// Auto-migrate: add notifications_muted column if it doesn't exist
+async function migrateDatabase() {
+  try {
+    const cols = await executeQuery(
+      "SELECT COUNT(*) AS cnt FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'documents' AND COLUMN_NAME = 'notifications_muted'"
+    );
+    if (cols[0].cnt === 0) {
+      await executeQuery("ALTER TABLE documents ADD COLUMN notifications_muted TINYINT(1) NOT NULL DEFAULT 0");
+      logger.info('Migration: added notifications_muted column to documents');
+    }
+  } catch (err) {
+    logger.error('Migration error (notifications_muted):', err);
+  }
+}
+
 function executeQuery(sql, params = []) {
   return new Promise((resolve, reject) => {
     pool.getConnection((err, connection) => {
@@ -382,7 +397,7 @@ app.get('/api/invoices', authenticateToken, async (req, res) => {
   try {
     const search = req.query.search || '', status = req.query.status || '';
     const page = Math.max(1, parseInt(req.query.page) || 1), limit = Math.min(100, parseInt(req.query.limit) || 20), offset = (page - 1) * limit;
-    let sql = `SELECT d.id, d.document_number, d.status, d.issue_date, d.due_date, d.subtotal, d.vat_amount, d.total, d.created_at, c.name AS customer_name FROM documents d JOIN customers c ON c.id = d.customer_id WHERE d.user_id = ? AND d.type = 'INVOICE'`;
+    let sql = `SELECT d.id, d.document_number, d.status, d.issue_date, d.due_date, d.subtotal, d.vat_amount, d.total, d.created_at, d.notifications_muted, c.name AS customer_name FROM documents d JOIN customers c ON c.id = d.customer_id WHERE d.user_id = ? AND d.type = 'INVOICE'`;
     let cntSql = `SELECT COUNT(*) AS total FROM documents d JOIN customers c ON c.id = d.customer_id WHERE d.user_id = ? AND d.type = 'INVOICE'`;
     const params = [req.user.id], cntParams = [req.user.id];
     if (status) { sql += ' AND d.status = ?'; cntSql += ' AND d.status = ?'; params.push(status); cntParams.push(status); }
@@ -447,13 +462,13 @@ app.get('/api/invoices/:id', authenticateToken, async (req, res) => {
   try {
     const { id } = req.params;
     const [invoices, items, tracking, payments] = await Promise.all([
-      executeQuery(`SELECT d.*, c.name AS customer_name, c.email AS customer_email, c.billing_address AS customer_billing_address, c.vat_number AS customer_vat_number, cur.symbol AS currency_symbol, cur.code AS currency_code FROM documents d JOIN customers c ON c.id = d.customer_id LEFT JOIN currencies cur ON cur.id = d.currency_id WHERE d.id = ? AND d.user_id = ? AND d.type = 'INVOICE'`, [id, req.user.id]),
+      executeQuery(`SELECT d.*, d.notifications_muted, c.name AS customer_name, c.email AS customer_email, c.billing_address AS customer_billing_address, c.vat_number AS customer_vat_number, cur.symbol AS currency_symbol, cur.code AS currency_code FROM documents d JOIN customers c ON c.id = d.customer_id LEFT JOIN currencies cur ON cur.id = d.currency_id WHERE d.id = ? AND d.user_id = ? AND d.type = 'INVOICE'`, [id, req.user.id]),
       executeQuery('SELECT * FROM document_items WHERE document_id = ? ORDER BY id ASC', [id]),
       executeQuery('SELECT * FROM document_tracking WHERE document_id = ? ORDER BY event_date ASC', [id]),
       executeQuery('SELECT * FROM payments WHERE document_id = ? ORDER BY payment_date DESC', [id])
     ]);
     if (invoices.length === 0) return res.status(404).json({ message: 'Invoice not found' });
-    res.json({ ...invoices[0], items, tracking, payments });
+    res.json({ ...invoices[0], notifications_muted: !!invoices[0].notifications_muted, items, tracking, payments });
   } catch (error) { logger.error('Error fetching invoice:', error); res.status(500).json({ message: 'Failed to fetch invoice' }); }
 });
 
@@ -622,6 +637,32 @@ app.post('/api/invoices/:id/mark-paid', authenticateToken, validate([
     await executeQuery(`INSERT INTO document_tracking (document_id, event_type) VALUES (?, 'PAID')`, [id]);
     res.status(201).json({ message: 'Payment recorded successfully' });
   } catch (error) { logger.error('Error recording payment:', error); res.status(500).json({ message: 'Failed to record payment' }); }
+});
+
+app.post('/api/invoices/:id/cancel', authenticateToken, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const invoices = await executeQuery(`SELECT id, status FROM documents WHERE id = ? AND user_id = ? AND type = 'INVOICE'`, [id, req.user.id]);
+    if (invoices.length === 0) return res.status(404).json({ message: 'Invoice not found' });
+    const { status } = invoices[0];
+    if (status === 'CANCELLED') return res.status(400).json({ message: 'Invoice is already cancelled' });
+    if (status === 'PAID') return res.status(400).json({ message: 'Cannot cancel a paid invoice' });
+    await executeQuery(`UPDATE documents SET status = 'CANCELLED', is_recurring = 0, recurrence_next_date = NULL, updated_at = NOW() WHERE id = ? AND user_id = ?`, [id, req.user.id]);
+    await executeQuery(`INSERT INTO document_tracking (document_id, event_type) VALUES (?, 'CANCELLED')`, [id]);
+    res.json({ message: 'Invoice cancelled successfully' });
+  } catch (error) { logger.error('Error cancelling invoice:', error); res.status(500).json({ message: 'Failed to cancel invoice' }); }
+});
+
+app.put('/api/invoices/:id/notifications', authenticateToken, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { muted } = req.body;
+    if (typeof muted !== 'boolean') return res.status(400).json({ message: 'muted must be a boolean' });
+    const invoices = await executeQuery(`SELECT id FROM documents WHERE id = ? AND user_id = ? AND type = 'INVOICE'`, [id, req.user.id]);
+    if (invoices.length === 0) return res.status(404).json({ message: 'Invoice not found' });
+    await executeQuery(`UPDATE documents SET notifications_muted = ?, updated_at = NOW() WHERE id = ? AND user_id = ?`, [muted ? 1 : 0, id, req.user.id]);
+    res.json({ message: muted ? 'Notifications muted for this invoice' : 'Notifications enabled for this invoice', notifications_muted: muted });
+  } catch (error) { logger.error('Error updating invoice notifications:', error); res.status(500).json({ message: 'Failed to update notification settings' }); }
 });
 
 app.post('/api/invoices/:id/share', authenticateToken, async (req, res) => {
@@ -881,7 +922,7 @@ app.get('/api/dashboard/summary', authenticateToken, async (req, res) => {
       executeQuery(`SELECT COALESCE(SUM(total), 0) AS monthRevenue, COALESCE(SUM(CASE WHEN YEAR(issue_date) = YEAR(CURDATE()) THEN total ELSE 0 END), 0) AS yearRevenue FROM documents WHERE user_id = ? AND type = 'INVOICE' AND status = 'PAID' AND YEAR(issue_date) = YEAR(CURDATE()) AND MONTH(issue_date) = MONTH(CURDATE())`, [userId]),
       executeQuery('SELECT COUNT(*) AS total FROM customers WHERE user_id = ? AND active = 1', [userId]),
       executeQuery(`SELECT COUNT(*) AS total FROM documents WHERE user_id = ? AND type = 'INVOICE' AND status = 'SENT'`, [userId]),
-      executeQuery(`SELECT COUNT(*) AS total FROM documents WHERE user_id = ? AND type = 'INVOICE' AND status = 'OVERDUE'`, [userId]),
+      executeQuery(`SELECT COUNT(*) AS total FROM documents WHERE user_id = ? AND type = 'INVOICE' AND status = 'OVERDUE' AND notifications_muted = 0`, [userId]),
       // FIX: changed c.company_name to c.name — customers table has 'name' not 'company_name'
       executeQuery(`SELECT dt.event_type, dt.event_date, d.document_number, d.type AS document_type, c.name AS customer_name FROM document_tracking dt JOIN documents d ON dt.document_id = d.id JOIN customers c ON d.customer_id = c.id WHERE d.user_id = ? ORDER BY dt.event_date DESC LIMIT 5`, [userId])
     ]);
@@ -1150,8 +1191,10 @@ app.get('*', (req, res) => {
 
 // Start server
 const port = process.env.PORT || 3000;
-app.listen(port, () => {
-  logger.info(`Server is running on port ${port}`);
+migrateDatabase().then(() => {
+  app.listen(port, () => {
+    logger.info(`Server is running on port ${port}`);
+  });
 });
 
 module.exports = app;

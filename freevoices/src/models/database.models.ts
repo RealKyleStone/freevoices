@@ -70,6 +70,7 @@ export interface Document extends BaseModel {
   recurrence_next_date?: string | null;
   recurrence_end_date?: string | null;
   auto_send?: boolean;
+  notifications_muted?: boolean;
 }
 
 export interface DocumentItem extends BaseModel {
@@ -86,7 +87,7 @@ export interface DocumentItem extends BaseModel {
 
 export interface DocumentTracking extends BaseModel {
   document_id: number;
-  event_type: 'CREATED' | 'SENT' | 'VIEWED' | 'DOWNLOADED' | 'PAID' | 'CANCELLED';
+  event_type: 'CREATED' | 'SENT' | 'VIEWED' | 'DOWNLOADED' | 'PAID' | 'CANCELLED' | 'OVERDUE';
   event_date: string;
   ip_address?: string;
   user_agent?: string;

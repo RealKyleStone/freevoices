@@ -14,6 +14,7 @@ export interface InvoiceListItem {
   vat_amount: number;
   total: number;
   created_at: string;
+  notifications_muted?: boolean;
 }
 
 export interface InvoiceListResponse {
@@ -33,6 +34,7 @@ export interface InvoiceDetail extends Document {
   payments: Payment[];
   currency_symbol?: string;
   currency_code?: string;
+  notifications_muted?: boolean;
 }
 
 export interface InvoiceItemPayload {
@@ -98,6 +100,14 @@ export class InvoiceService {
 
   sendReceipt(id: number): Observable<{ message: string }> {
     return this.db.create<{ message: string }>(`invoices/${id}/send-receipt`, {});
+  }
+
+  cancelInvoice(id: number): Observable<{ message: string }> {
+    return this.db.create<{ message: string }>(`invoices/${id}/cancel`, {});
+  }
+
+  setNotificationsMuted(id: number, muted: boolean): Observable<{ message: string; notifications_muted: boolean }> {
+    return this.db.update<{ message: string; notifications_muted: boolean }>(`invoices/${id}`, 'notifications', { muted });
   }
 
   shareInvoice(id: number): Observable<{ token: string; share_url: string }> {
