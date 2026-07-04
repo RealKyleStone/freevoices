@@ -12,7 +12,6 @@ ion-content {
   --padding-end: 0;
 }
 
-/* When dark mode is active, override ion-content background via CSS var */
 :host-context(.ion-palette-dark) ion-content {
   --background: #111111;
 }
@@ -73,16 +72,11 @@ ion-content {
 
 .auth-brand { display: flex; align-items: center; gap: 10px; position: relative; z-index: 1; }
 
-.auth-brand-icon {
+.auth-brand-logo {
   width: 40px;
   height: 40px;
-  border-radius: 10px;
-  background: rgba(255,255,255,0.15);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  flex-shrink: 0;
-  ion-icon { font-size: 22px; color: white; }
+  object-fit: contain;
+  border-radius: 8px;
 }
 
 .auth-brand-name { font-size: 1.1rem; font-weight: 700; color: white; letter-spacing: -0.01em; }
@@ -168,11 +162,11 @@ ion-content {
   margin-bottom: 2rem;
   @media (max-width: 768px) { display: flex; }
 
-  .auth-brand-icon-sm {
-    width: 32px; height: 32px; border-radius: 8px;
-    background: var(--fv-teal-tint);
-    display: flex; align-items: center; justify-content: center;
-    ion-icon { font-size: 18px; color: var(--fv-teal-text); }
+  .auth-brand-logo-sm {
+    width: 32px;
+    height: 32px;
+    object-fit: contain;
+    border-radius: 6px;
   }
 
   .auth-brand-name-dark { font-size: 1rem; font-weight: 700; color: var(--ion-text-color); letter-spacing: -0.01em; }
