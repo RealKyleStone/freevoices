@@ -101,6 +101,16 @@ export class AppComponent implements OnInit {
   }
 
   private checkInvoicesOnStartup(): void {
+    // Only fire overdue notifications once per day
+    // We store today's date in localStorage and skip if it already ran today
+    const today = new Date().toISOString().split('T')[0]; // e.g. "2026-07-04"
+    const lastChecked = localStorage.getItem('fv-overdue-checked');
+
+    if (lastChecked === today) {
+      // Already ran today — do nothing
+      return;
+    }
+
     this.invoiceService.getInvoices('', '', 1, 100).subscribe({
       next: (response) => {
         const relevant = response.data.filter((inv: any) => ['SENT', 'OVERDUE'].includes(inv.status));
@@ -109,6 +119,9 @@ export class AppComponent implements OnInit {
         overdue.forEach((inv: any) => {
           this.browserNotifications.notify('Invoice Overdue', `Invoice ${inv.document_number} is overdue.`);
         });
+
+        // Save today's date so we don't fire again until tomorrow
+        localStorage.setItem('fv-overdue-checked', today);
       },
       error: (err) => console.error('Failed to fetch invoices for notifications:', err)
     });
