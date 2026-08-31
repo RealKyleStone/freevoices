@@ -66,6 +66,9 @@ app.set('trust proxy', parseInt(process.env.TRUST_PROXY_HOPS, 10) || 1);
 const cspDirectives = {
   defaultSrc: ["'self'"],
   scriptSrc: ["'self'", 'https://www.google.com', 'https://www.gstatic.com'],
+  // No font CDN entries: Poppins is self-hosted from src/assets/fonts, so the
+  // only external origin the app touches is Google reCAPTCHA on the web build.
+  // That is exactly what the privacy policy discloses — keep it that way.
   styleSrc: ["'self'", "'unsafe-inline'"],
   imgSrc: ["'self'", 'data:', 'blob:'],
   fontSrc: ["'self'", 'data:'],
