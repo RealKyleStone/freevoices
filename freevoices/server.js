@@ -6,8 +6,8 @@ const EmailService = require('./src/services/email.service');
 const { buildInvoicePdf, buildReceiptPdf } = require('./src/services/pdf.service');
 // The pool, the logger and the query helpers live in db.service so that CLI
 // tooling can share them without booting an HTTP listener.
-const { logger, executeQuery, getConnection, closePool } = require('./src/services/db.service');
-const { runMigrations } = require('./src/services/migrations.service');
+const { logger, executeQuery, getConnection, withTransaction, closePool } = require('./src/services/db.service');
+const { runMigrations, tableExists } = require('./src/services/migrations.service');
 const express = require('express');
 const path = require('path');
 const fs = require('fs');
@@ -205,14 +205,27 @@ const authenticateToken = async (req, res, next) => {
     const token = authHeader && authHeader.split(' ')[1];
     if (!token) return res.status(401).json({ message: 'No token provided' });
 
+    // Joined to users so a closed account stops authenticating immediately.
+    // Previously this checked only the sessions table, so a closed account kept
+    // working until its token happened to expire.
     const sessions = await executeQuery(
-      `SELECT userId FROM sessions
-        WHERE token = ?
-          AND expires > NOW()
-          AND created_at > DATE_SUB(NOW(), INTERVAL ? DAY)`,
+      `SELECT s.userId, u.status
+         FROM sessions s
+         JOIN users u ON u.id = s.userId
+        WHERE s.token = ?
+          AND s.expires > NOW()
+          AND s.created_at > DATE_SUB(NOW(), INTERVAL ? DAY)`,
       [token, SESSION_MAX_DAYS]
     );
     if (sessions.length === 0) return res.status(401).json({ message: 'Invalid or expired token' });
+
+    if (sessions[0].status !== 'ACTIVE') {
+      // 403 with a code, not 401: the credentials were fine, the account is
+      // closed. The client uses this to route to the reactivation screen rather
+      // than looping through the login form.
+      return res.status(403).json({ message: 'This account is closed.', code: 'ACCOUNT_CLOSED' });
+    }
+
     req.user = { id: sessions[0].userId };
 
     // Slide the idle window, clamped to the absolute ceiling. The guard on
@@ -281,6 +294,45 @@ async function enforceCaptcha(req, res) {
 const LOGIN_MAX_FAILURES = parseInt(process.env.LOGIN_MAX_FAILURES, 10) || 10;
 const LOGIN_LOCKOUT_MINUTES = parseInt(process.env.LOGIN_LOCKOUT_MINUTES, 10) || 15;
 
+/** Days between closing an account and its personal information being erased. */
+const ACCOUNT_GRACE_DAYS = parseInt(process.env.ACCOUNT_GRACE_DAYS, 10) || 30;
+
+/**
+ * Append to security_events. Never throws — an audit write must not be able to
+ * fail the operation it is describing, and losing one row is preferable to
+ * refusing a user's account closure.
+ */
+async function recordSecurityEvent(req, eventType, userId = null, detail = null) {
+  try {
+    await executeQuery(
+      `INSERT INTO security_events (user_id, event_type, ip_address, user_agent, detail)
+       VALUES (?, ?, ?, ?, ?)`,
+      [
+        userId,
+        eventType,
+        req.ip || null,
+        (req.get('user-agent') || '').slice(0, 512) || null,
+        detail ? String(detail).slice(0, 512) : null,
+      ]
+    );
+  } catch (err) {
+    logger.error('Failed to record security event', { eventType, message: err.message });
+  }
+}
+
+/** Log a POPIA data-subject request so we can show it was honoured. */
+async function recordSubjectRequest(req, type, userId, status = 'COMPLETED', notes = null) {
+  try {
+    await executeQuery(
+      `INSERT INTO data_subject_requests (user_id, request_type, channel, status, notes, ip_address, completed_at)
+       VALUES (?, ?, 'IN_APP', ?, ?, ?, ${status === 'COMPLETED' ? 'NOW()' : 'NULL'})`,
+      [userId, type, status, notes ? String(notes).slice(0, 512) : null, req.ip || null]
+    );
+  } catch (err) {
+    logger.error('Failed to record subject request', { type, message: err.message });
+  }
+}
+
 // Login endpoint
 app.post('/api/auth/login', loginLimiter, validate([
   body('email').isEmail().withMessage('A valid email address is required'),
@@ -295,6 +347,25 @@ app.post('/api/auth/login', loginLimiter, validate([
     const users = await executeQuery('SELECT * FROM users WHERE email = ?', [email]);
     if (users.length === 0) return res.status(401).json({ message: 'Invalid credentials' });
     const user = users[0];
+
+    // An anonymised account has no usable password hash and nothing to return
+    // to; it is indistinguishable from a non-existent one, deliberately.
+    if (user.status === 'ANONYMISED') return res.status(401).json({ message: 'Invalid credentials' });
+
+    // A closed account inside its grace period can still be recovered, but only
+    // by the reactivation endpoint, which verifies the password itself. We do
+    // NOT auto-reactivate on a successful login: that would let anyone holding
+    // the password undo a closure silently, which defeats the exact abuse cases
+    // the feature exists for.
+    if (user.status === 'CLOSED') {
+      await recordSecurityEvent(req, 'LOGIN_BLOCKED_CLOSED', user.id);
+      return res.status(403).json({
+        message: 'This account is closed. You can reactivate it within the grace period.',
+        code: 'ACCOUNT_CLOSED',
+        closed_at: user.closed_at,
+        anonymise_due_at: user.anonymise_after,
+      });
+    }
 
     // Lockout only bites once the failure count is reached AND the most recent
     // failure is still inside the window, so it unlocks itself with time.
@@ -323,6 +394,7 @@ app.post('/api/auth/login', loginLimiter, validate([
           WHERE id = ?`,
         [LOGIN_LOCKOUT_MINUTES, user.id]
       );
+      await recordSecurityEvent(req, 'LOGIN_FAILED', user.id);
       return res.status(401).json({ message: 'Invalid credentials' });
     }
 
@@ -332,6 +404,8 @@ app.post('/api/auth/login', loginLimiter, validate([
 
     const token = randomUUID();
     await executeQuery('INSERT INTO sessions (userId, token, expires) VALUES (?, ?, ?)', [user.id, token, newSessionExpiry()]);
+    await executeQuery('UPDATE users SET last_login_at = NOW() WHERE id = ?', [user.id]);
+    await recordSecurityEvent(req, 'LOGIN_SUCCESS', user.id);
     logger.info('User logged in successfully', { userId: user.id });
     res.json({ token, user: { id: user.id, email: user.email, company_name: user.company_name } });
   } catch (error) { logger.error('Login error:', error); res.status(500).json({ message: 'Login failed. Please try again.' }); }
@@ -1328,6 +1402,252 @@ async function processOverdueInvoices() {
 cron.schedule('10 0 * * *', processOverdueInvoices);
 
 // ─────────────────────────────────────────────────────────────────────────────
+
+// ─── Account: POPIA data-subject rights ───────────────────────────────────────
+// The privacy policy promises access, export and deletion. Publishing that
+// policy without these endpoints would be a self-authored misrepresentation,
+// and it is also what Google Play's "users can request that their data be
+// deleted" declaration depends on.
+
+const exportLimiter = limiter(60, 5, 'Too many export requests. Please try again later.');
+const reactivateLimiter = limiter(15, 10, 'Too many attempts. Please wait a few minutes and try again.');
+
+app.get('/api/account/status', authenticateToken, async (req, res) => {
+  try {
+    const rows = await executeQuery(
+      `SELECT status, closed_at, anonymise_after AS anonymise_due_at, last_login_at,
+              terms_accepted_at, privacy_accepted_at, privacy_policy_version
+         FROM users WHERE id = ?`,
+      [req.user.id]
+    );
+    if (rows.length === 0) return res.status(404).json({ message: 'User not found' });
+    res.json({ ...rows[0], grace_days: ACCOUNT_GRACE_DAYS });
+  } catch (error) {
+    logger.error('Account status error:', error);
+    res.status(500).json({ message: 'Failed to load account status' });
+  }
+});
+
+/**
+ * POPIA s23/s24 access right, in machine-readable form.
+ *
+ * Includes the user's customers and their documents, because the user is the
+ * responsible party for that data and needs it to answer their own customers'
+ * requests. Deliberately excludes password_hash and every token column — an
+ * export is a file that gets emailed around and left in Downloads folders.
+ */
+app.get('/api/account/export', authenticateToken, exportLimiter, async (req, res) => {
+  try {
+    const uid = req.user.id;
+    // Probed rather than try/caught, so a table that simply does not exist yet
+    // doesn't fill error.log on every export.
+    const hasConsents = await tableExists(executeQuery, 'marketing_consents');
+
+    const [user, settings, customers, products, documents, items, payments, tracking, emails, consents, requests] =
+      await Promise.all([
+        executeQuery(
+          `SELECT id, email, company_name, company_registration, vat_number, contact_person,
+                  phone, address, bank_name, bank_account_number, bank_branch_code, bank_account_type,
+                  email_verified, status, created_at, updated_at, closed_at, last_login_at,
+                  terms_accepted_at, terms_version, privacy_accepted_at, privacy_policy_version
+             FROM users WHERE id = ?`, [uid]),
+        executeQuery('SELECT setting_key, setting_value, updated_at FROM settings WHERE user_id = ?', [uid]),
+        executeQuery('SELECT * FROM customers WHERE user_id = ?', [uid]),
+        executeQuery('SELECT * FROM products WHERE user_id = ?', [uid]),
+        executeQuery('SELECT * FROM documents WHERE user_id = ?', [uid]),
+        executeQuery('SELECT i.* FROM document_items i JOIN documents d ON d.id = i.document_id WHERE d.user_id = ?', [uid]),
+        executeQuery('SELECT p.* FROM payments p JOIN documents d ON d.id = p.document_id WHERE d.user_id = ?', [uid]),
+        executeQuery('SELECT t.* FROM document_tracking t JOIN documents d ON d.id = t.document_id WHERE d.user_id = ?', [uid]),
+        executeQuery('SELECT e.* FROM email_log e JOIN documents d ON d.id = e.document_id WHERE d.user_id = ?', [uid]),
+        hasConsents
+          ? executeQuery('SELECT channel, source, consented_at FROM marketing_consents WHERE user_id = ?', [uid])
+          : Promise.resolve([]),
+        executeQuery('SELECT request_type, status, requested_at, completed_at FROM data_subject_requests WHERE user_id = ?', [uid]),
+      ]);
+
+    if (user.length === 0) return res.status(404).json({ message: 'User not found' });
+
+    // Share tokens are live capabilities — anyone holding one can read the
+    // invoice and the seller's banking details without logging in. They must
+    // not travel in an export file.
+    const scrubbed = documents.map(({ share_token, ...rest }) => rest);
+
+    const payload = {
+      export_format_version: 1,
+      generated_at: new Date().toISOString(),
+      about_this_export:
+        'Personal information held by FreeVoices (Made On Chain) about this account, provided under ' +
+        'section 23 of the Protection of Personal Information Act 4 of 2013. Customer records are ' +
+        'included because you are the responsible party for them. Passwords and security tokens are ' +
+        'deliberately excluded.',
+      account: user[0],
+      settings,
+      customers,
+      products,
+      documents: scrubbed,
+      document_items: items,
+      payments,
+      document_tracking: tracking,
+      email_log: emails,
+      marketing_consents: consents,
+      data_subject_requests: requests,
+    };
+
+    await recordSubjectRequest(req, 'EXPORT', uid, 'COMPLETED', 'Self-service export downloaded');
+    await recordSecurityEvent(req, 'DATA_EXPORTED', uid);
+
+    const stamp = new Date().toISOString().slice(0, 10);
+    res.set({
+      'Content-Disposition': `attachment; filename="freevoices-export-${stamp}.json"`,
+      'Cache-Control': 'no-store',
+    });
+    res.type('application/json').send(JSON.stringify(payload, null, 2));
+  } catch (error) {
+    logger.error('Account export error:', error);
+    res.status(500).json({ message: 'Failed to build your export' });
+  }
+});
+
+/**
+ * Close the account. Does NOT delete: the 7-year statutory retention on issued
+ * invoices forbids it, and the foreign keys make a cascade impossible anyway.
+ * This sets the flags and revokes access; the retention job anonymises the
+ * personal information after the grace period.
+ */
+app.post('/api/account/close', authenticateToken, validate([
+  body('password').notEmpty().withMessage('Your password is required to close your account'),
+  body('confirm').equals('DELETE').withMessage('Type DELETE to confirm'),
+]), async (req, res) => {
+  try {
+    const uid = req.user.id;
+    const rows = await executeQuery('SELECT password_hash, email FROM users WHERE id = ?', [uid]);
+    if (rows.length === 0) return res.status(404).json({ message: 'User not found' });
+
+    const validPassword = await argon2.verify(rows[0].password_hash, req.body.password);
+    if (!validPassword) {
+      await recordSecurityEvent(req, 'ACCOUNT_CLOSE_BAD_PASSWORD', uid);
+      return res.status(401).json({ message: 'That password is not correct' });
+    }
+
+    await withTransaction(async (q) => {
+      await q(
+        `UPDATE users
+            SET status = 'CLOSED', closed_at = NOW(), anonymise_after = DATE_ADD(NOW(), INTERVAL ? DAY)
+          WHERE id = ?`,
+        [ACCOUNT_GRACE_DAYS, uid]
+      );
+      // Stop the recurring-invoice cron from generating and emailing documents
+      // on behalf of an account that has been closed.
+      await q(
+        `UPDATE documents SET is_recurring = 0, auto_send = 0, recurrence_next_date = NULL
+          WHERE user_id = ? AND is_recurring = 1`,
+        [uid]
+      );
+      // Revoke every session everywhere, not just this one.
+      await q('DELETE FROM sessions WHERE userId = ?', [uid]);
+    });
+
+    // Outside the transaction and guarded, rather than swallowing an error
+    // inside it: marketing_consents does not exist until the consent work
+    // lands, and a statement failure mid-transaction is not something to hide.
+    if (await tableExists(executeQuery, 'marketing_consents')) {
+      await executeQuery('DELETE FROM marketing_consents WHERE user_id = ?', [uid]);
+    }
+
+    const status = await executeQuery(
+      'SELECT closed_at, anonymise_after AS anonymise_due_at FROM users WHERE id = ?', [uid]
+    );
+
+    await recordSubjectRequest(req, 'DELETION', uid, 'IN_PROGRESS',
+      `Account closed; anonymisation due after ${ACCOUNT_GRACE_DAYS} days`);
+    await recordSecurityEvent(req, 'ACCOUNT_CLOSED', uid);
+    logger.info('Account closed', { userId: uid });
+
+    try {
+      if (typeof emailService.sendAccountClosureEmail === 'function') {
+        await emailService.sendAccountClosureEmail(rows[0].email, {
+          closed_at: status[0].closed_at,
+          anonymise_due_at: status[0].anonymise_due_at,
+          grace_days: ACCOUNT_GRACE_DAYS,
+        });
+      }
+    } catch (emailError) {
+      // The closure has already happened and is the user's right; a failed
+      // confirmation email must not roll it back or report failure.
+      logger.error('Failed to send closure confirmation email:', emailError);
+    }
+
+    res.json({
+      message: 'Your account is closed.',
+      closed_at: status[0].closed_at,
+      anonymise_due_at: status[0].anonymise_due_at,
+      grace_days: ACCOUNT_GRACE_DAYS,
+    });
+  } catch (error) {
+    logger.error('Account close error:', error);
+    res.status(500).json({ message: 'Failed to close your account' });
+  }
+});
+
+/**
+ * Reactivate within the grace period. Unauthenticated by necessity — closing
+ * destroyed every session and authenticateToken now rejects closed accounts —
+ * so it verifies email and password itself, and is rate limited like login.
+ *
+ * Password, not an emailed link: a compromised mailbox must not be able to
+ * reverse a closure and then reset the password.
+ */
+app.post('/api/account/reactivate', reactivateLimiter, validate([
+  body('email').isEmail().withMessage('A valid email address is required'),
+  body('password').notEmpty().withMessage('Password is required'),
+]), async (req, res) => {
+  try {
+    const { email, password } = req.body;
+    const rows = await executeQuery(
+      'SELECT id, password_hash, status, anonymise_after FROM users WHERE email = ?', [email]
+    );
+    // One generic response for every failure mode, so this cannot be used to
+    // discover which addresses have closed accounts.
+    const generic = { message: 'We could not reactivate that account. Check your details, or contact admin@madeoc.co.za.' };
+    if (rows.length === 0) return res.status(400).json(generic);
+
+    const user = rows[0];
+    if (user.status !== 'CLOSED') return res.status(400).json(generic);
+    if (!(await argon2.verify(user.password_hash, password))) {
+      await recordSecurityEvent(req, 'ACCOUNT_REACTIVATE_FAILED', user.id);
+      return res.status(400).json(generic);
+    }
+    if (user.anonymise_after && new Date(user.anonymise_after) <= new Date()) {
+      // Past the grace period the anonymisation may already have run, or is
+      // imminent. Do not pretend it can be undone.
+      return res.status(410).json({
+        message: 'The grace period for this account has passed and it can no longer be reactivated.',
+        code: 'GRACE_EXPIRED',
+      });
+    }
+
+    await executeQuery(
+      `UPDATE users SET status = 'ACTIVE', closed_at = NULL, anonymise_after = NULL,
+              failed_login_attempts = 0, last_failed_attempt = NULL, last_login_at = NOW()
+        WHERE id = ?`,
+      [user.id]
+    );
+
+    const token = randomUUID();
+    await executeQuery('INSERT INTO sessions (userId, token, expires) VALUES (?, ?, ?)',
+      [user.id, token, newSessionExpiry()]);
+
+    await recordSubjectRequest(req, 'DELETION', user.id, 'REFUSED', 'Withdrawn by the user — account reactivated');
+    await recordSecurityEvent(req, 'ACCOUNT_REACTIVATED', user.id);
+    logger.info('Account reactivated', { userId: user.id });
+
+    const fresh = await executeQuery('SELECT id, email, company_name FROM users WHERE id = ?', [user.id]);
+    res.json({ message: 'Your account has been reactivated.', token, user: fresh[0] });
+  } catch (error) {
+    logger.error('Account reactivate error:', error);
+    res.status(500).json({ message: 'Failed to reactivate your account' });
+  }
+});
 
 // ─── Legal documents ──────────────────────────────────────────────────────────
 // Copy lives in the `legal_documents` table, seeded from legal/*.html by

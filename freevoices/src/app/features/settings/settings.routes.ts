@@ -32,6 +32,11 @@ export const SETTINGS_ROUTES: Routes = [
           .then(m => m.NotificationSettingsPage)
       },
       {
+        path: 'privacy',
+        loadComponent: () => import('./pages/privacy-settings/privacy-settings.page')
+          .then(m => m.PrivacySettingsPage)
+      },
+      {
         path: 'legal',
         loadComponent: () => import('./pages/legal-settings/legal-settings.page')
           .then(m => m.LegalSettingsPage)

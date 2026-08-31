@@ -238,6 +238,62 @@ class EmailService {
 
     return this.transporter.sendMail(mailOptions);
   }
+
+  /**
+   * Written confirmation that an account was closed, which the privacy policy
+   * commits us to sending. It also doubles as a tripwire: if someone else closed
+   * the account, this is how the owner finds out while it is still recoverable.
+   */
+  async sendAccountClosureEmail(email, details) {
+    const fmt = (d) => (d
+      ? new Date(d).toLocaleDateString('en-ZA', { day: '2-digit', month: 'long', year: 'numeric' })
+      : '');
+    const appUrl = process.env.APP_URL || 'https://freevoices.co.za';
+
+    const mailOptions = {
+      from: {
+        name: process.env.SMTP_FROM_NAME || 'FreeVoices',
+        address: process.env.SMTP_FROM_ADDRESS || process.env.SMTP_FROM || this.transporter.options.auth.user
+      },
+      to: email,
+      subject: 'Your FreeVoices account has been closed',
+      html: `
+        <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+          <div style="background: #1a1a2e; padding: 24px; border-radius: 8px 8px 0 0;">
+            <h1 style="color: #ffffff; margin: 0; font-size: 20px;">Account closed</h1>
+          </div>
+          <div style="background: #f9fafb; padding: 24px; border-radius: 0 0 8px 8px; border: 1px solid #e5e7eb;">
+            <p style="color: #374151;">Your FreeVoices account was closed on <strong>${fmt(details.closed_at)}</strong>.</p>
+            <p style="color: #374151;">
+              You have been signed out everywhere and any recurring invoices have been stopped.
+              We will delete or irreversibly anonymise your personal information on or after
+              <strong>${fmt(details.anonymise_due_at)}</strong>.
+            </p>
+            <div style="background: #eff6ff; border-left: 4px solid #4a90e2; padding: 12px 16px; margin: 16px 0; border-radius: 0 4px 4px 0;">
+              <p style="margin: 0 0 4px; font-weight: bold; color: #1e40af;">Changed your mind?</p>
+              <p style="margin: 0; color: #374151; font-size: 14px;">
+                You can reactivate your account with your existing password for the next
+                ${details.grace_days} days at <a href="${appUrl}/login">${appUrl}/login</a>.
+                After that it cannot be undone.
+              </p>
+            </div>
+            <p style="color: #374151; font-size: 14px;">
+              Records of invoices, credit notes and payments you issued are kept for 7 years because
+              South African tax and company law require it. The personal details attached to them are
+              removed, so they can no longer be linked to you. Our
+              <a href="${appUrl}/legal/privacy">Privacy Policy</a> explains this in section 10.
+            </p>
+            <p style="color: #b91c1c; font-size: 13px; margin-top: 24px;">
+              <strong>If you did not close this account</strong>, reactivate it now and change your
+              password, then contact us at admin@madeoc.co.za immediately.
+            </p>
+          </div>
+        </div>
+      `
+    };
+
+    return this.transporter.sendMail(mailOptions);
+  }
 }
 
 module.exports = EmailService;

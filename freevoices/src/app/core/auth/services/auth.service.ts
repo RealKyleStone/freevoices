@@ -45,10 +45,23 @@ export class AuthService {
     } catch (error) {
       console.error('Logout error:', error);
     } finally {
-      localStorage.removeItem('currentUser');
-      localStorage.removeItem('token');
-      this.currentUserSubject.next(null);
+      this.clearLocalSession();
     }
+  }
+
+  /**
+   * Drop local session state without calling the logout endpoint.
+   *
+   * Needed after closing an account: the server has already destroyed every
+   * session, so logout() would fire a doomed request whose 401 makes the error
+   * interceptor redirect immediately — yanking the page out from under the
+   * confirmation dialog. Resets the BehaviorSubject too, otherwise currentUser$
+   * keeps emitting and the signed-in shell stays on screen.
+   */
+  clearLocalSession(): void {
+    localStorage.removeItem('currentUser');
+    localStorage.removeItem('token');
+    this.currentUserSubject.next(null);
   }
 
   isAuthenticated(): boolean {

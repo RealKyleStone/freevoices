@@ -1,0 +1,74 @@
+@use '../settings-page';
+
+.card-intro {
+  color: var(--ion-color-medium);
+  font-size: 0.88rem;
+  line-height: 1.6;
+  margin: 0 0 10px;
+}
+
+.card-note {
+  color: var(--ion-color-medium);
+  font-size: 0.8rem;
+  line-height: 1.6;
+  margin: 0 0 10px;
+
+  a {
+    color: var(--ion-color-primary);
+    text-decoration: none;
+    &:hover { text-decoration: underline; }
+  }
+}
+
+.card-warning {
+  font-size: 0.82rem;
+  line-height: 1.55;
+  color: var(--fv-warning-text, #854d0e);
+  background: var(--fv-warning-bg, #fef9c3);
+  border-radius: 8px;
+  padding: 10px 12px;
+  margin: 0 0 14px;
+}
+
+ion-item {
+  ion-label {
+    h3 { font-weight: 500; }
+    p {
+      font-size: 0.82rem;
+      color: var(--ion-color-medium);
+    }
+    a {
+      color: var(--ion-color-primary);
+      text-decoration: none;
+    }
+  }
+}
+
+// Set apart from the cards above it, so a destructive action never reads as
+// just another settings row.
+.danger-zone {
+  border: 1px solid var(--ion-color-danger);
+  margin-top: 28px;
+
+  ion-card-title {
+    color: var(--ion-color-danger);
+  }
+}
+
+.closed-banner {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  font-size: 0.86rem;
+  line-height: 1.55;
+  background: var(--fv-warning-bg, #fef9c3);
+  color: var(--fv-warning-text, #854d0e);
+  border-radius: 8px;
+  padding: 12px 14px;
+
+  ion-icon {
+    flex-shrink: 0;
+    font-size: 1.2rem;
+    margin-top: 1px;
+  }
+}

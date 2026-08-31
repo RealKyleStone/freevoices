@@ -1,0 +1,144 @@
+<div class="settings-page">
+  <div class="settings-page-header">
+    <h2>Privacy &amp; data</h2>
+    <p>Your rights over the information we hold about you, under POPIA.</p>
+  </div>
+
+  <div *ngIf="isLoading" class="loading-container">
+    <ion-spinner name="crescent"></ion-spinner>
+  </div>
+
+  <ng-container *ngIf="!isLoading">
+
+    <ion-card>
+      <ion-card-header>
+        <ion-card-title>
+          <ion-icon name="download-outline"></ion-icon>
+          Get a copy of your data
+        </ion-card-title>
+      </ion-card-header>
+      <ion-card-content>
+        <p class="card-intro">
+          POPIA section 23 gives you the right to a copy of the personal information we hold about you.
+          This downloads a machine-readable file containing your account, your customers, your products,
+          your documents and your payment records.
+        </p>
+        <p class="card-note">
+          Your password and any security tokens are deliberately excluded. Because the file contains
+          your customers' contact details, treat it as confidential.
+        </p>
+        <div class="form-actions">
+          <ion-button expand="block" fill="outline" (click)="downloadData()" [disabled]="isExporting">
+            <ion-spinner *ngIf="isExporting" name="crescent" slot="start"></ion-spinner>
+            <span *ngIf="!isExporting">Download my data</span>
+            <span *ngIf="isExporting">Preparing…</span>
+          </ion-button>
+        </div>
+      </ion-card-content>
+    </ion-card>
+
+    <ion-card>
+      <ion-card-header>
+        <ion-card-title>
+          <ion-icon name="document-text-outline"></ion-icon>
+          What you have accepted
+        </ion-card-title>
+      </ion-card-header>
+      <ion-card-content>
+        <ion-item lines="full">
+          <ion-label>
+            <h3>Privacy Policy</h3>
+            <p *ngIf="status?.privacy_accepted_at">
+              Version {{ status?.privacy_policy_version || '—' }}, accepted {{ formatDate(status?.privacy_accepted_at || null) }}
+            </p>
+            <p *ngIf="!status?.privacy_accepted_at">Not yet recorded for your account</p>
+          </ion-label>
+          <ion-button slot="end" fill="clear" size="small" routerLink="/legal/privacy">Read</ion-button>
+        </ion-item>
+        <ion-item lines="full">
+          <ion-label>
+            <h3>Terms of Service</h3>
+            <p *ngIf="status?.terms_accepted_at">Accepted {{ formatDate(status?.terms_accepted_at || null) }}</p>
+            <p *ngIf="!status?.terms_accepted_at">Not yet recorded for your account</p>
+          </ion-label>
+          <ion-button slot="end" fill="clear" size="small" routerLink="/legal/terms">Read</ion-button>
+        </ion-item>
+        <ion-item lines="none">
+          <ion-label>
+            <h3>Last sign-in</h3>
+            <p>{{ formatDate(status?.last_login_at || null) }}</p>
+          </ion-label>
+        </ion-item>
+      </ion-card-content>
+    </ion-card>
+
+    <ion-card>
+      <ion-card-header>
+        <ion-card-title>
+          <ion-icon name="information-circle-outline"></ion-icon>
+          Exercising your other rights
+        </ion-card-title>
+      </ion-card-header>
+      <ion-card-content>
+        <p class="card-intro">
+          You can correct most of your information yourself under <strong>Profile</strong> and
+          <strong>Company</strong>. To object to processing, request a correction we cannot make in the
+          app, or ask a question about how we handle your data, contact our Information Officer:
+        </p>
+        <ion-item lines="none">
+          <ion-label>
+            <h3>Kyle Stone — Information Officer</h3>
+            <p><a href="mailto:admin&#64;madeoc.co.za">admin&#64;madeoc.co.za</a></p>
+          </ion-label>
+        </ion-item>
+        <p class="card-note">
+          You may also complain directly to the Information Regulator of South Africa. Our
+          <a routerLink="/legal/privacy">Privacy Policy</a> lists their contact details in section 11.
+        </p>
+      </ion-card-content>
+    </ion-card>
+
+    <!-- Danger zone last, visually separated. -->
+    <ion-card class="danger-zone">
+      <ion-card-header>
+        <ion-card-title>
+          <ion-icon name="warning-outline"></ion-icon>
+          Close your account
+        </ion-card-title>
+      </ion-card-header>
+      <ion-card-content>
+        <div *ngIf="status?.status === 'CLOSED'" class="closed-banner">
+          <ion-icon name="time-outline"></ion-icon>
+          <div>
+            <strong>This account is closed.</strong>
+            Personal information will be anonymised after {{ formatDate(status?.anonymise_due_at || null) }}.
+          </div>
+        </div>
+
+        <ng-container *ngIf="status?.status !== 'CLOSED'">
+          <p class="card-intro">
+            Closing your account signs you out everywhere, stops any recurring invoices, and removes
+            your personal information after {{ status?.grace_days || 30 }} days.
+          </p>
+          <p class="card-note">
+            Records of invoices, credit notes and payments you have issued are kept for
+            <strong>7 years</strong> because the Companies Act, the Tax Administration Act and the VAT Act
+            require it — but the personal details attached to them are removed, so they can no longer be
+            linked to you. You can reactivate with your password during the grace period.
+            <a routerLink="/legal/delete-account">Read the full detail</a>.
+          </p>
+          <p class="card-warning">
+            Download your data first if you want to keep a copy. After the grace period this cannot be undone.
+          </p>
+          <div class="form-actions">
+            <ion-button expand="block" color="danger" (click)="confirmClose()">
+              <ion-icon name="trash-outline" slot="start"></ion-icon>
+              Close my account
+            </ion-button>
+          </div>
+        </ng-container>
+      </ion-card-content>
+    </ion-card>
+
+  </ng-container>
+</div>

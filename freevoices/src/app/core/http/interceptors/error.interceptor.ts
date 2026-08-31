@@ -18,8 +18,14 @@ export class ErrorInterceptor implements HttpInterceptor {
   intercept(request: HttpRequest<any>, next: HttpHandler): Observable<HttpEvent<any>> {
     return next.handle(request).pipe(
       catchError((error: HttpErrorResponse) => {
-        if (error.status === 401) {
-          localStorage.removeItem('token');
+        // ACCOUNT_CLOSED is a 403, not a 401: the token was valid, the account
+        // is not. Treated like a forced sign-out so the user isn't left staring
+        // at a permission toast on every request.
+        if (error.status === 403 && error.error?.code === 'ACCOUNT_CLOSED') {
+          this.clearSession();
+          this.router.navigate(['/login'], { queryParams: { closed: '1' } });
+        } else if (error.status === 401) {
+          this.clearSession();
           this.router.navigate(['/login']);
         } else {
           const message = error.error?.message || this.defaultMessage(error.status);
@@ -28,6 +34,16 @@ export class ErrorInterceptor implements HttpInterceptor {
         return throwError(() => error);
       })
     );
+  }
+
+  /**
+   * Clear both keys. Removing only `token` left `currentUser` behind, so
+   * AuthService.isAuthenticated() kept reporting true after a forced sign-out
+   * and AuthGuard would wave the user straight back through.
+   */
+  private clearSession(): void {
+    localStorage.removeItem('token');
+    localStorage.removeItem('currentUser');
   }
 
   private defaultMessage(status: number): string {

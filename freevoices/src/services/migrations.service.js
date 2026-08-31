@@ -258,6 +258,110 @@ const MIGRATIONS = [
       return 'table created';
     },
   },
+
+  {
+    id: '007_account_lifecycle',
+    description: 'users lifecycle columns, security_events and data_subject_requests — closure, export and audit',
+    async up(q) {
+      const notes = [];
+
+      // Until now a user could not leave: there was no delete endpoint and no
+      // status column. `status` is the gate authenticateToken checks; the two
+      // timestamps drive the 30-day anonymisation the retention engine runs.
+      const columns = [
+        ["status", "enum('ACTIVE','CLOSED','ANONYMISED') NOT NULL DEFAULT 'ACTIVE'"],
+        ['closed_at', 'datetime DEFAULT NULL'],
+        ['anonymise_after', 'datetime DEFAULT NULL'],
+        ['anonymised_at', 'datetime DEFAULT NULL'],
+        ['last_login_at', 'datetime DEFAULT NULL'],
+      ];
+      for (const [name, definition] of columns) {
+        if (await columnExists(q, 'users', name)) continue;
+        await q(`ALTER TABLE users ADD COLUMN ${name} ${definition}`);
+        notes.push(name);
+      }
+
+      // Lets the retention sweep find accounts due for anonymisation without a
+      // full scan.
+      if (!(await indexExists(q, 'users', 'idx_users_lifecycle'))) {
+        await q('ALTER TABLE users ADD KEY idx_users_lifecycle (status, anonymise_after)');
+        notes.push('idx_users_lifecycle');
+      }
+
+      if (!(await tableExists(q, 'security_events'))) {
+        // Replaces logging authentication events as free text into combined.log
+        // with an auditable, retention-bounded table. user_id is nullable and
+        // ON DELETE SET NULL so the record survives the user it describes —
+        // otherwise closing an account destroys the evidence of it closing.
+        await q(`
+          CREATE TABLE security_events (
+            id bigint(20) NOT NULL AUTO_INCREMENT,
+            user_id bigint(20) DEFAULT NULL,
+            event_type varchar(48) NOT NULL,
+            ip_address varchar(45) DEFAULT NULL,
+            user_agent varchar(512) DEFAULT NULL,
+            detail varchar(512) DEFAULT NULL,
+            created_at timestamp NOT NULL DEFAULT current_timestamp(),
+            PRIMARY KEY (id),
+            KEY idx_user (user_id, created_at),
+            KEY idx_retention (created_at),
+            CONSTRAINT fk_sec_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE SET NULL
+          ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+        `);
+        notes.push('security_events');
+      }
+
+      if (!(await tableExists(q, 'data_subject_requests'))) {
+        // POPIA s23/s24 requests. Keeping a record is how you demonstrate you
+        // honoured them — "we deleted it" is not much use without evidence.
+        await q(`
+          CREATE TABLE data_subject_requests (
+            id bigint(20) NOT NULL AUTO_INCREMENT,
+            user_id bigint(20) DEFAULT NULL,
+            subject_email varchar(255) DEFAULT NULL,
+            request_type enum('ACCESS','EXPORT','CORRECTION','DELETION','OBJECTION','MARKETING_OPT_OUT') NOT NULL,
+            channel enum('IN_APP','EMAIL','POST') NOT NULL DEFAULT 'IN_APP',
+            status enum('RECEIVED','IN_PROGRESS','COMPLETED','REFUSED') NOT NULL DEFAULT 'RECEIVED',
+            notes varchar(512) DEFAULT NULL,
+            ip_address varchar(45) DEFAULT NULL,
+            requested_at timestamp NOT NULL DEFAULT current_timestamp(),
+            completed_at datetime DEFAULT NULL,
+            PRIMARY KEY (id),
+            KEY idx_user (user_id, requested_at),
+            KEY idx_open (status, requested_at),
+            CONSTRAINT fk_dsr_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE SET NULL
+          ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+        `);
+        notes.push('data_subject_requests');
+      }
+
+      return notes.length ? `added: ${notes.join(', ')}` : 'already present';
+    },
+  },
+
+  {
+    id: '008_users_consent_columns',
+    description: 'users: recorded Terms and Privacy Policy acceptance (version + timestamp)',
+    async up(q) {
+      // The denormalised "what did this user last accept" fields. The
+      // append-only acceptance history lands with the consent-capture work;
+      // these exist now so /api/account/status and the export can report it,
+      // and so the re-consent guard has a cheap column to gate on.
+      const columns = [
+        ['terms_accepted_at', 'datetime DEFAULT NULL'],
+        ['terms_version', 'varchar(20) DEFAULT NULL'],
+        ['privacy_accepted_at', 'datetime DEFAULT NULL'],
+        ['privacy_policy_version', 'varchar(20) DEFAULT NULL'],
+      ];
+      const added = [];
+      for (const [name, definition] of columns) {
+        if (await columnExists(q, 'users', name)) continue;
+        await q(`ALTER TABLE users ADD COLUMN ${name} ${definition}`);
+        added.push(name);
+      }
+      return added.length ? `added: ${added.join(', ')}` : 'already present';
+    },
+  },
 ];
 
 // ─── Runner ───────────────────────────────────────────────────────────────────

@@ -10,7 +10,8 @@ import {
   cardOutline,
   notificationsOutline,
   menuOutline,
-  readerOutline
+  readerOutline,
+  shieldCheckmarkOutline
 } from 'ionicons/icons';
 
 @Component({
@@ -27,10 +28,14 @@ export class SettingsMainPage {
     { label: 'Invoice Defaults', path: 'invoice', icon: 'document-text-outline' },
     { label: 'Payment Details', path: 'payment', icon: 'card-outline' },
     { label: 'Notifications', path: 'notifications', icon: 'notifications-outline' },
+    { label: 'Privacy & Data', path: 'privacy', icon: 'shield-checkmark-outline' },
     { label: 'Legal', path: 'legal', icon: 'reader-outline' }
   ];
 
   constructor() {
-    addIcons({ personOutline, businessOutline, documentTextOutline, cardOutline, notificationsOutline, menuOutline, readerOutline });
+    addIcons({
+      personOutline, businessOutline, documentTextOutline, cardOutline,
+      notificationsOutline, menuOutline, readerOutline, shieldCheckmarkOutline
+    });
   }
 }
