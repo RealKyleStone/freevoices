@@ -4,14 +4,18 @@ const cron = require('node-cron');
 
 const EmailService = require('./src/services/email.service');
 const { buildInvoicePdf, buildReceiptPdf } = require('./src/services/pdf.service');
+// The pool, the logger and the query helpers live in db.service so that CLI
+// tooling can share them without booting an HTTP listener.
+const { logger, executeQuery, getConnection, closePool } = require('./src/services/db.service');
+const { runMigrations } = require('./src/services/migrations.service');
 const express = require('express');
 const path = require('path');
 const fs = require('fs');
-const mysql = require('mysql2');
 const cors = require('cors');
+const helmet = require('helmet');
+const rateLimit = require('express-rate-limit');
 const bodyParser = require('body-parser');
 const argon2 = require('argon2');
-const winston = require('winston');
 const { randomUUID } = require('crypto');
 const multer = require('multer');
 const { body, validationResult } = require('express-validator');
@@ -24,8 +28,10 @@ const logoStorage = multer.diskStorage({
     cb(null, dir);
   },
   filename: (req, file, cb) => {
+    // Unguessable name: /uploads is a public static mount, and the previous
+    // `logo_<userId>_<timestamp>` scheme made every logo enumerable.
     const ext = path.extname(file.originalname).toLowerCase();
-    cb(null, `logo_${req.user.id}_${Date.now()}${ext}`);
+    cb(null, `logo_${randomUUID().replace(/-/g, '')}${ext}`);
   }
 });
 const logoUpload = multer({
@@ -41,97 +47,127 @@ const logoUpload = multer({
 
 const app = express();
 
-// Middleware
-app.use(cors());
-app.use(bodyParser.json());
-app.use(express.static(path.join(__dirname, 'dist/www')));
+// Angular builds to `www` (angular.json outputPath, and capacitor.config.ts webDir).
+const WEB_ROOT = path.join(__dirname, 'www');
 
+const IS_PRODUCTION = process.env.NODE_ENV === 'production';
+
+// ─── Middleware ───────────────────────────────────────────────────────────────
+
+// Required for req.ip to be the real client behind nginx/Cloudflare. Without it
+// every IP recorded in document_tracking, consent records and security logs is
+// the proxy's — an audit trail made of a constant.
+app.set('trust proxy', parseInt(process.env.TRUST_PROXY_HOPS, 10) || 1);
+
+// Angular emits no inline scripts or styles in index.html, so script-src can
+// stay strict. style-src needs 'unsafe-inline' because Ionic injects component
+// styles at runtime. If this ever breaks the app, CSP_REPORT_ONLY=true turns it
+// into reporting without a redeploy — but do not leave it there.
+const cspDirectives = {
+  defaultSrc: ["'self'"],
+  scriptSrc: ["'self'", 'https://www.google.com', 'https://www.gstatic.com'],
+  styleSrc: ["'self'", "'unsafe-inline'"],
+  imgSrc: ["'self'", 'data:', 'blob:'],
+  fontSrc: ["'self'", 'data:'],
+  // blob: covers the PDF/receipt downloads, which build an object URL.
+  connectSrc: ["'self'", 'blob:', 'https://www.google.com'],
+  frameSrc: ['https://www.google.com'], // reCAPTCHA challenge iframe
+  objectSrc: ["'none'"],
+  baseUri: ["'self'"],
+  formAction: ["'self'"],
+  frameAncestors: ["'none'"],
+};
+if (IS_PRODUCTION) cspDirectives.upgradeInsecureRequests = [];
+
+app.use(helmet({
+  contentSecurityPolicy: process.env.CSP_ENABLED === 'false'
+    ? false
+    : { directives: cspDirectives, reportOnly: process.env.CSP_REPORT_ONLY === 'true' },
+  // Would block reCAPTCHA and cross-origin images without buying anything here.
+  crossOriginEmbedderPolicy: false,
+  hsts: IS_PRODUCTION ? { maxAge: 31536000, includeSubDomains: true, preload: false } : false,
+  referrerPolicy: { policy: 'strict-origin-when-cross-origin' },
+  // Match the CSP's frame-ancestors 'none' for pre-CSP browsers.
+  frameguard: { action: 'deny' },
+}));
+
+// A bearer token read from localStorage means any origin that can call the API
+// can use a stolen token, so the wide-open cors() had to go. Capacitor serves
+// the app from https://localhost (Android) or capacitor://localhost (iOS).
+const DEFAULT_ORIGINS = [
+  'https://freevoices.co.za',
+  'https://www.freevoices.co.za',
+  'https://api.freevoices.co.za',
+  'https://localhost',
+  'capacitor://localhost',
+  'ionic://localhost',
+];
+const DEV_ORIGINS = ['http://localhost:4200', 'http://localhost:8100', 'http://localhost:3000', 'http://localhost:8080'];
+
+const allowedOrigins = new Set(
+  process.env.CORS_ALLOWED_ORIGINS
+    ? process.env.CORS_ALLOWED_ORIGINS.split(',').map(o => o.trim()).filter(Boolean)
+    : [...DEFAULT_ORIGINS, ...(IS_PRODUCTION ? [] : DEV_ORIGINS)]
+);
+
+app.use(cors({
+  origin: (origin, callback) => {
+    // No Origin header: curl, native HTTP clients, server-to-server, and
+    // same-origin navigations. There is no cross-origin risk to police here.
+    if (!origin) return callback(null, true);
+    if (allowedOrigins.has(origin)) return callback(null, true);
+    logger.warn('CORS: rejected origin', { origin });
+    return callback(new Error('Not allowed by CORS'));
+  },
+  credentials: true,
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization'],
+}));
+
+// Turn the CORS rejection into an honest 403 instead of letting the thrown
+// Error fall through to the generic 500 handler.
+app.use((err, req, res, next) => {
+  if (err && err.message === 'Not allowed by CORS') {
+    return res.status(403).json({ message: 'Origin not allowed' });
+  }
+  return next(err);
+});
+
+app.use(bodyParser.json({ limit: '1mb' }));
+
+// ─── Rate limiting ────────────────────────────────────────────────────────────
+// With no throttle, /api/auth/login was both a brute-force target and a
+// CPU-exhaustion vector, because every attempt runs an expensive argon2 verify.
+
+const limiter = (windowMinutes, limit, message) => rateLimit({
+  windowMs: windowMinutes * 60 * 1000,
+  limit,
+  standardHeaders: 'draft-7',
+  legacyHeaders: false,
+  message: { message },
+  skip: () => process.env.RATE_LIMIT_DISABLED === 'true',
+});
+
+const loginLimiter = limiter(15, 10, 'Too many sign-in attempts. Please wait a few minutes and try again.');
+const registerLimiter = limiter(60, 5, 'Too many accounts created from this network. Please try again later.');
+const passwordLimiter = limiter(60, 5, 'Too many password reset requests. Please try again later.');
+const portalLimiter = limiter(15, 60, 'Too many requests. Please try again shortly.');
+const apiLimiter = limiter(15, 1000, 'Too many requests. Please slow down.');
+
+app.use('/api', apiLimiter);
+
+app.use(express.static(WEB_ROOT));
+
+// The `tls` block that used to be passed here was silently discarded —
+// EmailService built its own, weaker one. TLS policy now lives entirely in
+// EmailService, so there is one place to look.
 const emailService = new EmailService({
   SMTP_HOST: process.env.SMTP_HOST,
   SMTP_PORT: parseInt(process.env.SMTP_PORT),
   SMTP_SECURE: process.env.SMTP_SECURE === 'true',
   SMTP_USER: process.env.SMTP_USER,
   SMTP_PASS: process.env.SMTP_PASS,
-  tls: {
-    rejectUnauthorized: true,
-    minVersion: 'TLSv1.2',
-    maxVersion: 'TLSv1.3'
-  }
 });
-
-// Configure Winston logger
-const logger = winston.createLogger({
-  level: 'info',
-  format: winston.format.combine(
-    winston.format.timestamp(),
-    winston.format.json()
-  ),
-  transports: [
-    new winston.transports.File({ filename: 'error.log', level: 'error' }),
-    new winston.transports.File({ filename: 'combined.log' }),
-    new winston.transports.Console({ format: winston.format.simple() }),
-  ],
-});
-
-// Database configuration
-const dbConfig = {
-  host: process.env.DB_HOST,
-  user: process.env.DB_USER,
-  password: process.env.DB_PASSWORD,
-  database: process.env.DB_NAME,
-  connectionLimit: parseInt(process.env.DB_CONNECTION_LIMIT, 10),
-  queueLimit: parseInt(process.env.DB_QUEUE_LIMIT, 10),
-  enableKeepAlive: process.env.DB_ENABLE_KEEP_ALIVE === 'true',
-  keepAliveInitialDelay: parseInt(process.env.DB_KEEP_ALIVE_INITIAL_DELAY, 10),
-};
-
-console.log(dbConfig);
-
-let pool;
-
-function handleDisconnect() {
-  pool = mysql.createPool(dbConfig);
-  pool.on('connection', (connection) => {
-    logger.info('New connection established');
-    connection.on('error', (err) => {
-      logger.error('Database connection error', err);
-      if (err.code === 'PROTOCOL_CONNECTION_LOST') handleDisconnect();
-    });
-  });
-  pool.on('error', (err) => {
-    logger.error('Pool error', err);
-    if (err.code === 'PROTOCOL_CONNECTION_LOST') handleDisconnect();
-  });
-}
-
-handleDisconnect();
-
-// Auto-migrate: add notifications_muted column if it doesn't exist
-async function migrateDatabase() {
-  try {
-    const cols = await executeQuery(
-      "SELECT COUNT(*) AS cnt FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'documents' AND COLUMN_NAME = 'notifications_muted'"
-    );
-    if (cols[0].cnt === 0) {
-      await executeQuery("ALTER TABLE documents ADD COLUMN notifications_muted TINYINT(1) NOT NULL DEFAULT 0");
-      logger.info('Migration: added notifications_muted column to documents');
-    }
-  } catch (err) {
-    logger.error('Migration error (notifications_muted):', err);
-  }
-}
-
-function executeQuery(sql, params = []) {
-  return new Promise((resolve, reject) => {
-    pool.getConnection((err, connection) => {
-      if (err) { logger.error('Error getting connection from pool:', err); reject(err); return; }
-      connection.query(sql, params, (error, results) => {
-        connection.release();
-        if (error) { logger.error('Query error:', error); reject(error); } else { resolve(results); }
-      });
-    });
-  });
-}
 
 function validate(validators) {
   return async (req, res, next) => {
@@ -144,14 +180,54 @@ function validate(validators) {
   };
 }
 
+/**
+ * Session lifetime. A flat 12-hour *absolute* cap would sign mobile users out
+ * twice a day, because there is no refresh-token mechanism — so the 12 hours is
+ * an idle window that slides on use, bounded by a hard 7-day ceiling measured
+ * from when the session was created.
+ */
+const SESSION_IDLE_HOURS = parseInt(process.env.SESSION_IDLE_HOURS, 10) || 12;
+const SESSION_MAX_DAYS = parseInt(process.env.SESSION_MAX_DAYS, 10) || 7;
+
+/** Expiry for a freshly minted session. */
+function newSessionExpiry() {
+  const expiresAt = new Date();
+  expiresAt.setHours(expiresAt.getHours() + SESSION_IDLE_HOURS);
+  return expiresAt;
+}
+
 const authenticateToken = async (req, res, next) => {
   try {
     const authHeader = req.headers['authorization'];
     const token = authHeader && authHeader.split(' ')[1];
     if (!token) return res.status(401).json({ message: 'No token provided' });
-    const sessions = await executeQuery('SELECT * FROM sessions WHERE token = ? AND expires > NOW()', [token]);
+
+    const sessions = await executeQuery(
+      `SELECT userId FROM sessions
+        WHERE token = ?
+          AND expires > NOW()
+          AND created_at > DATE_SUB(NOW(), INTERVAL ? DAY)`,
+      [token, SESSION_MAX_DAYS]
+    );
     if (sessions.length === 0) return res.status(401).json({ message: 'Invalid or expired token' });
     req.user = { id: sessions[0].userId };
+
+    // Slide the idle window, clamped to the absolute ceiling. The guard on
+    // `expires` means this only writes once the window has actually moved by
+    // more than an hour, rather than on every single request.
+    try {
+      await executeQuery(
+        `UPDATE sessions
+            SET expires = LEAST(DATE_ADD(NOW(), INTERVAL ? HOUR), DATE_ADD(created_at, INTERVAL ? DAY))
+          WHERE token = ?
+            AND expires < DATE_ADD(NOW(), INTERVAL ? HOUR)`,
+        [SESSION_IDLE_HOURS, SESSION_MAX_DAYS, token, SESSION_IDLE_HOURS - 1]
+      );
+    } catch (slideError) {
+      // A failed renewal must not fail an otherwise authenticated request.
+      logger.error('Session renewal failed', slideError);
+    }
+
     next();
   } catch (error) {
     logger.error('Authentication error:', error);
@@ -161,39 +237,99 @@ const authenticateToken = async (req, res, next) => {
 
 async function verifyCaptcha(token) {
   try {
-    if (!token) { console.log('No CAPTCHA token provided'); return false; }
+    if (!token) return false;
     const params = new URLSearchParams();
     params.append('secret', process.env.RECAPTCHA_SECRET_KEY);
     params.append('response', token);
     const response = await axios.post('https://www.google.com/recaptcha/api/siteverify', params, { headers: { 'Content-Type': 'application/x-www-form-urlencoded' } });
-    if (!response.data.success) console.log('CAPTCHA verification failed:', response.data['error-codes']);
+    if (!response.data.success) logger.warn('CAPTCHA verification failed', { errors: response.data['error-codes'] });
     return response.data.success;
-  } catch (error) { console.error('CAPTCHA verification error:', error); return false; }
+  } catch (error) { logger.error('CAPTCHA verification error:', error); return false; }
 }
 
+/**
+ * Verify a reCAPTCHA token when one is supplied, and reject a bad one.
+ *
+ * This replaces `!req.headers['user-agent']?.includes('Mobile')`, which skipped
+ * verification for any request claiming to be mobile — forgeable with a single
+ * header, so it protected nothing while appearing to. reCAPTCHA v2 Invisible
+ * cannot run in the native shell, so native clients legitimately send no token
+ * and the server has no trustworthy way to tell them from a bot pretending to be
+ * one.
+ *
+ * The honest position: CAPTCHA is bot friction for the web, not a security
+ * boundary. The actual brute-force controls are the rate limiter and the
+ * per-account lockout below. Accepted residual risk — closing it properly means
+ * native attestation (Play Integrity / App Attest), which is its own project.
+ *
+ * Returns true to continue; if it returns false it has already sent a response.
+ */
+async function enforceCaptcha(req, res) {
+  if (!IS_PRODUCTION || process.env.CAPTCHA_DISABLED === 'true') return true;
+  const token = req.body?.captchaToken;
+  if (!token) return true;
+  if (await verifyCaptcha(token)) return true;
+  res.status(400).json({ message: 'Security verification failed. Please try again.' });
+  return false;
+}
+
+// Per-account brute-force lockout, using the failed_login_attempts and
+// last_failed_attempt columns that have existed unused since the first schema.
+const LOGIN_MAX_FAILURES = parseInt(process.env.LOGIN_MAX_FAILURES, 10) || 10;
+const LOGIN_LOCKOUT_MINUTES = parseInt(process.env.LOGIN_LOCKOUT_MINUTES, 10) || 15;
+
 // Login endpoint
-app.post('/api/auth/login', validate([
+app.post('/api/auth/login', loginLimiter, validate([
   body('email').isEmail().withMessage('A valid email address is required'),
   body('password').notEmpty().withMessage('Password is required'),
 ]), async (req, res) => {
   try {
-    const { email, password, captchaToken } = req.body;
-    logger.info(`Login attempt for user: ${email}`);
-    const isDev = process.env.NODE_ENV !== 'production';
-    if (!isDev && !req.headers['user-agent']?.includes('Mobile')) {
-      const captchaValid = await verifyCaptcha(captchaToken);
-      if (!captchaValid) return res.status(400).json({ message: 'Security verification failed. Please try again.' });
-    }
+    const { email, password } = req.body;
+    // Deliberately no email in the log line — see the security_events table for
+    // auditable, retention-bounded authentication logging.
+    if (!(await enforceCaptcha(req, res))) return;
+
     const users = await executeQuery('SELECT * FROM users WHERE email = ?', [email]);
     if (users.length === 0) return res.status(401).json({ message: 'Invalid credentials' });
     const user = users[0];
+
+    // Lockout only bites once the failure count is reached AND the most recent
+    // failure is still inside the window, so it unlocks itself with time.
+    if (user.failed_login_attempts >= LOGIN_MAX_FAILURES && user.last_failed_attempt) {
+      const unlocksAt = new Date(new Date(user.last_failed_attempt).getTime() + LOGIN_LOCKOUT_MINUTES * 60000);
+      if (unlocksAt > new Date()) {
+        const minutes = Math.max(1, Math.ceil((unlocksAt - Date.now()) / 60000));
+        logger.warn('Login blocked by lockout', { userId: user.id });
+        return res.status(429).json({
+          message: `Too many failed sign-in attempts. Please try again in ${minutes} minute${minutes === 1 ? '' : 's'}.`
+        });
+      }
+    }
+
     const validPassword = await argon2.verify(user.password_hash, password);
-    if (!validPassword) return res.status(401).json({ message: 'Invalid credentials' });
+    if (!validPassword) {
+      // Restart the count if the previous failure fell outside the window,
+      // otherwise increment it.
+      await executeQuery(
+        `UPDATE users
+            SET failed_login_attempts = CASE
+                  WHEN last_failed_attempt IS NULL
+                    OR last_failed_attempt < DATE_SUB(NOW(), INTERVAL ? MINUTE) THEN 1
+                  ELSE failed_login_attempts + 1 END,
+                last_failed_attempt = NOW()
+          WHERE id = ?`,
+        [LOGIN_LOCKOUT_MINUTES, user.id]
+      );
+      return res.status(401).json({ message: 'Invalid credentials' });
+    }
+
+    if (user.failed_login_attempts > 0) {
+      await executeQuery('UPDATE users SET failed_login_attempts = 0, last_failed_attempt = NULL WHERE id = ?', [user.id]);
+    }
+
     const token = randomUUID();
-    const expiresAt = new Date();
-    expiresAt.setHours(expiresAt.getHours() + 24);
-    await executeQuery('INSERT INTO sessions (userId, token, expires) VALUES (?, ?, ?)', [user.id, token, expiresAt]);
-    logger.info(`User logged in successfully: ${email}`);
+    await executeQuery('INSERT INTO sessions (userId, token, expires) VALUES (?, ?, ?)', [user.id, token, newSessionExpiry()]);
+    logger.info('User logged in successfully', { userId: user.id });
     res.json({ token, user: { id: user.id, email: user.email, company_name: user.company_name } });
   } catch (error) { logger.error('Login error:', error); res.status(500).json({ message: 'Login failed. Please try again.' }); }
 });
@@ -208,11 +344,11 @@ app.post('/api/logout', authenticateToken, async (req, res) => {
 });
 
 process.on('SIGINT', () => {
-  pool.end((err) => { if (err) logger.error('Error closing pool during shutdown', err); logger.info('Pool has ended'); process.exit(0); });
+  closePool().then(() => process.exit(0));
 });
 
 // Registration endpoint
-app.post('/api/auth/register', validate([
+app.post('/api/auth/register', registerLimiter, validate([
   body('email').isEmail().normalizeEmail().withMessage('A valid email address is required'),
   body('password').isLength({ min: 8 }).withMessage('Password must be at least 8 characters'),
   body('company_name').trim().notEmpty().withMessage('Company name is required'),
@@ -221,12 +357,9 @@ app.post('/api/auth/register', validate([
   body('address').trim().notEmpty().withMessage('Address is required'),
 ]), async (req, res) => {
   try {
-    const { email, password, company_name, company_registration, vat_number, contact_person, phone, address, bank_name, bank_account_number, bank_branch_code, bank_account_type, captchaToken } = req.body;
-    const isDev = process.env.NODE_ENV !== 'production';
-    if (!isDev && !req.headers['user-agent']?.includes('Mobile')) {
-      const captchaValid = await verifyCaptcha(captchaToken);
-      if (!captchaValid) return res.status(400).json({ message: 'Security verification failed. Please try again.' });
-    }
+    const { email, password, company_name, company_registration, vat_number, contact_person, phone, address, bank_name, bank_account_number, bank_branch_code, bank_account_type } = req.body;
+    if (!(await enforceCaptcha(req, res))) return;
+
     const existingUser = await executeQuery('SELECT id FROM users WHERE email = ?', [email]);
     if (existingUser.length > 0) return res.status(400).json({ message: 'Email already registered' });
     const password_hash = await argon2.hash(password);
@@ -235,21 +368,19 @@ app.post('/api/auth/register', validate([
       [email, password_hash, company_name, company_registration, vat_number, contact_person, phone, address, bank_name, bank_account_number, bank_branch_code, bank_account_type]
     );
     const token = randomUUID();
-    const expiresAt = new Date();
-    expiresAt.setHours(expiresAt.getHours() + 24);
-    await executeQuery('INSERT INTO sessions (userId, token, expires) VALUES (?, ?, ?)', [result.insertId, token, expiresAt]);
+    await executeQuery('INSERT INTO sessions (userId, token, expires) VALUES (?, ?, ?)', [result.insertId, token, newSessionExpiry()]);
     const user = await executeQuery('SELECT id, email, company_name FROM users WHERE id = ?', [result.insertId]);
     const verificationToken = randomUUID();
     const verificationExpires = new Date();
     verificationExpires.setHours(verificationExpires.getHours() + 24);
     await executeQuery('UPDATE users SET email_verification_token = ?, email_verification_expires = ? WHERE id = ?', [verificationToken, verificationExpires, result.insertId]);
     try { await emailService.sendVerificationEmail(email, verificationToken); } catch (emailError) { logger.error('Failed to send verification email:', emailError); }
-    logger.info(`User registered successfully: ${email}`);
+    logger.info('User registered successfully', { userId: result.insertId });
     res.status(201).json({ token, user: user[0] });
   } catch (error) { logger.error('Registration error:', error); res.status(500).json({ message: 'Registration failed. Please try again.' }); }
 });
 
-app.get('/api/verify-email', async (req, res) => {
+app.get('/api/verify-email', passwordLimiter, async (req, res) => {
   try {
     const { token } = req.query;
     const result = await executeQuery('UPDATE users SET email_verified = true, email_verification_token = NULL, email_verification_expires = NULL WHERE email_verification_token = ? AND email_verification_expires > NOW()', [token]);
@@ -258,7 +389,7 @@ app.get('/api/verify-email', async (req, res) => {
   } catch (error) { logger.error('Email verification error:', error); res.status(500).json({ message: 'Verification failed' }); }
 });
 
-app.post('/api/auth/forgot-password', async (req, res) => {
+app.post('/api/auth/forgot-password', passwordLimiter, async (req, res) => {
   try {
     const { email } = req.body;
     if (!email) return res.status(400).json({ message: 'Email is required' });
@@ -271,7 +402,7 @@ app.post('/api/auth/forgot-password', async (req, res) => {
   } catch (error) { logger.error('Forgot password error:', error); res.status(500).json({ message: 'Failed to process request' }); }
 });
 
-app.post('/api/auth/reset-password', validate([
+app.post('/api/auth/reset-password', passwordLimiter, validate([
   body('token').trim().notEmpty().withMessage('Reset token is required'),
   body('password').isLength({ min: 8 }).withMessage('Password must be at least 8 characters'),
 ]), async (req, res) => {
@@ -435,7 +566,7 @@ app.post('/api/invoices', authenticateToken, validate([
     let currency_id = 1;
     if (reqCurrencyId) { const currRows = await executeQuery('SELECT id FROM currencies WHERE id = ? AND is_active = 1', [reqCurrencyId]); if (currRows.length > 0) currency_id = reqCurrencyId; }
     else { const defRows = await executeQuery("SELECT setting_value FROM settings WHERE user_id = ? AND setting_key = 'default_currency_id'", [req.user.id]); if (defRows.length > 0 && defRows[0].setting_value) currency_id = parseInt(defRows[0].setting_value, 10) || 1; }
-    const conn = await new Promise((resolve, reject) => pool.getConnection((err, c) => err ? reject(err) : resolve(c)));
+    const conn = await getConnection();
     try {
       await new Promise((resolve, reject) => conn.beginTransaction(err => err ? reject(err) : resolve()));
       const recurringFlag = is_recurring ? 1 : 0, recurInterval = recurringFlag && recurrence_interval ? recurrence_interval : null;
@@ -568,7 +699,7 @@ app.put('/api/invoices/:id', authenticateToken, validate([
       subtotal += itemSubtotal; vat_amount += itemVat; total += itemTotal;
       return { ...item, quantity: qty, unit_price: price, vat_rate: rate, subtotal: itemSubtotal, vat_amount: itemVat, total: itemTotal };
     });
-    const conn = await new Promise((resolve, reject) => pool.getConnection((err, c) => err ? reject(err) : resolve(c)));
+    const conn = await getConnection();
     try {
       await new Promise((resolve, reject) => conn.beginTransaction(err => err ? reject(err) : resolve()));
       let newCurrencyId = existing[0].currency_id;
@@ -721,7 +852,7 @@ app.post('/api/quotes', authenticateToken, validate([
     let currency_id = 1;
     if (reqCurrencyId) { const currRows = await executeQuery('SELECT id FROM currencies WHERE id = ? AND is_active = 1', [reqCurrencyId]); if (currRows.length > 0) currency_id = reqCurrencyId; }
     else { const defRows = await executeQuery("SELECT setting_value FROM settings WHERE user_id = ? AND setting_key = 'default_currency_id'", [req.user.id]); if (defRows.length > 0 && defRows[0].setting_value) currency_id = parseInt(defRows[0].setting_value, 10) || 1; }
-    const conn = await new Promise((resolve, reject) => pool.getConnection((err, c) => err ? reject(err) : resolve(c)));
+    const conn = await getConnection();
     try {
       await new Promise((resolve, reject) => conn.beginTransaction(err => err ? reject(err) : resolve()));
       const docResult = await new Promise((resolve, reject) => conn.query(
@@ -781,7 +912,7 @@ app.put('/api/quotes/:id', authenticateToken, validate([
       subtotal += itemSubtotal; vat_amount += itemVat; total += itemTotal;
       return { ...item, quantity: qty, unit_price: price, vat_rate: rate, subtotal: itemSubtotal, vat_amount: itemVat, total: itemTotal };
     });
-    const conn = await new Promise((resolve, reject) => pool.getConnection((err, c) => err ? reject(err) : resolve(c)));
+    const conn = await getConnection();
     try {
       await new Promise((resolve, reject) => conn.beginTransaction(err => err ? reject(err) : resolve()));
       let newCurrencyId = existing[0].currency_id;
@@ -823,7 +954,7 @@ app.post('/api/quotes/:id/convert-to-invoice', authenticateToken, async (req, re
     const quoteItems = await executeQuery('SELECT * FROM document_items WHERE document_id = ? ORDER BY id ASC', [id]);
     const invoice_number = await getNextDocumentNumber(req.user.id, 'INVOICE');
     const today = new Date().toISOString().split('T')[0];
-    const conn = await new Promise((resolve, reject) => pool.getConnection((err, c) => err ? reject(err) : resolve(c)));
+    const conn = await getConnection();
     try {
       await new Promise((resolve, reject) => conn.beginTransaction(err => err ? reject(err) : resolve()));
       const docResult = await new Promise((resolve, reject) => conn.query(
@@ -932,7 +1063,18 @@ app.get('/api/dashboard/summary', authenticateToken, async (req, res) => {
 
 // ─── Settings ─────────────────────────────────────────────────────────────────
 
-app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
+// Stays public: the customer portal returns company_logo as a URL and
+// buildInvoicePdf reads it off disk. Filenames are now unguessable (see multer
+// config above), so hardening is about how it's served, not who can reach it.
+app.use('/uploads', express.static(path.join(__dirname, 'uploads'), {
+  index: false,
+  dotfiles: 'deny',
+  maxAge: '7d',
+  setHeaders: (res) => {
+    res.set('X-Content-Type-Options', 'nosniff');
+    res.set('Content-Disposition', 'inline');
+  }
+}));
 
 app.get('/api/settings', authenticateToken, async (req, res) => {
   try {
@@ -1065,7 +1207,7 @@ app.get('/api/reports/vat-summary', authenticateToken, async (req, res) => {
 
 // ─── Public Customer Portal ───────────────────────────────────────────────────
 
-app.get('/api/public/invoice/:token', async (req, res) => {
+app.get('/api/public/invoice/:token', portalLimiter, async (req, res) => {
   try {
     const { token } = req.params;
     const docs = await executeQuery(`SELECT d.id, d.document_number, d.type, d.status, d.issue_date, d.due_date, d.payment_terms, d.subtotal, d.vat_amount, d.total, d.notes, d.terms_conditions, c.name AS customer_name, c.email AS customer_email, c.billing_address AS customer_billing_address, c.vat_number AS customer_vat_number, cur.symbol AS currency_symbol, cur.code AS currency_code, u.company_name, u.vat_number AS company_vat_number, u.address AS company_address, u.email AS company_email, u.bank_name, u.bank_account_number, u.bank_branch_code, u.bank_account_type FROM documents d JOIN customers c ON c.id = d.customer_id LEFT JOIN currencies cur ON cur.id = d.currency_id JOIN users u ON u.id = d.user_id WHERE d.share_token = ? AND d.type = 'INVOICE' AND (d.share_token_expires_at IS NULL OR d.share_token_expires_at > NOW())`, [token]);
@@ -1077,7 +1219,7 @@ app.get('/api/public/invoice/:token', async (req, res) => {
   } catch (error) { logger.error('Error fetching public invoice:', error); res.status(500).json({ message: 'Failed to fetch invoice' }); }
 });
 
-app.get('/api/public/invoice/:token/pdf', async (req, res) => {
+app.get('/api/public/invoice/:token/pdf', portalLimiter, async (req, res) => {
   try {
     const { token } = req.params;
     const docs = await executeQuery(`SELECT d.*, c.name AS customer_name, c.email AS customer_email, c.billing_address AS customer_billing_address, c.vat_number AS customer_vat_number, cur.symbol AS currency_symbol, cur.code AS currency_code FROM documents d JOIN customers c ON c.id = d.customer_id LEFT JOIN currencies cur ON cur.id = d.currency_id WHERE d.share_token = ? AND d.type = 'INVOICE' AND (d.share_token_expires_at IS NULL OR d.share_token_expires_at > NOW())`, [token]);
@@ -1113,7 +1255,7 @@ async function processRecurringInvoices() {
         if (source.payment_terms) { const d = new Date(); d.setUTCDate(d.getUTCDate() + source.payment_terms); due_date = d.toISOString().split('T')[0]; }
         const nextDate = advanceDate(source.recurrence_next_date, source.recurrence_interval);
         const endReached = source.recurrence_end_date && nextDate > source.recurrence_end_date.toISOString?.().split('T')[0] || (typeof source.recurrence_end_date === 'string' && nextDate > source.recurrence_end_date);
-        const conn = await new Promise((resolve, reject) => pool.getConnection((err, c) => err ? reject(err) : resolve(c)));
+        const conn = await getConnection();
         let newDocId;
         try {
           await new Promise((resolve, reject) => conn.beginTransaction(err => err ? reject(err) : resolve()));
@@ -1184,17 +1326,169 @@ cron.schedule('10 0 * * *', processOverdueInvoices);
 
 // ─────────────────────────────────────────────────────────────────────────────
 
+// ─── Legal documents ──────────────────────────────────────────────────────────
+// Copy lives in the `legal_documents` table, seeded from legal/*.html by
+// scripts/seed-legal.js. It is served from the database rather than the Angular
+// bundle so that an installed app three months stale cannot show v1.0 while
+// recording acceptance of v1.2 — and so a correction can ship without an app
+// store release.
+
+const LEGAL_SLUGS = {
+  privacy: 'Privacy Policy',
+  terms: 'Terms of Service',
+  'delete-account': 'Delete Your Account',
+};
+
+// DATE_FORMAT rather than returning the raw DATE: mysql2 hands back a DATE as
+// local midnight, so any UTC conversion downstream reports the previous day.
+const LEGAL_COLUMNS = `slug, version, title, DATE_FORMAT(effective_date, '%Y-%m-%d') AS effective_date, summary_html`;
+
+app.get('/api/legal', async (req, res) => {
+  try {
+    res.json(await executeQuery(
+      `SELECT ${LEGAL_COLUMNS} FROM legal_documents WHERE is_current = 1 ORDER BY slug`
+    ));
+  } catch (error) {
+    logger.error('Error listing legal documents:', error);
+    res.status(500).json({ message: 'Failed to load legal documents' });
+  }
+});
+
+app.get('/api/legal/:slug', async (req, res) => {
+  try {
+    const { slug } = req.params;
+    if (!LEGAL_SLUGS[slug]) return res.status(404).json({ message: 'Unknown document' });
+    const rows = await executeQuery(
+      `SELECT ${LEGAL_COLUMNS}, content_html FROM legal_documents WHERE slug = ? AND is_current = 1 LIMIT 1`,
+      [slug]
+    );
+    // 503, not 404: the document exists as a concept but no version is
+    // published — which happens while placeholders are unresolved.
+    if (rows.length === 0) return res.status(503).json({ message: 'This document has not been published yet' });
+    res.json(rows[0]);
+  } catch (error) {
+    logger.error('Error fetching legal document:', error);
+    res.status(500).json({ message: 'Failed to load document' });
+  }
+});
+
+// ─── Public, server-rendered legal pages ──────────────────────────────────────
+// These MUST be registered above the SPA catch-all. A Play reviewer, a crawler
+// or anyone opening the URL directly has to receive real HTML, not a JS shell.
+
+function renderLegalPage(doc) {
+  const esc = (s) => String(s).replace(/[<>&"]/g, (c) => ({ '<': '&lt;', '>': '&gt;', '&': '&amp;', '"': '&quot;' }[c]));
+  // effective_date arrives as a 'YYYY-MM-DD' string; split it rather than
+  // constructing a Date, to keep the timezone out of a published legal date.
+  const [y, m, d] = String(doc.effective_date).split('-');
+  const MONTHS = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
+  const effective = `${d} ${MONTHS[parseInt(m, 10) - 1]} ${y}`;
+
+  return `<!DOCTYPE html><html lang="en-ZA"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>${esc(doc.title)} · FreeVoices</title>
+<meta name="description" content="${esc(doc.title)} for FreeVoices invoicing, operated by Made On Chain.">
+<link rel="canonical" href="https://freevoices.co.za/legal/${esc(doc.slug)}">
+<style>
+:root{color-scheme:light dark;--bg:#fff;--fg:#1a1a2e;--muted:#6b7280;--line:#e5e7eb;--th:#f3f4f6;--accent:#4a90e2}
+@media(prefers-color-scheme:dark){:root{--bg:#12121c;--fg:#e5e7eb;--muted:#9ca3af;--line:#374151;--th:#1f2937}}
+*{box-sizing:border-box}
+body{margin:0;font:16px/1.65 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;color:var(--fg);background:var(--bg)}
+header{background:#1a1a2e;padding:18px 20px}
+header a{color:#fff;text-decoration:none;font-weight:600;font-size:1.05rem}
+main{max-width:760px;margin:0 auto;padding:32px 20px 80px}
+h1{font-size:1.75rem;line-height:1.25;margin:0 0 8px}
+h2{font-size:1.2rem;margin:2.2em 0 .6em;padding-top:.4em;border-top:1px solid var(--line)}
+h3{font-size:1.02rem;margin:1.6em 0 .5em;color:var(--muted)}
+a{color:var(--accent)}
+ul,ol{padding-left:1.3em}li{margin:.35em 0}
+.meta{color:var(--muted);font-size:.9rem;border-bottom:1px solid var(--line);padding-bottom:14px;margin-bottom:28px}
+.tw{overflow-x:auto;-webkit-overflow-scrolling:touch;margin:1.1em 0}
+table{width:100%;border-collapse:collapse;font-size:.92rem;min-width:420px}
+th,td{border:1px solid var(--line);padding:9px 11px;text-align:left;vertical-align:top}
+th{background:var(--th);font-weight:600}
+footer{max-width:760px;margin:0 auto;padding:0 20px 60px;color:var(--muted);font-size:.88rem}
+footer a{color:var(--accent)}
+</style></head><body>
+<header><a href="https://freevoices.co.za/">FreeVoices</a></header>
+<main>
+<h1>${esc(doc.title)}</h1>
+<p class="meta">Version ${esc(doc.version)} &middot; Effective ${esc(effective)} &middot; Operated by Made On Chain</p>
+${doc.content_html}
+</main>
+<footer>
+<p><a href="/legal/privacy">Privacy Policy</a> &middot; <a href="/legal/terms">Terms of Service</a> &middot; <a href="/legal/delete-account">Delete your account</a></p>
+<p>Already using FreeVoices? <a href="https://freevoices.co.za/">Open the app</a>.</p>
+</footer>
+</body></html>`;
+}
+
+app.get('/legal/:slug', async (req, res) => {
+  const { slug } = req.params;
+  if (!LEGAL_SLUGS[slug]) return res.status(404).type('html').send('<h1>Not found</h1>');
+  try {
+    const rows = await executeQuery(
+      `SELECT ${LEGAL_COLUMNS}, content_html FROM legal_documents WHERE slug = ? AND is_current = 1 LIMIT 1`,
+      [slug]
+    );
+    if (rows.length === 0) {
+      logger.warn('Legal page requested but no version is published', { slug });
+      return res.status(503).type('html').send(
+        `<h1>${LEGAL_SLUGS[slug]}</h1><p>This document is being finalised and is not yet published. ` +
+        `Please contact <a href="mailto:admin@madeoc.co.za">admin@madeoc.co.za</a> in the meantime.</p>`
+      );
+    }
+    res.set({ 'Cache-Control': 'public, max-age=3600', 'X-Content-Type-Options': 'nosniff' })
+       .type('html').send(renderLegalPage(rows[0]));
+  } catch (error) {
+    logger.error('Legal page error:', error);
+    res.status(500).type('html').send('<h1>Something went wrong</h1>');
+  }
+});
+
+// Short aliases for store listings, email footers and PDFs.
+app.get(['/privacy', '/privacy-policy'], (req, res) => res.redirect(301, '/legal/privacy'));
+app.get(['/terms', '/terms-of-service'], (req, res) => res.redirect(301, '/legal/terms'));
+app.get('/delete-account', (req, res) => res.redirect(301, '/legal/delete-account'));
+
+// Must sit above the SPA catch-all, or it returns the Angular shell.
+// /portal/ carries invoice share tokens — a crawled link would expose a full
+// invoice, including the seller's banking details, to anyone.
+app.get('/robots.txt', (req, res) => {
+  res.type('text/plain').send([
+    'User-agent: *',
+    'Disallow: /portal/',
+    'Disallow: /api/',
+    'Disallow: /uploads/',
+    'Allow: /legal/',
+    'Allow: /$',
+    '',
+  ].join('\n'));
+});
+
 // Catch-all route for Angular app
 app.get('*', (req, res) => {
-  res.sendFile(path.join(__dirname, 'dist/www/index.html'));
+  res.sendFile(path.join(WEB_ROOT, 'index.html'));
 });
 
 // Start server
 const port = process.env.PORT || 3000;
-migrateDatabase().then(() => {
-  app.listen(port, () => {
-    logger.info(`Server is running on port ${port}`);
+
+runMigrations()
+  .then(() => {
+    if (!fs.existsSync(path.join(WEB_ROOT, 'index.html'))) {
+      logger.error(`${path.join(WEB_ROOT, 'index.html')} is missing — run \`ng build\` before starting the server. API routes will work; the web app will 404.`);
+    }
+    app.listen(port, () => {
+      logger.info(`Server is running on port ${port}`);
+    });
+  })
+  .catch((err) => {
+    // Deliberately fatal. Serving traffic against a half-migrated schema is how
+    // you get silently truncated columns and unrecoverable data loss.
+    logger.error('Migrations failed — refusing to start', { message: err.message, stack: err.stack });
+    process.exitCode = 1;
+    closePool();
   });
-});
 
 module.exports = app;

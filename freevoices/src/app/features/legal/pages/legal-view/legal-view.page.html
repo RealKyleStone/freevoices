@@ -1,0 +1,65 @@
+<ion-header>
+  <ion-toolbar>
+    <ion-buttons slot="start">
+      <!-- defaultHref keeps this usable when the page is opened directly, with
+           no navigation history to go back to. -->
+      <ion-back-button defaultHref="/login"></ion-back-button>
+    </ion-buttons>
+    <ion-title>{{ doc?.title || 'Legal' }}</ion-title>
+  </ion-toolbar>
+</ion-header>
+
+<ion-content>
+  <div class="legal-page">
+
+    <div class="loading-container" *ngIf="isLoading">
+      <ion-spinner name="crescent"></ion-spinner>
+    </div>
+
+    <ion-card *ngIf="!isLoading && unpublished" class="legal-notice">
+      <ion-card-content>
+        <ion-icon name="time-outline" class="notice-icon"></ion-icon>
+        <h2>Not published yet</h2>
+        <p>
+          This document is being finalised and has not been published. Please contact
+          <a href="mailto:admin&#64;madeoc.co.za">admin&#64;madeoc.co.za</a> if you need it in the meantime.
+        </p>
+      </ion-card-content>
+    </ion-card>
+
+    <ion-card *ngIf="!isLoading && loadFailed" class="legal-notice">
+      <ion-card-content>
+        <ion-icon name="cloud-offline-outline" class="notice-icon"></ion-icon>
+        <h2>Could not load this document</h2>
+        <p>Check your connection and try again.</p>
+        <ion-button fill="outline" size="small" (click)="retry()">Try again</ion-button>
+      </ion-card-content>
+    </ion-card>
+
+    <ng-container *ngIf="!isLoading && doc">
+      <div class="legal-header">
+        <h1>{{ doc.title }}</h1>
+        <p class="legal-meta" *ngIf="!doc.bundled">
+          Version {{ doc.version }} &middot; Effective {{ effectiveDate }} &middot; Operated by Made On Chain
+        </p>
+      </div>
+
+      <!-- Offline copy: say so, because we cannot confirm it is current. -->
+      <ion-note color="warning" class="bundled-warning" *ngIf="doc.bundled">
+        <ion-icon name="cloud-offline-outline"></ion-icon>
+        You are reading the copy included with this app. Connect to the internet to see the current version.
+      </ion-note>
+
+      <!-- content_html is operator-authored and passes through Angular's
+           default DomSanitizer, which strips scripts and event handlers. -->
+      <div class="legal-body" [innerHTML]="doc.content_html"></div>
+
+      <div class="legal-footer">
+        <ion-button fill="clear" size="small" routerLink="/legal/privacy">Privacy Policy</ion-button>
+        <ion-button fill="clear" size="small" routerLink="/legal/terms">Terms of Service</ion-button>
+        <ion-button fill="clear" size="small" routerLink="/legal/delete-account">Delete your account</ion-button>
+      </div>
+    </ng-container>
+
+  </div>
+</ion-content>

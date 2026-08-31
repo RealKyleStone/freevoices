@@ -74,6 +74,14 @@ export const routes: Routes = [
       .then(m => m.PORTAL_ROUTES)
   },
   {
+    // Unguarded on purpose — Play requires the privacy policy and the
+    // account-deletion page to be readable before an account exists, and the
+    // registration consent links point here.
+    path: 'legal',
+    loadChildren: () => import('./features/legal/legal.routes')
+      .then(m => m.LEGAL_ROUTES)
+  },
+  {
     path: '**',
     loadComponent: () => import('./shared/pages/not-found/not-found.page')
       .then(m => m.NotFoundPage)

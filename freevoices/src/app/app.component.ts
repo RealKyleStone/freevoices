@@ -7,6 +7,7 @@ import { AuthService } from './core/auth/services/auth.service';
 import { CommonModule } from '@angular/common';
 import { addIcons } from 'ionicons';
 import {
+  readerOutline,
   walletOutline, gridOutline, cashOutline, businessOutline,
   barChartOutline, logOutOutline, notificationsOutline,
   personCircleOutline, addCircleOutline, personAddOutline,
@@ -52,7 +53,8 @@ export class AppComponent implements OnInit {
   ) {
     this.isLoggedIn$ = this.authService.currentUser$;
     addIcons({
-      walletOutline, gridOutline, cashOutline, businessOutline,
+      readerOutline,
+  walletOutline, gridOutline, cashOutline, businessOutline,
       barChartOutline, logOutOutline, notificationsOutline,
       personCircleOutline, addCircleOutline, personAddOutline,
       documentTextOutline, alertCircleOutline, peopleOutline,

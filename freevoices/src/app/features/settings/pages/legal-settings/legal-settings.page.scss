@@ -1,0 +1,27 @@
+@use '../settings-page';
+
+ion-item {
+  ion-label {
+    h3 {
+      font-weight: 500;
+    }
+    p {
+      font-size: 0.82rem;
+      color: var(--ion-color-medium);
+    }
+    p.doc-version {
+      font-size: 0.76rem;
+      margin-top: 3px;
+      opacity: 0.85;
+    }
+  }
+
+  ion-icon[slot='start'] {
+    color: var(--ion-color-medium);
+  }
+}
+
+a {
+  color: var(--ion-color-primary);
+  text-decoration: none;
+}

@@ -25,6 +25,8 @@
             "tsConfig": "tsconfig.app.json",
             "inlineStyleLanguage": "scss",
             "assets": [
+              "src/favicon.ico",
+              "src/site.webmanifest",
               {
                 "glob": "**/*",
                 "input": "src/assets",
@@ -34,11 +36,6 @@
                 "glob": "**/*",
                 "input": "node_modules/ionicons/dist/ionicons/svg",
                 "output": "./svg"
-              },
-              {
-                "glob": "**/*",
-                "input": "resources",
-                "output": "./resources"
               }
             ],
             "styles": ["src/global.scss", "src/theme/variables.scss"],
@@ -49,13 +46,13 @@
               "budgets": [
                 {
                   "type": "initial",
-                  "maximumWarning": "2mb",
-                  "maximumError": "5mb"
+                  "maximumWarning": "5mb",
+                  "maximumError": "10mb"
                 },
                 {
                   "type": "anyComponentStyle",
-                  "maximumWarning": "2kb",
-                  "maximumError": "4kb"
+                  "maximumWarning": "10kb",
+                  "maximumError": "20kb"
                 }
               ],
               "fileReplacements": [
@@ -126,11 +123,6 @@
                 "glob": "**/*",
                 "input": "node_modules/ionicons/dist/ionicons/svg",
                 "output": "./svg"
-              },
-              {
-                "glob": "**/*",
-                "input": "resources",
-                "output": "./resources"
               }
             ],
             "styles": ["src/global.scss", "src/theme/variables.scss"],

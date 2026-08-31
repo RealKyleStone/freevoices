@@ -97,3 +97,23 @@ Thumbs.db
 # Temporary files
 tmp/
 temp/
+
+# Secrets and credentials — never commit these
+.env
+.env.*
+!.env.example
+hash.txt
+keystore.properties
+*.jks
+*.keystore
+google-services.json
+
+# User-uploaded content (contains third-party PII / customer logos).
+# The directory is created at runtime by the multer diskStorage destination.
+uploads/
+
+# Database snapshots — contain personal information
+backups/
+
+# Generated deployment bundle
+deploy/

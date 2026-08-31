@@ -42,6 +42,12 @@
       </ion-content>
 
       <ion-footer>
+        <!-- Renders in the split-pane shell regardless of the routed child, so
+             it stays reachable even from a full-page interstitial. -->
+        <ion-item button routerLink="/settings/legal" routerLinkActive="selected" detail="false">
+          <ion-icon name="reader-outline" slot="start"></ion-icon>
+          <ion-label>Legal &amp; privacy</ion-label>
+        </ion-item>
         <!-- Theme toggle in sidebar -->
         <ion-item button (click)="toggleTheme()" detail="false">
           <ion-icon [name]="isDarkMode ? 'sunny-outline' : 'moon-outline'" slot="start"></ion-icon>

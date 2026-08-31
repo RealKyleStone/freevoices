@@ -32,6 +32,11 @@ export const SETTINGS_ROUTES: Routes = [
           .then(m => m.NotificationSettingsPage)
       },
       {
+        path: 'legal',
+        loadComponent: () => import('./pages/legal-settings/legal-settings.page')
+          .then(m => m.LegalSettingsPage)
+      },
+      {
         path: '',
         redirectTo: 'profile',
         pathMatch: 'full'

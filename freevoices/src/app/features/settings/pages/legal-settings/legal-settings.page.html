@@ -1,0 +1,79 @@
+<div class="settings-page">
+  <div class="settings-page-header">
+    <h2>Legal</h2>
+    <p>Our policies, and the version of each that is currently in force.</p>
+  </div>
+
+  <div *ngIf="isLoading" class="loading-container">
+    <ion-spinner name="crescent"></ion-spinner>
+  </div>
+
+  <ng-container *ngIf="!isLoading">
+    <ion-card>
+      <ion-card-header>
+        <ion-card-title>
+          <ion-icon name="reader-outline"></ion-icon>
+          Policies
+        </ion-card-title>
+      </ion-card-header>
+      <ion-card-content>
+        <ion-item
+          *ngFor="let doc of documents; let last = last"
+          [lines]="last ? 'none' : 'full'"
+          button
+          detail="true"
+          [routerLink]="['/legal', doc.slug]">
+          <ion-icon [name]="iconFor(doc.slug)" slot="start"></ion-icon>
+          <ion-label>
+            <h3>{{ doc.title }}</h3>
+            <p>{{ blurbFor(doc.slug) }}</p>
+            <p class="doc-version">
+              Version {{ doc.version }} &middot; effective {{ effectiveDate(doc.effective_date) }}
+            </p>
+          </ion-label>
+        </ion-item>
+
+        <!-- Only reachable if nothing is published, which happens while the
+             policy still has unresolved placeholders. -->
+        <ion-item lines="none" *ngIf="documents.length === 0">
+          <ion-label>
+            <h3>Not available</h3>
+            <p>
+              Our policies could not be loaded. Check your connection, or email
+              <a href="mailto:admin&#64;madeoc.co.za">admin&#64;madeoc.co.za</a>.
+            </p>
+          </ion-label>
+        </ion-item>
+      </ion-card-content>
+    </ion-card>
+
+    <ion-card>
+      <ion-card-header>
+        <ion-card-title>
+          <ion-icon name="information-circle-outline"></ion-icon>
+          About
+        </ion-card-title>
+      </ion-card-header>
+      <ion-card-content>
+        <ion-item lines="full">
+          <ion-label>
+            <h3>App version</h3>
+            <p>{{ appVersion }}</p>
+          </ion-label>
+        </ion-item>
+        <ion-item lines="full">
+          <ion-label>
+            <h3>Operated by</h3>
+            <p>Made On Chain</p>
+          </ion-label>
+        </ion-item>
+        <ion-item lines="none">
+          <ion-label>
+            <h3>Information Officer</h3>
+            <p>Kyle Stone &middot; <a href="mailto:admin&#64;madeoc.co.za">admin&#64;madeoc.co.za</a></p>
+          </ion-label>
+        </ion-item>
+      </ion-card-content>
+    </ion-card>
+  </ng-container>
+</div>

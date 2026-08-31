@@ -2,25 +2,45 @@ const nodemailer = require('nodemailer');
 
 class EmailService {
   constructor(config) {
+    // Port 465 is implicit TLS; 587 and 25 upgrade via STARTTLS. Derived from
+    // the port rather than read from SMTP_SECURE, because the two currently
+    // disagree in .env (port 587 with SMTP_SECURE=true) and the port is the one
+    // that is right — honouring the flag would hang the connection.
+    const port = Number(config.SMTP_PORT) || 587;
+    const secure = port === 465;
+    if (config.SMTP_SECURE !== undefined && Boolean(config.SMTP_SECURE) !== secure) {
+      console.warn(
+        `[email] SMTP_SECURE=${config.SMTP_SECURE} contradicts port ${port}; ` +
+        `using secure=${secure} (${secure ? 'implicit TLS' : 'STARTTLS'}). Fix SMTP_SECURE in .env.`
+      );
+    }
+
     this.transporter = nodemailer.createTransport({
       host: config.SMTP_HOST,
-      port: config.SMTP_PORT,
-      secure: false, // Force this to false to use STARTTLS
+      port,
+      secure,
       auth: {
         user: config.SMTP_USER,
         pass: config.SMTP_PASS
       },
+      // Certificates are verified by default now. The previous
+      // `rejectUnauthorized: false` made the STARTTLS upgrade decorative — an
+      // active attacker could present any certificate and read every invoice,
+      // password-reset link and set of banking details in transit.
+      // SMTP_TLS_INSECURE=true is an escape hatch for a broken host cert; it is
+      // incompatible with the security claims in the privacy policy.
       tls: {
-        rejectUnauthorized: false, // For testing - enable in production
+        rejectUnauthorized: process.env.SMTP_TLS_INSECURE !== 'true',
         minVersion: 'TLSv1.2',
-        ciphers: 'HIGH:MEDIUM:!aNULL:!eNULL:!EXPORT:!DES:!RC4:!MD5'
+        ciphers: 'HIGH:MEDIUM:!aNULL:!eNULL:!EXPORT:!DES:!RC4:!MD5',
+        servername: config.SMTP_HOST
       },
-      debug: true,
-      logger: true
+      // `debug`/`logger` dumped the entire SMTP conversation — including
+      // recipient addresses and message content — into combined.log on every
+      // send. Opt in explicitly when troubleshooting.
+      debug: process.env.SMTP_DEBUG === 'true',
+      logger: process.env.SMTP_DEBUG === 'true'
     });
-
-    // Test connection on initialization
-    this.testConnection();
   }
 
   async testConnection() {
@@ -41,15 +61,15 @@ class EmailService {
 
   async sendVerificationEmail(email, token) {
     try {
-      // Force connection verification before sending
-      await this.testConnection();
-      
+      // No testConnection() here: it opened, authenticated and tore down a
+      // second SMTP session before every single verification email, doubling
+      // the work and the failure surface. sendMail reports its own errors.
       const verificationUrl = `${process.env.APP_URL}/verify-email?token=${token}`;
       
       const mailOptions = {
         from: {
           name: process.env.SMTP_FROM_NAME || 'Freevoices',
-          address: process.env.SMTP_FROM_ADDRESS || this.transporter.options.auth.user
+          address: process.env.SMTP_FROM_ADDRESS || process.env.SMTP_FROM || this.transporter.options.auth.user
         },
         to: email,
         subject: 'Verify Your Email Address',
@@ -90,7 +110,7 @@ class EmailService {
     const mailOptions = {
       from: {
         name: invoice.company_name || process.env.SMTP_FROM_NAME || 'Freevoices',
-        address: process.env.SMTP_FROM_ADDRESS || this.transporter.options.auth.user
+        address: process.env.SMTP_FROM_ADDRESS || process.env.SMTP_FROM || this.transporter.options.auth.user
       },
       to: toEmail,
       subject,
@@ -151,7 +171,7 @@ class EmailService {
     const mailOptions = {
       from: {
         name: invoice.company_name || process.env.SMTP_FROM_NAME || 'Freevoices',
-        address: process.env.SMTP_FROM_ADDRESS || this.transporter.options.auth.user
+        address: process.env.SMTP_FROM_ADDRESS || process.env.SMTP_FROM || this.transporter.options.auth.user
       },
       to: toEmail,
       subject,
@@ -203,7 +223,7 @@ class EmailService {
     const mailOptions = {
       from: {
         name: process.env.SMTP_FROM_NAME || 'Freevoices',
-        address: process.env.SMTP_FROM_ADDRESS || this.transporter.options.auth.user
+        address: process.env.SMTP_FROM_ADDRESS || process.env.SMTP_FROM || this.transporter.options.auth.user
       },
       to: email,
       subject: 'Reset Your Password',

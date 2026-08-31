@@ -69,6 +69,14 @@
             <a routerLink="/register">Create account</a>
           </div>
 
+          <!-- Google Play requires the privacy policy to be reachable before an
+               account exists, so these must stay outside the auth guard. -->
+          <div class="auth-links auth-links-legal">
+            <a routerLink="/legal/privacy">Privacy Policy</a>
+            <span class="auth-link-divider">·</span>
+            <a routerLink="/legal/terms">Terms of Service</a>
+          </div>
+
         </form>
       </div>
     </div>

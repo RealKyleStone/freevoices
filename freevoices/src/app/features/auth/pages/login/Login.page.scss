@@ -233,3 +233,10 @@ ion-content {
 :host-context(.ion-palette-dark) .login-theme-btn {
   background: rgba(255,255,255,0.1);
 }
+// Legal links sit below the account links, deliberately quieter but present —
+// Play requires the privacy policy to be reachable before sign-in.
+.auth-links-legal {
+  margin-top: 0.6rem;
+  font-size: 0.72rem;
+  opacity: 0.75;
+}

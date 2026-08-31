@@ -9,7 +9,8 @@ import {
   documentTextOutline,
   cardOutline,
   notificationsOutline,
-  menuOutline
+  menuOutline,
+  readerOutline
 } from 'ionicons/icons';
 
 @Component({
@@ -25,10 +26,11 @@ export class SettingsMainPage {
     { label: 'Company', path: 'company', icon: 'business-outline' },
     { label: 'Invoice Defaults', path: 'invoice', icon: 'document-text-outline' },
     { label: 'Payment Details', path: 'payment', icon: 'card-outline' },
-    { label: 'Notifications', path: 'notifications', icon: 'notifications-outline' }
+    { label: 'Notifications', path: 'notifications', icon: 'notifications-outline' },
+    { label: 'Legal', path: 'legal', icon: 'reader-outline' }
   ];
 
   constructor() {
-    addIcons({ personOutline, businessOutline, documentTextOutline, cardOutline, notificationsOutline, menuOutline });
+    addIcons({ personOutline, businessOutline, documentTextOutline, cardOutline, notificationsOutline, menuOutline, readerOutline });
   }
 }
