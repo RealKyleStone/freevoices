@@ -2,6 +2,11 @@ import { Component, OnInit } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { ReactiveFormsModule, FormBuilder, FormGroup, Validators } from '@angular/forms';
 import { IonicModule, ToastController } from '@ionic/angular';
+// IonicModule alone doesn't register every Ionic web component in this app's
+// standalone bootstrap (see main.ts's provideIonicAngular()) — components only
+// upgrade once some page explicitly imports their standalone class. Nothing in
+// the app did that for ion-textarea, so it silently never became interactive.
+import { IonTextarea } from '@ionic/angular/standalone';
 import { addIcons } from 'ionicons';
 import { documentTextOutline } from 'ionicons/icons';
 import { forkJoin } from 'rxjs';
@@ -13,7 +18,7 @@ import { Currency } from '../../../../../models/database.models';
   templateUrl: './invoice-settings.page.html',
   styleUrls: ['./invoice-settings.page.scss'],
   standalone: true,
-  imports: [CommonModule, ReactiveFormsModule, IonicModule]
+  imports: [CommonModule, ReactiveFormsModule, IonicModule, IonTextarea]
 })
 export class InvoiceSettingsPage implements OnInit {
   form!: FormGroup;

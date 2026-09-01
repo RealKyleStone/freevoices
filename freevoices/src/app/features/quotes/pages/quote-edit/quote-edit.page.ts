@@ -3,6 +3,11 @@ import { CommonModule } from '@angular/common';
 import { ReactiveFormsModule, FormBuilder, FormGroup, FormArray, Validators } from '@angular/forms';
 import { ActivatedRoute, Router } from '@angular/router';
 import { IonicModule, ToastController } from '@ionic/angular';
+// IonicModule alone doesn't register every Ionic web component in this app's
+// standalone bootstrap (see main.ts's provideIonicAngular()) — components only
+// upgrade once some page explicitly imports their standalone class. Nothing in
+// the app did that for ion-textarea, so it silently never became interactive.
+import { IonTextarea } from '@ionic/angular/standalone';
 import { forkJoin } from 'rxjs';
 import { QuoteService } from '../../services/quote.service';
 import { CustomerService } from '../../../customers/services/customer.service';
@@ -14,7 +19,7 @@ import { Customer, Product } from '../../../../../models/database.models';
   templateUrl: './quote-edit.page.html',
   styleUrls: ['./quote-edit.page.scss'],
   standalone: true,
-  imports: [CommonModule, ReactiveFormsModule, IonicModule]
+  imports: [CommonModule, ReactiveFormsModule, IonicModule, IonTextarea]
 })
 export class QuoteEditPage implements OnInit {
   form: FormGroup;

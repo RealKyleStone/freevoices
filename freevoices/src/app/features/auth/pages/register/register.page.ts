@@ -79,9 +79,12 @@ export class RegisterPage implements OnInit {
     this.registerForm = this.fb.group({
       email: ['', [Validators.required, Validators.email]],
       password: ['', [
-        Validators.required, 
+        Validators.required,
         Validators.minLength(8),
-        Validators.pattern(/^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&])[A-Za-z\d@$!%*?&]{8,}$/)
+        // Requires a lower/upper/digit/symbol mix without whitelisting which
+        // symbols count — the old pattern only accepted @$!%*?& and silently
+        // rejected the whole password for anything else (_, -, ., #, ...).
+        Validators.pattern(/^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[^A-Za-z0-9]).{8,}$/)
       ]],
       confirmPassword: ['', Validators.required],
       company_name: ['', [Validators.required, Validators.minLength(2)]],
@@ -155,8 +158,8 @@ export class RegisterPage implements OnInit {
     
     if (control.errors['required']) return 'Password is required';
     if (control.errors['minlength']) return 'Password must be at least 8 characters';
-    if (control.errors['pattern']) 
-      return 'Password must contain uppercase, lowercase, number and special character';
+    if (control.errors['pattern'])
+      return 'Password must contain an uppercase letter, a lowercase letter, a number, and a symbol (e.g. !, #, -, _)';
     return '';
   }
 

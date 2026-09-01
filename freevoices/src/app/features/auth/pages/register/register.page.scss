@@ -78,6 +78,7 @@ ion-content {
   -webkit-text-fill-color: #ffffff;
 }
 .auth-field-error { margin: 4px 0 0; font-size: 0.75rem; color: var(--ion-color-danger); }
+.auth-field-hint { margin: 4px 0 0; font-size: 0.75rem; color: var(--ion-color-medium); }
 .auth-error-banner { background: var(--fv-danger-bg); color: var(--fv-danger-text); border-radius: 10px; padding: 10px 14px; font-size: 0.82rem; margin-bottom: 1rem; font-weight: 500; }
 .auth-success-banner { background: var(--fv-success-bg); color: var(--fv-success-text); border-radius: 10px; padding: 10px 14px; font-size: 0.82rem; margin-bottom: 1rem; font-weight: 500; }
 .auth-submit-btn {
