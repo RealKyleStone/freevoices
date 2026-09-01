@@ -96,3 +96,37 @@
     --fv-medium-text: #9ca3af;
   }
 }
+/*
+ * Edge-to-edge safe areas (Android 15 / API 35).
+ *
+ * API 35 removes the ability to opt out of edge-to-edge display: the WebView is
+ * laid out behind the status and navigation bars. Ionic ships safe-area padding
+ * for iOS (`.header-ios ion-toolbar:first-of-type`) but not for Material, where
+ * it was historically unnecessary — so without these rules the first toolbar
+ * sits under the status bar and the side-menu footer, which holds Sign out and
+ * Legal & privacy, sits under the navigation bar.
+ *
+ * Scoped to `.md` deliberately, so it cannot double up with Ionic's own iOS
+ * rules. Ionic populates --ion-safe-area-* from env(safe-area-inset-*), and the
+ * `, 0` fallback keeps this inert on desktop browsers.
+ */
+.md {
+  ion-header ion-toolbar:first-of-type {
+    padding-top: var(--ion-safe-area-top, 0);
+  }
+
+  ion-footer ion-toolbar:last-of-type {
+    padding-bottom: var(--ion-safe-area-bottom, 0);
+  }
+
+  /* The side menu's footer is ion-items in an ion-footer, not a toolbar. */
+  ion-menu ion-footer {
+    padding-bottom: var(--ion-safe-area-bottom, 0);
+  }
+
+  /* Left/right insets matter on landscape devices with a display cutout. */
+  ion-content {
+    --padding-start: var(--ion-safe-area-left, 0);
+    --padding-end: var(--ion-safe-area-right, 0);
+  }
+}

@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Replaces android:usesCleartextTraffic="true" on the application element, which
+  let the app speak plain HTTP while carrying bearer tokens and banking details,
+  and directly contradicted section 9 of the privacy policy.
+
+  The debug-overrides block applies only to debuggable builds, so the emulator
+  exception cannot reach a release APK.
+-->
+<network-security-config>
+
+    <base-config cleartextTrafficPermitted="false">
+        <trust-anchors>
+            <certificates src="system" />
+        </trust-anchors>
+    </base-config>
+
+    <debug-overrides>
+        <!-- Lets a debug build talk to a dev server over plain HTTP, and trust a
+             user-installed CA for traffic inspection. Never applied to release. -->
+        <base-config cleartextTrafficPermitted="true">
+            <trust-anchors>
+                <certificates src="system" />
+                <certificates src="user" />
+            </trust-anchors>
+        </base-config>
+    </debug-overrides>
+
+</network-security-config>

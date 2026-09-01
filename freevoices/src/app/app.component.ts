@@ -3,6 +3,8 @@ import { Router, RouterModule } from '@angular/router';
 import { IonApp, IonSplitPane, IonMenu, IonContent, IonList,
          IonMenuToggle, IonItem, IonIcon, IonLabel, IonFooter,
          IonRouterOutlet, MenuController } from '@ionic/angular/standalone';
+import { Capacitor } from '@capacitor/core';
+import { StatusBar, Style } from '@capacitor/status-bar';
 import { AuthService } from './core/auth/services/auth.service';
 import { CommonModule } from '@angular/common';
 import { addIcons } from 'ionicons';
@@ -100,6 +102,28 @@ export class AppComponent implements OnInit {
     document.documentElement.classList.toggle('ion-palette-dark', toggle);
     const ionApp = document.querySelector('ion-app');
     if (ionApp) ionApp.classList.toggle('ion-palette-dark', toggle);
+    this.applyStatusBarTheme();
+  }
+
+  /**
+   * Keep the status-bar icons legible against whatever is behind them.
+   *
+   * Android 15 (API 35) enforces edge-to-edge, so the status bar now sits over
+   * app content rather than its own opaque strip. Without this, dark icons end
+   * up on a dark background in dark mode and become invisible.
+   *
+   * Note the enum reads backwards from what you would expect: Style.Dark means
+   * "light text for dark backgrounds", so dark mode maps to Style.Dark.
+   */
+  private async applyStatusBarTheme(): Promise<void> {
+    if (!Capacitor.isNativePlatform()) return;
+    try {
+      await StatusBar.setStyle({ style: this.isDarkMode ? Style.Dark : Style.Light });
+    } catch (error) {
+      // Not fatal: worst case the icons are hard to read. Never let a
+      // cosmetic native call break theme switching.
+      console.warn('Could not set status bar style', error);
+    }
   }
 
   private checkInvoicesOnStartup(): void {

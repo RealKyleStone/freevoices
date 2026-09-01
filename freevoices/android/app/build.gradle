@@ -1,14 +1,23 @@
 apply plugin: 'com.android.application'
 
+// Release signing is configured from keystore.properties, which is gitignored
+// and never committed. The file is optional so that debug builds and CI still
+// work on a machine without the keystore.
+def keystorePropertiesFile = rootProject.file("keystore.properties")
+def keystoreProperties = new Properties()
+if (keystorePropertiesFile.exists()) {
+    keystoreProperties.load(new FileInputStream(keystorePropertiesFile))
+}
+
 android {
-    namespace "io.ionic.starter"
+    namespace "za.co.freevoices.app"
     compileSdk rootProject.ext.compileSdkVersion
     defaultConfig {
-        applicationId "io.ionic.starter"
+        applicationId "za.co.freevoices.app"
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
         versionCode 1
-        versionName "1.0"
+        versionName "1.0.0"
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
         aaptOptions {
              // Files and dirs to omit from the packaged assets dir, modified to accommodate modern web apps.
@@ -16,10 +25,41 @@ android {
             ignoreAssetsPattern '!.svn:!.git:!.ds_store:!*.scc:.*:!CVS:!thumbs.db:!picasa.ini:!*~'
         }
     }
+    signingConfigs {
+        release {
+            if (keystorePropertiesFile.exists()) {
+                storeFile file(keystoreProperties['storeFile'])
+                storePassword keystoreProperties['storePassword']
+                keyAlias keystoreProperties['keyAlias']
+                keyPassword keystoreProperties['keyPassword']
+            }
+        }
+    }
     buildTypes {
         release {
+            // Only attach the signing config when the keystore actually exists,
+            // so `assembleDebug` on a fresh clone does not fail.
+            if (keystorePropertiesFile.exists()) {
+                signingConfig signingConfigs.release
+            }
+            // Left OFF for the first release, deliberately.
+            //
+            // Capacitor resolves plugins reflectively (PluginManager does
+            // Class.forName on entries from capacitor.plugins.json), and while
+            // capacitor-android ships consumerProguardFiles that keep
+            // @CapacitorPlugin classes and Plugin subclasses — so R8 would
+            // probably be fine — the failure mode if it is not is a crash that
+            // appears only in release builds and never in debug. That is a bad
+            // thing to be debugging during a first store submission.
+            //
+            // Get one known-good signed build published, then flip these to
+            // true, and re-test login, invoice PDF download, camera logo pick
+            // and local notifications on a physical device before shipping it.
+            // Most of this app's download size is web assets, which R8 does not
+            // touch, so the saving is modest either way.
             minifyEnabled false
-            proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
+            shrinkResources false
+            proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
         }
     }
 }

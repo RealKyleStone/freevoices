@@ -19,3 +19,19 @@
 # If you keep the line number information, uncomment this to
 # hide the original source file name.
 #-renamesourcefileattribute SourceFile
+
+# ─── FreeVoices ───────────────────────────────────────────────────────────────
+#
+# This file is intentionally almost empty. `minifyEnabled` is false for the first
+# release (see app/build.gradle for why), so nothing here is applied yet.
+#
+# When you do enable minification, note that most of what Capacitor needs is
+# already handled: node_modules/@capacitor/android/capacitor/build.gradle
+# declares `consumerProguardFiles 'proguard-rules.pro'`, and those rules keep
+# classes annotated @CapacitorPlugin, classes extending com.getcapacitor.Plugin,
+# @NativePlugin classes, and Cordova plugin classes. That covers the
+# Class.forName lookup in com.getcapacitor.PluginManager.
+#
+# Keep the launcher activity by name, since it is referenced from the manifest
+# as a string rather than a type.
+-keep class za.co.freevoices.app.MainActivity { *; }

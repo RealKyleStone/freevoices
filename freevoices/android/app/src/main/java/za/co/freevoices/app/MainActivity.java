@@ -1,4 +1,4 @@
-package io.ionic.starter;
+package za.co.freevoices.app;
 
 import com.getcapacitor.BridgeActivity;
 
