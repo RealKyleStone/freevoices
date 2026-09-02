@@ -1,11 +1,13 @@
 ext {
     minSdkVersion = 22
-    // API 35 is required for new Play submissions. Note that compiling against
-    // 35 needs AGP 8.6+ (see android/build.gradle) and that API 35 enforces
-    // edge-to-edge display, which is handled by the safe-area padding in
-    // src/theme/variables.scss.
-    compileSdkVersion = 35
-    targetSdkVersion = 35
+    // API 36 (Android 16) is required for Play submissions from Aug 31 2026
+    // (see android/build.gradle for the matching AGP/Gradle bump). Edge-to-edge
+    // was already enforced at API 35 and is handled by the safe-area padding in
+    // src/theme/variables.scss; API 36 adds mandatory predictive-back handling,
+    // which Capacitor's BridgeActivity already implements (MainActivity.java
+    // doesn't override onBackPressed), so no app code changes were needed.
+    compileSdkVersion = 36
+    targetSdkVersion = 36
     androidxActivityVersion = '1.8.0'
     androidxAppCompatVersion = '1.6.1'
     androidxCoordinatorLayoutVersion = '1.2.0'

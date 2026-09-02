@@ -132,7 +132,10 @@ export class RegisterPage implements OnInit {
 
   phoneNumberValidator() {
     return (control: AbstractControl): { [key: string]: any } | null => {
-      const valid = /^\+?[1-9]\d{1,14}$/.test(control.value);
+      // Users naturally type "+27 82 123 4567" — strip the spaces/dashes they'd
+      // add for readability rather than silently rejecting the whole number.
+      const stripped = typeof control.value === 'string' ? control.value.replace(/[\s-]/g, '') : control.value;
+      const valid = /^\+?[1-9]\d{1,14}$/.test(stripped);
       return valid ? null : { 'invalidPhone': { value: control.value } };
     };
   }
@@ -232,6 +235,7 @@ export class RegisterPage implements OnInit {
 
       const formData = { ...this.registerForm.value };
       delete formData.confirmPassword;
+      if (typeof formData.phone === 'string') formData.phone = formData.phone.replace(/[\s-]/g, '');
       formData.captchaToken = captchaToken;
 
       this.dbService.create('auth/register', formData).pipe(

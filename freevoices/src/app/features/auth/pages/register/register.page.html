@@ -80,8 +80,9 @@
           </div>
           <div class="auth-field-group">
             <label class="auth-field-label">Phone</label>
-            <ion-input type="tel" formControlName="phone" placeholder="e.g. 0821234567" class="auth-field-input" fill="solid"></ion-input>
-            <p class="auth-field-error" *ngIf="isFieldInvalid('phone')">Please enter a valid phone number</p>
+            <ion-input type="tel" formControlName="phone" placeholder="e.g. +27821234567" class="auth-field-input" fill="solid"></ion-input>
+            <p class="auth-field-hint" *ngIf="!isFieldInvalid('phone')">Include the country code, e.g. +27 for South Africa — no leading 0</p>
+            <p class="auth-field-error" *ngIf="isFieldInvalid('phone')">Enter your number in international format, e.g. +27821234567</p>
           </div>
           <div class="auth-field-group">
             <label class="auth-field-label">Address</label>

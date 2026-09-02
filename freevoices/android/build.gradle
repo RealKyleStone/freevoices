@@ -1,16 +1,24 @@
 // Top-level build file where you can add configuration options common to all sub-projects/modules.
 
 buildscript {
-    
+
     repositories {
         google()
         mavenCentral()
     }
     dependencies {
-        // 8.6.x is the minimum that can compile against API 35, and it works
-        // with the Gradle 8.7 wrapper already in place (8.7.x would require a
-        // wrapper bump to Gradle 8.9).
-        classpath 'com.android.tools.build:gradle:8.6.1'
+        // 8.13.0 is the last 8.x release that can compile against API 36 (up to
+        // 36.1) without jumping to the AGP 9.x major line. AGP 9.x is a hard
+        // no-go on Capacitor 6: node_modules/@capacitor/android's own
+        // build.gradle still calls getDefaultProguardFile('proguard-android.txt'),
+        // which AGP 9 rejects outright (was merely deprecated under AGP 8). That
+        // line is unchanged as of the latest 6.x patch (6.2.2) — it's not
+        // something we can fix in our own code, only by patching node_modules or
+        // waiting on a Capacitor major upgrade. Even Capacitor 8 itself still
+        // ships pinned to AGP 8.13.0, not 9.x, so there's no version of Capacitor
+        // today where 9.x is the expected pairing. Requires the Gradle 8.14.3
+        // wrapper bump below (8.13.0's own minimum is Gradle 8.13) and JDK 17.
+        classpath 'com.android.tools.build:gradle:8.13.0'
         classpath 'com.google.gms:google-services:4.4.0'
 
         // NOTE: Do not place your application dependencies here; they belong
