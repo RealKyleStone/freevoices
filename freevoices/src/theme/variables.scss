@@ -124,9 +124,13 @@
     padding-bottom: var(--ion-safe-area-bottom, 0);
   }
 
-  /* Left/right insets matter on landscape devices with a display cutout. */
+  /* Left/right insets matter on landscape devices with a display cutout.
+     Bottom matters on every device: with no ion-footer, content (e.g. a
+     submit button or the last line item's totals) would otherwise render
+     behind the edge-to-edge gesture/nav bar. */
   ion-content {
     --padding-start: var(--ion-safe-area-left, 0);
     --padding-end: var(--ion-safe-area-right, 0);
+    --padding-bottom: var(--ion-safe-area-bottom, 0);
   }
 }

@@ -25,4 +25,11 @@ export const environment = {
   // reCAPTCHA admin console (bare hostname, no scheme), confirm it is a v2
   // Invisible key, set this to false, and rebuild. Verify the CSP still holds.
   bypassCaptcha: true,
+  // OAuth 2.0 *Web application* client ID from Google Cloud Console. Public by
+  // design — it identifies the app, it does not authorise anything. The server
+  // checks incoming ID tokens against GOOGLE_OAUTH_CLIENT_ID, so the two must
+  // match. The Android build sends this same value as the plugin's
+  // serverClientId, which is why there is no separate Android entry here.
+  // Empty disables the "Continue with Google" buttons entirely.
+  googleClientId: '280963257389-mngl773qmk23mmq8irq0qsj3ph41th1q.apps.googleusercontent.com',
 };

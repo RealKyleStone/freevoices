@@ -5,4 +5,17 @@
     <string name="title_activity_main">FreeVoices</string>
     <string name="package_name">za.co.freevoices.app</string>
     <string name="custom_url_scheme">za.co.freevoices.app</string>
+
+    <!--
+      Google Sign-In. This must be the OAuth 2.0 *Web application* client ID,
+      not the Android one: the Android client authorises this app by its signing
+      certificate, but the ID token has to be minted for the audience the server
+      checks (GOOGLE_OAUTH_CLIENT_ID in .env).
+
+      The resource has to exist even when the value is set in capacitor.config,
+      because the plugin's Java references R.string.server_client_id directly
+      and would not compile without it. Empty just means sign-in fails at
+      runtime rather than at build time.
+    -->
+    <string name="server_client_id"></string>
 </resources>

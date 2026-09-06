@@ -8,6 +8,7 @@ const { buildInvoicePdf, buildReceiptPdf } = require('./src/services/pdf.service
 // tooling can share them without booting an HTTP listener.
 const { logger, executeQuery, getConnection, withTransaction, closePool } = require('./src/services/db.service');
 const { runMigrations, tableExists } = require('./src/services/migrations.service');
+const { anonymiseExpiredAccounts } = require('./src/services/retention.service');
 const express = require('express');
 const path = require('path');
 const fs = require('fs');
@@ -16,6 +17,7 @@ const helmet = require('helmet');
 const rateLimit = require('express-rate-limit');
 const bodyParser = require('body-parser');
 const argon2 = require('argon2');
+const { OAuth2Client } = require('google-auth-library');
 const { randomUUID } = require('crypto');
 const multer = require('multer');
 const { body, validationResult } = require('express-validator');
@@ -65,16 +67,20 @@ app.set('trust proxy', parseInt(process.env.TRUST_PROXY_HOPS, 10) || 1);
 // into reporting without a redeploy — but do not leave it there.
 const cspDirectives = {
   defaultSrc: ["'self'"],
-  scriptSrc: ["'self'", 'https://www.google.com', 'https://www.gstatic.com'],
+  // accounts.google.com serves the Google Identity Services client used by the
+  // "Continue with Google" button on the web build.
+  scriptSrc: ["'self'", 'https://www.google.com', 'https://www.gstatic.com', 'https://accounts.google.com'],
   // No font CDN entries: Poppins is self-hosted from src/assets/fonts, so the
-  // only external origin the app touches is Google reCAPTCHA on the web build.
-  // That is exactly what the privacy policy discloses — keep it that way.
-  styleSrc: ["'self'", "'unsafe-inline'"],
+  // only external origin the app touches is Google — reCAPTCHA (currently off)
+  // and Google Sign-In. That is what the privacy policy discloses; keep the two
+  // in step whenever this list changes.
+  styleSrc: ["'self'", "'unsafe-inline'", 'https://accounts.google.com'],
   imgSrc: ["'self'", 'data:', 'blob:'],
   fontSrc: ["'self'", 'data:'],
   // blob: covers the PDF/receipt downloads, which build an object URL.
-  connectSrc: ["'self'", 'blob:', 'https://www.google.com'],
-  frameSrc: ['https://www.google.com'], // reCAPTCHA challenge iframe
+  connectSrc: ["'self'", 'blob:', 'https://www.google.com', 'https://accounts.google.com'],
+  // reCAPTCHA challenge iframe, and the Google Sign-In prompt/popup.
+  frameSrc: ['https://www.google.com', 'https://accounts.google.com'],
   objectSrc: ["'none'"],
   baseUri: ["'self'"],
   formAction: ["'self'"],
@@ -333,6 +339,154 @@ async function recordSubjectRequest(req, type, userId, status = 'COMPLETED', not
   }
 }
 
+// ─── Google Sign-In ───────────────────────────────────────────────────────────
+
+/**
+ * Accepted `aud` values for an incoming Google ID token.
+ *
+ * The web build receives a token minted for the Web client ID. The Android
+ * build asks for one via the plugin's `serverClientId`, which is *also* the Web
+ * client ID — that is Google's documented pattern, not a misconfiguration. The
+ * separate Android OAuth client still has to exist in the same Cloud project
+ * (it is what ties the app's signing certificate to the project), but its ID
+ * never appears in an `aud` claim, so it is not listed here.
+ *
+ * Unset means the feature is off: every Google endpoint answers 503 rather than
+ * falling back to something weaker.
+ */
+const GOOGLE_AUDIENCES = (process.env.GOOGLE_OAUTH_CLIENT_ID || '')
+  .split(',').map(s => s.trim()).filter(Boolean);
+const googleClient = GOOGLE_AUDIENCES.length ? new OAuth2Client() : null;
+
+if (!googleClient) {
+  logger.warn('Google sign-in disabled: GOOGLE_OAUTH_CLIENT_ID is not set');
+}
+
+/**
+ * Verify a Google ID token, returning only claims we are willing to trust, or
+ * null if the token is not usable. Never throws.
+ *
+ * verifyIdToken checks the signature, `iss`, `aud` and expiry. It does NOT care
+ * whether the address is verified, and that check matters more than it looks:
+ * an unverified Google email is an address the account holder has not proven
+ * they own, and we use the address to link into an existing password account.
+ * Without this, anyone able to create a Google account naming someone else's
+ * address could take over the matching FreeVoices account.
+ */
+async function verifyGoogleIdToken(idToken) {
+  if (!googleClient) return null;
+  try {
+    const ticket = await googleClient.verifyIdToken({ idToken, audience: GOOGLE_AUDIENCES });
+    const payload = ticket.getPayload();
+    if (!payload || !payload.email || payload.email_verified !== true) return null;
+    return {
+      sub: payload.sub,
+      email: String(payload.email).trim().toLowerCase(),
+      name: payload.name || null,
+    };
+  } catch (error) {
+    // Expired and tampered tokens both land here and are indistinguishable to
+    // the caller on purpose.
+    logger.warn('Google ID token rejected', { message: error.message });
+    return null;
+  }
+}
+
+/**
+ * The tail end of a successful sign-in, shared by the password and Google
+ * paths, so session issuance exists in one place rather than two.
+ *
+ * The status guards are the real check for the Google path. The password path
+ * has already made the same checks by the time it gets here — it has to, since
+ * an ANONYMISED account's password_hash is NULL and argon2.verify would throw
+ * before we ever reached this function — so for that caller they are simply
+ * defence in depth.
+ *
+ * Returns false when it has already sent a response.
+ */
+async function completeSignIn(req, res, user, eventType) {
+  // Indistinguishable from a non-existent account, deliberately.
+  if (user.status === 'ANONYMISED') {
+    res.status(401).json({ message: 'Invalid credentials' });
+    return false;
+  }
+
+  // A closed account inside its grace period can still be recovered, but only
+  // by the reactivation endpoint, which verifies the password itself.
+  if (user.status === 'CLOSED') {
+    await recordSecurityEvent(req, 'LOGIN_BLOCKED_CLOSED', user.id);
+    res.status(403).json({
+      message: 'This account is closed. You can reactivate it within the grace period.',
+      code: 'ACCOUNT_CLOSED',
+      closed_at: user.closed_at,
+      anonymise_due_at: user.anonymise_after,
+    });
+    return false;
+  }
+
+  if (user.failed_login_attempts > 0) {
+    await executeQuery('UPDATE users SET failed_login_attempts = 0, last_failed_attempt = NULL WHERE id = ?', [user.id]);
+  }
+
+  const token = randomUUID();
+  await executeQuery('INSERT INTO sessions (userId, token, expires) VALUES (?, ?, ?)', [user.id, token, newSessionExpiry()]);
+  await executeQuery('UPDATE users SET last_login_at = NOW() WHERE id = ?', [user.id]);
+  await recordSecurityEvent(req, eventType, user.id);
+  logger.info('User logged in successfully', { userId: user.id });
+  res.json({ token, user: { id: user.id, email: user.email, company_name: user.company_name } });
+  return true;
+}
+
+/**
+ * Prove the person driving an authenticated session is still the account
+ * holder, before something destructive happens.
+ *
+ * A password account proves it with the password. A Google-only account has no
+ * password to give, so a fresh ID token for the *same* Google account is the
+ * equivalent proof — checked against the stored `sub`, not the email, so a
+ * token for some other Google account is no good. Without that branch a Google
+ * user could never close their account, and erasure is a POPIA right rather
+ * than a feature we get to withhold from some sign-in methods.
+ *
+ * Returns false when it has already sent a response.
+ */
+async function reauthenticateForSensitiveAction(req, res, user, failureEvent) {
+  if (user.password_hash) {
+    if (!req.body.password) {
+      res.status(422).json({ message: 'Your password is required to confirm this.' });
+      return false;
+    }
+    if (!(await argon2.verify(user.password_hash, req.body.password))) {
+      await recordSecurityEvent(req, failureEvent, user.id);
+      res.status(401).json({ message: 'That password is not correct' });
+      return false;
+    }
+    return true;
+  }
+
+  if (user.google_id) {
+    if (!req.body.idToken) {
+      res.status(422).json({
+        message: 'Confirm with Google to continue.',
+        code: 'GOOGLE_REAUTH_REQUIRED',
+      });
+      return false;
+    }
+    const claims = await verifyGoogleIdToken(req.body.idToken);
+    if (!claims || claims.sub !== user.google_id) {
+      await recordSecurityEvent(req, failureEvent, user.id);
+      res.status(401).json({ message: 'That Google sign-in does not match this account.' });
+      return false;
+    }
+    return true;
+  }
+
+  // No credential of either kind: an already-anonymised row, or data we do not
+  // understand. Refuse rather than treat "nothing to check" as "check passed".
+  res.status(403).json({ message: 'This account cannot be confirmed.' });
+  return false;
+}
+
 // Login endpoint
 app.post('/api/auth/login', loginLimiter, validate([
   body('email').isEmail().withMessage('A valid email address is required'),
@@ -380,6 +534,17 @@ app.post('/api/auth/login', loginLimiter, validate([
       }
     }
 
+    // A Google-only account has no hash to verify against. argon2.verify(null)
+    // throws, which without this guard surfaces as a 500 on an ordinary typo of
+    // a path a user can reach just by using the wrong button.
+    if (!user.password_hash) {
+      await recordSecurityEvent(req, 'LOGIN_FAILED_NO_PASSWORD', user.id);
+      return res.status(401).json({
+        message: 'This account signs in with Google. Use the “Continue with Google” button.',
+        code: 'USE_GOOGLE_SIGNIN',
+      });
+    }
+
     const validPassword = await argon2.verify(user.password_hash, password);
     if (!validPassword) {
       // Restart the count if the previous failure fell outside the window,
@@ -398,16 +563,7 @@ app.post('/api/auth/login', loginLimiter, validate([
       return res.status(401).json({ message: 'Invalid credentials' });
     }
 
-    if (user.failed_login_attempts > 0) {
-      await executeQuery('UPDATE users SET failed_login_attempts = 0, last_failed_attempt = NULL WHERE id = ?', [user.id]);
-    }
-
-    const token = randomUUID();
-    await executeQuery('INSERT INTO sessions (userId, token, expires) VALUES (?, ?, ?)', [user.id, token, newSessionExpiry()]);
-    await executeQuery('UPDATE users SET last_login_at = NOW() WHERE id = ?', [user.id]);
-    await recordSecurityEvent(req, 'LOGIN_SUCCESS', user.id);
-    logger.info('User logged in successfully', { userId: user.id });
-    res.json({ token, user: { id: user.id, email: user.email, company_name: user.company_name } });
+    await completeSignIn(req, res, user, 'LOGIN_SUCCESS');
   } catch (error) { logger.error('Login error:', error); res.status(500).json({ message: 'Login failed. Please try again.' }); }
 });
 
@@ -455,6 +611,122 @@ app.post('/api/auth/register', registerLimiter, validate([
     logger.info('User registered successfully', { userId: result.insertId });
     res.status(201).json({ token, user: user[0] });
   } catch (error) { logger.error('Registration error:', error); res.status(500).json({ message: 'Registration failed. Please try again.' }); }
+});
+
+/**
+ * Sign in with a Google ID token.
+ *
+ * Three outcomes:
+ *   - the Google account is already known           -> signed in
+ *   - its verified email matches a password account -> linked, then signed in
+ *   - neither                                       -> { needsRegistration }, and
+ *     the client collects the business details we need and posts them to
+ *     /api/auth/google/register
+ *
+ * Rate-limited with loginLimiter: this is an unauthenticated endpoint that hits
+ * both Google and the database.
+ */
+app.post('/api/auth/google', loginLimiter, validate([
+  body('idToken').notEmpty().withMessage('A Google credential is required'),
+]), async (req, res) => {
+  try {
+    if (!googleClient) return res.status(503).json({ message: 'Google sign-in is not available.' });
+
+    const claims = await verifyGoogleIdToken(req.body.idToken);
+    if (!claims) return res.status(401).json({ message: 'We could not verify that Google sign-in. Please try again.' });
+
+    let users = await executeQuery('SELECT * FROM users WHERE google_id = ?', [claims.sub]);
+
+    // Same person, already registered with a password. Link the Google account
+    // onto the existing row instead of creating a duplicate they would then be
+    // unable to reach their invoices from. Safe only because verifyGoogleIdToken
+    // refuses tokens whose email_verified is not true.
+    if (users.length === 0) {
+      const byEmail = await executeQuery('SELECT * FROM users WHERE email = ?', [claims.email]);
+      if (byEmail.length > 0) {
+        await executeQuery('UPDATE users SET google_id = ?, email_verified = 1 WHERE id = ?', [claims.sub, byEmail[0].id]);
+        await recordSecurityEvent(req, 'GOOGLE_ACCOUNT_LINKED', byEmail[0].id);
+        logger.info('Linked Google account to existing user', { userId: byEmail[0].id });
+        users = byEmail;
+      }
+    }
+
+    if (users.length === 0) {
+      // Not an error: the client shows the "complete your details" step. No
+      // account exists yet and nothing has been written.
+      return res.json({ needsRegistration: true, email: claims.email, name: claims.name });
+    }
+
+    await completeSignIn(req, res, users[0], 'LOGIN_SUCCESS_GOOGLE');
+  } catch (error) {
+    logger.error('Google sign-in error:', error);
+    res.status(500).json({ message: 'Sign-in failed. Please try again.' });
+  }
+});
+
+/**
+ * Finish creating an account that started from Google sign-in.
+ *
+ * Takes the ID token again rather than trusting anything the /api/auth/google
+ * call returned: that response travelled to the client and back, so treating it
+ * as authoritative would let a caller register any address they cared to name.
+ * Google ID tokens last about an hour, which is far longer than it takes to
+ * fill in three fields.
+ */
+app.post('/api/auth/google/register', registerLimiter, validate([
+  body('idToken').notEmpty().withMessage('A Google credential is required'),
+  body('company_name').trim().notEmpty().withMessage('Company name is required'),
+  body('contact_person').trim().notEmpty().withMessage('Contact person is required'),
+  body('phone').trim().notEmpty().withMessage('Phone number is required'),
+  body('address').trim().notEmpty().withMessage('Address is required'),
+]), async (req, res) => {
+  try {
+    if (!googleClient) return res.status(503).json({ message: 'Google sign-in is not available.' });
+
+    const claims = await verifyGoogleIdToken(req.body.idToken);
+    if (!claims) return res.status(401).json({ message: 'We could not verify that Google sign-in. Please try again.' });
+
+    const { company_name, company_registration, vat_number, contact_person, phone, address,
+            bank_name, bank_account_number, bank_branch_code, bank_account_type } = req.body;
+
+    // Someone else may have finished registering this address between the two
+    // calls — or the user may have double-submitted. Either way, sign them into
+    // the row that exists rather than failing on the UNIQUE index.
+    const existing = await executeQuery(
+      'SELECT * FROM users WHERE google_id = ? OR email = ?', [claims.sub, claims.email]
+    );
+    if (existing.length > 0) {
+      if (!existing[0].google_id) {
+        await executeQuery('UPDATE users SET google_id = ? WHERE id = ?', [claims.sub, existing[0].id]);
+      }
+      return void await completeSignIn(req, res, existing[0], 'LOGIN_SUCCESS_GOOGLE');
+    }
+
+    // password_hash stays NULL: there is no password to hash, and a sentinel
+    // would be a value argon2.verify might one day be persuaded to accept.
+    // email_verified is 1 because Google has already proven the address, which
+    // is also why no verification email goes out here.
+    const result = await executeQuery(
+      `INSERT INTO users (email, password_hash, google_id, email_verified, company_name, company_registration,
+                          vat_number, contact_person, phone, address, bank_name, bank_account_number,
+                          bank_branch_code, bank_account_type)
+       VALUES (?, NULL, ?, 1, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [claims.email, claims.sub, company_name, company_registration || null, vat_number || null,
+       contact_person, phone, address, bank_name || null, bank_account_number || null,
+       bank_branch_code || null, bank_account_type || null]
+    );
+
+    const token = randomUUID();
+    await executeQuery('INSERT INTO sessions (userId, token, expires) VALUES (?, ?, ?)', [result.insertId, token, newSessionExpiry()]);
+    await executeQuery('UPDATE users SET last_login_at = NOW() WHERE id = ?', [result.insertId]);
+    await recordSecurityEvent(req, 'REGISTER_SUCCESS_GOOGLE', result.insertId);
+    const user = await executeQuery('SELECT id, email, company_name FROM users WHERE id = ?', [result.insertId]);
+    logger.info('User registered via Google', { userId: result.insertId });
+    res.status(201).json({ token, user: user[0] });
+  } catch (error) {
+    logger.error('Google registration error:', error);
+    res.status(500).json({ message: 'Registration failed. Please try again.' });
+  }
 });
 
 app.get('/api/verify-email', passwordLimiter, async (req, res) => {
@@ -1181,6 +1453,15 @@ app.put('/api/settings/profile', authenticateToken, validate([
       if (!current_password) return res.status(400).json({ message: 'Current password is required to set a new password' });
       const userRows = await executeQuery('SELECT password_hash FROM users WHERE id = ?', [userId]);
       if (userRows.length === 0) return res.status(404).json({ message: 'User not found' });
+      // No stored hash means a Google-only account. There is no current
+      // password to check, and argon2.verify(null) would throw — so say what is
+      // actually going on instead of returning a 500 on a legitimate request.
+      if (!userRows[0].password_hash) {
+        return res.status(400).json({
+          message: 'This account signs in with Google, so it has no password to change.',
+          code: 'USE_GOOGLE_SIGNIN',
+        });
+      }
       const valid = await argon2.verify(userRows[0].password_hash, current_password);
       if (!valid) return res.status(400).json({ message: 'Current password is incorrect' });
       const newHash = await argon2.hash(new_password);
@@ -1401,6 +1682,18 @@ async function processOverdueInvoices() {
 
 cron.schedule('10 0 * * *', processOverdueInvoices);
 
+// ─── Account anonymisation cron — runs daily at 00:20 ─────────────────────────
+// The erasure that /api/account/close promises and, until now, nothing
+// delivered: closure set anonymise_after and opened a DELETION request that no
+// code ever completed. The job itself lives in retention.service.js — it is
+// database work with no HTTP in it, and out there it can be run and tested
+// without booting a server. See that file for what it deliberately leaves
+// alone and why.
+cron.schedule('20 0 * * *', () => {
+  anonymiseExpiredAccounts().catch(error =>
+    logger.error('Account anonymisation cron: fatal error:', error));
+});
+
 // ─────────────────────────────────────────────────────────────────────────────
 
 // ─── Account: POPIA data-subject rights ───────────────────────────────────────
@@ -1446,7 +1739,11 @@ app.get('/api/account/export', authenticateToken, exportLimiter, async (req, res
     const [user, settings, customers, products, documents, items, payments, tracking, emails, consents, requests] =
       await Promise.all([
         executeQuery(
-          `SELECT id, email, company_name, company_registration, vat_number, contact_person,
+          // google_id is the Google account identifier we hold about this
+          // person, so a subject access request has to return it like any other
+          // personal data. password_hash stays out — a credential, not data
+          // about them.
+          `SELECT id, email, google_id, company_name, company_registration, vat_number, contact_person,
                   phone, address, bank_name, bank_account_number, bank_branch_code, bank_account_type,
                   email_verified, status, created_at, updated_at, closed_at, last_login_at,
                   terms_accepted_at, terms_version, privacy_accepted_at, privacy_policy_version
@@ -1515,19 +1812,19 @@ app.get('/api/account/export', authenticateToken, exportLimiter, async (req, res
  * personal information after the grace period.
  */
 app.post('/api/account/close', authenticateToken, validate([
-  body('password').notEmpty().withMessage('Your password is required to close your account'),
+  // The credential is not validated here: which one is required depends on how
+  // the account signs in, which we only know after loading the row.
   body('confirm').equals('DELETE').withMessage('Type DELETE to confirm'),
 ]), async (req, res) => {
   try {
     const uid = req.user.id;
-    const rows = await executeQuery('SELECT password_hash, email FROM users WHERE id = ?', [uid]);
+    const rows = await executeQuery('SELECT password_hash, google_id, email FROM users WHERE id = ?', [uid]);
     if (rows.length === 0) return res.status(404).json({ message: 'User not found' });
 
-    const validPassword = await argon2.verify(rows[0].password_hash, req.body.password);
-    if (!validPassword) {
-      await recordSecurityEvent(req, 'ACCOUNT_CLOSE_BAD_PASSWORD', uid);
-      return res.status(401).json({ message: 'That password is not correct' });
-    }
+    const proven = await reauthenticateForSensitiveAction(
+      req, res, { ...rows[0], id: uid }, 'ACCOUNT_CLOSE_BAD_PASSWORD'
+    );
+    if (!proven) return;
 
     await withTransaction(async (q) => {
       await q(
@@ -1599,12 +1896,13 @@ app.post('/api/account/close', authenticateToken, validate([
  */
 app.post('/api/account/reactivate', reactivateLimiter, validate([
   body('email').isEmail().withMessage('A valid email address is required'),
-  body('password').notEmpty().withMessage('Password is required'),
+  // Not notEmpty: a Google-only account reactivates with an ID token instead,
+  // and requiring a password here would strand it in CLOSED until erasure.
 ]), async (req, res) => {
   try {
     const { email, password } = req.body;
     const rows = await executeQuery(
-      'SELECT id, password_hash, status, anonymise_after FROM users WHERE email = ?', [email]
+      'SELECT id, password_hash, google_id, status, anonymise_after FROM users WHERE email = ?', [email]
     );
     // One generic response for every failure mode, so this cannot be used to
     // discover which addresses have closed accounts.
@@ -1613,7 +1911,18 @@ app.post('/api/account/reactivate', reactivateLimiter, validate([
 
     const user = rows[0];
     if (user.status !== 'CLOSED') return res.status(400).json(generic);
-    if (!(await argon2.verify(user.password_hash, password))) {
+
+    // Whichever credential the account actually has. Matching on the stored
+    // `sub` rather than the email means a token for a different Google account
+    // proves nothing, even though the caller supplied the right address.
+    let proven = false;
+    if (user.password_hash) {
+      proven = !!password && await argon2.verify(user.password_hash, password);
+    } else if (user.google_id && req.body.idToken) {
+      const claims = await verifyGoogleIdToken(req.body.idToken);
+      proven = !!claims && claims.sub === user.google_id;
+    }
+    if (!proven) {
       await recordSecurityEvent(req, 'ACCOUNT_REACTIVATE_FAILED', user.id);
       return res.status(400).json(generic);
     }

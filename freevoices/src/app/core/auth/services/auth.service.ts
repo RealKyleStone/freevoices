@@ -33,6 +33,32 @@ export class AuthService {
     );
   }
 
+  /**
+   * Exchange a Google ID token for a session.
+   *
+   * Two shapes come back. A known account returns { token, user } and is a
+   * completed sign-in. An unrecognised one returns { needsRegistration: true }
+   * plus the verified email — no account exists yet, and the caller routes to
+   * the details step. Only the first shape opens a session, so the tap() has to
+   * discriminate rather than storing whatever it is handed.
+   */
+  signInWithGoogle(idToken: string): Observable<any> {
+    return this.dbService.create('auth/google', { idToken }).pipe(
+      tap(response => {
+        if (response?.token) this.handleLoginSuccess(response);
+      })
+    );
+  }
+
+  /** Finish a Google sign-up once the business details have been collected. */
+  registerWithGoogle(idToken: string, details: Record<string, any>): Observable<any> {
+    return this.dbService.create('auth/google/register', { idToken, ...details }).pipe(
+      tap(response => {
+        if (response?.token) this.handleLoginSuccess(response);
+      })
+    );
+  }
+
   async handleLoginSuccess(response: any): Promise<void> {
     localStorage.setItem('currentUser', JSON.stringify(response.user));
     localStorage.setItem('token', response.token);

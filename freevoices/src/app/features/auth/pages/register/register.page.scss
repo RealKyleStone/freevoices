@@ -104,3 +104,35 @@ ion-content {
 .register-card { max-width: 420px; @media (max-width: 768px) { max-width: 100%; } }
 .inline-link { color: #0f766e; font-weight: 600; text-decoration: none; &:hover { text-decoration: underline; } }
 :host-context(.ion-palette-dark) .inline-link { color: #14b8a6; }
+/* "or" rule separating the Google button from the email form. */
+.auth-divider {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin: 1.25rem 0;
+  color: var(--ion-color-medium);
+  font-size: 0.75rem;
+
+  &::before, &::after {
+    content: '';
+    flex: 1;
+    height: 1px;
+    background: rgba(128, 128, 128, 0.25);
+  }
+}
+
+/* Google injects a fixed-width iframe here; centre it in the form column. */
+.auth-google-btn {
+  display: flex;
+  justify-content: center;
+  min-height: 40px;
+}
+
+.auth-google-native-btn {
+  --border-radius: 10px;
+  --border-color: rgba(128, 128, 128, 0.35);
+  --color: var(--ion-text-color);
+  font-weight: 500;
+  text-transform: none;
+  letter-spacing: 0;
+}

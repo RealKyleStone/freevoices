@@ -1,0 +1,80 @@
+<ion-content class="auth-content">
+  <div class="auth-layout">
+
+    <div class="auth-left-panel">
+      <div class="auth-brand">
+        <span class="auth-brand-name">FreeVoices</span>
+      </div>
+      <div>
+        <p class="auth-eyebrow">Almost there</p>
+        <h1 class="auth-headline">Just your<br><span class="auth-headline-accent">business details.</span></h1>
+        <p class="auth-hero-sub">These appear on the invoices and quotes you send, so we need them before your account goes live.</p>
+      </div>
+      <p class="auth-copyright">© 2026 FreeVoices</p>
+    </div>
+
+    <div class="auth-right-panel">
+      <div class="auth-form-card">
+
+        <h2 class="auth-form-title">Complete your account</h2>
+        <p class="auth-form-sub" *ngIf="email">Signing up as <strong>{{ email }}</strong></p>
+
+        <form [formGroup]="form" (ngSubmit)="onSubmit($event)">
+
+          <p class="auth-section-title">Company</p>
+          <div class="auth-field-group">
+            <label class="auth-field-label">Company name</label>
+            <ion-input formControlName="company_name" placeholder="Your business name" class="auth-field-input" fill="solid"></ion-input>
+            <p class="auth-field-error" *ngIf="isFieldInvalid('company_name')">{{ getFieldError('company_name') }}</p>
+          </div>
+          <div class="auth-field-group">
+            <label class="auth-field-label">Company registration (optional)</label>
+            <ion-input formControlName="company_registration" placeholder="e.g. 2024/123456/07" class="auth-field-input" fill="solid"></ion-input>
+          </div>
+          <div class="auth-field-group">
+            <label class="auth-field-label">VAT number (optional)</label>
+            <ion-input formControlName="vat_number" placeholder="e.g. 4123456789" class="auth-field-input" fill="solid"></ion-input>
+          </div>
+
+          <p class="auth-section-title">Contact</p>
+          <div class="auth-field-group">
+            <label class="auth-field-label">Contact person</label>
+            <ion-input formControlName="contact_person" placeholder="Full name" class="auth-field-input" fill="solid"></ion-input>
+            <p class="auth-field-error" *ngIf="isFieldInvalid('contact_person')">{{ getFieldError('contact_person') }}</p>
+          </div>
+          <div class="auth-field-group">
+            <label class="auth-field-label">Phone</label>
+            <ion-input type="tel" formControlName="phone" placeholder="e.g. +27821234567" class="auth-field-input" fill="solid"></ion-input>
+            <p class="auth-field-hint" *ngIf="!isFieldInvalid('phone')">Include the country code, e.g. +27 for South Africa — no leading 0</p>
+            <p class="auth-field-error" *ngIf="isFieldInvalid('phone')">{{ getFieldError('phone') }}</p>
+          </div>
+          <div class="auth-field-group">
+            <label class="auth-field-label">Address</label>
+            <ion-input formControlName="address" placeholder="Business address" class="auth-field-input" fill="solid"></ion-input>
+            <p class="auth-field-error" *ngIf="isFieldInvalid('address')">{{ getFieldError('address') }}</p>
+          </div>
+
+          <div class="auth-error-banner" *ngIf="errorMessage">{{ errorMessage }}</div>
+
+          <ion-button expand="block" type="submit" class="auth-submit-btn" [disabled]="isLoading">
+            <ion-spinner *ngIf="isLoading" name="crescent" slot="start"></ion-spinner>
+            <span *ngIf="!isLoading">Create account →</span>
+            <span *ngIf="isLoading">Creating account...</span>
+          </ion-button>
+
+          <div class="auth-links">
+            <a routerLink="/login">Back to sign in</a>
+          </div>
+
+          <div class="auth-links auth-links-legal">
+            <a routerLink="/legal/privacy">Privacy Policy</a>
+            <span class="auth-link-divider">·</span>
+            <a routerLink="/legal/terms">Terms of Service</a>
+          </div>
+
+        </form>
+      </div>
+    </div>
+
+  </div>
+</ion-content>

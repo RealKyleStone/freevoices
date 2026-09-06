@@ -65,6 +65,21 @@
             <span *ngIf="isLoading">Signing in...</span>
           </ion-button>
 
+          <ng-container *ngIf="showGoogleWebButton || showGoogleNativeButton">
+            <div class="auth-divider"><span>or</span></div>
+
+            <!-- Web: Google renders its own button in here. Their branding
+                 terms don't allow a hand-built one, and GIS only returns an ID
+                 token through the widget it controls. -->
+            <div #googleBtn class="auth-google-btn" *ngIf="showGoogleWebButton"></div>
+
+            <ion-button *ngIf="showGoogleNativeButton" expand="block" fill="outline"
+                        class="auth-google-native-btn" [disabled]="isLoading"
+                        (click)="signInWithGoogleNative()">
+              Continue with Google
+            </ion-button>
+          </ng-container>
+
           <div class="auth-links">
             <a routerLink="/auth/forgot-password">Forgot password?</a>
             <span class="auth-link-divider">·</span>

@@ -362,6 +362,47 @@ const MIGRATIONS = [
       return added.length ? `added: ${added.join(', ')}` : 'already present';
     },
   },
+  {
+    id: '009_users_google_auth',
+    description: 'users: google_id for Google Sign-In, and a nullable password_hash for accounts that have no password',
+    async up(q) {
+      const done = [];
+
+      // Google's `sub` claim: an opaque, stable, per-account identifier. We key
+      // on this rather than on email because a Google account's email address
+      // can change while sub never does.
+      //
+      // processAccountAnonymisation in server.js clears this column along with
+      // the other personal fields. It has to: leave it populated and the next
+      // sign-in from that Google account links straight back into the
+      // anonymised row instead of creating a fresh one. Keep the two in step.
+      if (!(await columnExists(q, 'users', 'google_id'))) {
+        await q('ALTER TABLE users ADD COLUMN google_id varchar(64) DEFAULT NULL');
+        done.push('google_id');
+      }
+
+      // UNIQUE so two rows can never claim the same Google account. MySQL
+      // exempts NULLs from UNIQUE, so every existing password-only user stays
+      // valid without backfilling anything.
+      if (!(await indexExists(q, 'users', 'uniq_users_google_id'))) {
+        await q('ALTER TABLE users ADD UNIQUE KEY uniq_users_google_id (google_id)');
+        done.push('uniq_users_google_id');
+      }
+
+      // A Google-only account has no password to hash. Leaving this NOT NULL
+      // would force a sentinel value into the column, and a sentinel that
+      // argon2.verify() might one day be coaxed into accepting is exactly the
+      // kind of thing that turns into an auth bypass. NULL means "no password
+      // login for this account", and the login endpoint checks for it.
+      const pw = await columnDefinition(q, 'users', 'password_hash');
+      if (pw && pw.IS_NULLABLE === 'NO') {
+        await q('ALTER TABLE users MODIFY COLUMN password_hash varchar(255) DEFAULT NULL');
+        done.push('password_hash nullable');
+      }
+
+      return done.length ? `applied: ${done.join(', ')}` : 'already present';
+    },
+  },
 ];
 
 // ─── Runner ───────────────────────────────────────────────────────────────────

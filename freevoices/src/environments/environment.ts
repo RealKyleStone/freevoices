@@ -8,6 +8,11 @@ export const environment = {
   version: '1.0.0',
   recaptchaSiteKey: '6LecjacqAAAAAH-qxIbyNMeNnvU4fwYcuIxKNKnC',
   bypassCaptcha: true,
+  // OAuth 2.0 *Web application* client ID from Google Cloud Console. Public by
+  // design — it identifies the app, it does not authorise anything. The server
+  // checks incoming ID tokens against GOOGLE_OAUTH_CLIENT_ID, so the two must
+  // match. Empty disables the "Continue with Google" buttons entirely.
+  googleClientId: '280963257389-mngl773qmk23mmq8irq0qsj3ph41th1q.apps.googleusercontent.com',
 };
 /*
  * For easier debugging in development mode, you can import the following file

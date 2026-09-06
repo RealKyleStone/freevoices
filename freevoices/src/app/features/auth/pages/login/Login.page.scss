@@ -176,9 +176,61 @@ ion-content {
 .auth-form-sub { font-size: 0.82rem; color: var(--ion-color-medium); margin: 0 0 1.75rem; }
 .auth-field-group { margin-bottom: 1rem; }
 .auth-field-label { display: block; font-size: 0.72rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.06em; color: var(--ion-color-medium); margin-bottom: 6px; }
-.auth-field-input { --border-radius: 10px; --background: var(--ion-color-light); --padding-start: 12px; --padding-end: 12px; font-size: 0.875rem; width: 100%; }
+.auth-field-input {
+  --border-radius: 10px;
+  --background: var(--ion-color-light);
+  --color: var(--ion-text-color);
+  --placeholder-color: var(--ion-color-medium);
+  --padding-start: 12px;
+  --padding-end: 12px;
+  font-size: 0.875rem;
+  width: 100%;
+}
+
+:host-context(.ion-palette-dark) .auth-field-input {
+  --background: #1e1e1e;
+  --color: #ffffff;
+  --placeholder-color: #6b7280;
+  -webkit-text-fill-color: #ffffff;
+}
 .auth-field-error { margin: 4px 0 0; font-size: 0.75rem; color: var(--ion-color-danger); }
 .auth-error-banner { background: var(--fv-danger-bg); color: var(--fv-danger-text); border-radius: 10px; padding: 10px 14px; font-size: 0.82rem; margin-bottom: 1rem; font-weight: 500; }
+
+/* "or" rule between the password form and the Google button. */
+.auth-divider {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin: 1.25rem 0;
+  color: var(--ion-color-medium);
+  font-size: 0.75rem;
+
+  &::before, &::after {
+    content: '';
+    flex: 1;
+    height: 1px;
+    background: rgba(128, 128, 128, 0.25);
+  }
+}
+
+/* Google injects a fixed-width iframe here; centre it rather than letting it
+   sit left-aligned against a full-width form. */
+.auth-google-btn {
+  display: flex;
+  justify-content: center;
+  min-height: 40px;
+  margin-bottom: 1rem;
+}
+
+.auth-google-native-btn {
+  --border-radius: 10px;
+  --border-color: rgba(128, 128, 128, 0.35);
+  --color: var(--ion-text-color);
+  font-weight: 500;
+  text-transform: none;
+  letter-spacing: 0;
+  margin-bottom: 1rem;
+}
 
 .auth-submit-btn {
   --background: #0f766e;

@@ -5,6 +5,7 @@ import { IonContent, IonButton, IonInput, IonSpinner, IonIcon } from '@ionic/ang
 import { AuthService } from '../../../core/auth/services/auth.service';
 import { CommonModule } from '@angular/common';
 import { CaptchaService } from '../../../core/services/captcha.service';
+import { GoogleAuthService } from '../../../core/services/google-auth.service';
 import { Platform } from '@ionic/angular';
 import { environment } from '../../../../environments/environment';
 import { catchError, finalize } from 'rxjs/operators';
@@ -21,6 +22,7 @@ import { documentTextOutline, sunnyOutline, moonOutline } from 'ionicons/icons';
 })
 export class LoginPage implements OnInit, AfterViewInit {
   @ViewChild('recaptcha') recaptchaElement?: ElementRef;
+  @ViewChild('googleBtn') googleButtonElement?: ElementRef<HTMLElement>;
 
   loginForm: FormGroup;
   isLoading = false;
@@ -34,6 +36,7 @@ export class LoginPage implements OnInit, AfterViewInit {
     private authService: AuthService,
     private router: Router,
     private captchaService: CaptchaService,
+    private googleAuth: GoogleAuthService,
     private platform: Platform,
     private cdr: ChangeDetectorRef
   ) {
@@ -89,6 +92,73 @@ export class LoginPage implements OnInit, AfterViewInit {
         this.cdr.detectChanges();
       }
     }
+
+    if (this.showGoogleWebButton && this.googleButtonElement) {
+      try {
+        await this.googleAuth.renderButton(
+          this.googleButtonElement.nativeElement,
+          idToken => this.exchangeGoogleToken(idToken)
+        );
+      } catch (error) {
+        // A blocked or failed GIS script must not take the password form down
+        // with it — that is still a perfectly good way to sign in.
+        console.error('Google sign-in unavailable:', error);
+      }
+    }
+  }
+
+  /** Google's own widget renders on web; native gets an Ionic button instead. */
+  get showGoogleWebButton(): boolean {
+    return this.googleAuth.isConfigured && !this.googleAuth.isNative;
+  }
+
+  get showGoogleNativeButton(): boolean {
+    return this.googleAuth.isConfigured && this.googleAuth.isNative;
+  }
+
+  async signInWithGoogleNative() {
+    this.errorMessage = '';
+    this.isLoading = true;
+    try {
+      const idToken = await this.googleAuth.signInNative();
+      // null means the user dismissed the account picker; say nothing.
+      if (!idToken) { this.isLoading = false; this.cdr.detectChanges(); return; }
+      this.exchangeGoogleToken(idToken);
+    } catch (error) {
+      this.errorMessage = 'Google sign-in failed. Please try again.';
+      this.isLoading = false;
+      this.cdr.detectChanges();
+    }
+  }
+
+  /**
+   * Hand the Google token to the server, which either signs the user in or
+   * reports that no account exists yet — in which case we carry the token
+   * through to the details step rather than making them authenticate twice.
+   */
+  private exchangeGoogleToken(idToken: string) {
+    this.isLoading = true;
+    this.errorMessage = '';
+    this.cdr.detectChanges();
+
+    this.authService.signInWithGoogle(idToken)
+      .pipe(
+        catchError(error => {
+          this.errorMessage = error.error?.message || 'Google sign-in failed. Please try again.';
+          return of(null);
+        }),
+        finalize(() => { this.isLoading = false; this.cdr.detectChanges(); })
+      )
+      .subscribe(response => {
+        if (!response) return;
+        if (response.needsRegistration) {
+          this.router.navigate(['/auth/google-complete'], {
+            state: { idToken, email: response.email, name: response.name },
+          });
+          return;
+        }
+        this.router.navigate(['/dashboard']);
+      });
   }
 
   isFieldInvalid(fieldName: string): boolean {

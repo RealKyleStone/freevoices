@@ -30,11 +30,14 @@ const ASSET_DIR = path.join(__dirname, '..', 'src', 'assets', 'legal');
 const DOCUMENTS = [
   {
     slug: 'privacy',
-    version: '1.0.0',
+    // 1.1.0 — discloses Google Sign-In as an optional third party and a
+    // section 72 cross-border transfer. Set the effective date to 14 days after
+    // you publish, per the notice period the policy commits to in section 14.
+    version: '1.1.0',
     title: 'Privacy Policy',
-    effective_date: '2026-08-17',
+    effective_date: '2026-09-16',
     file: 'privacy-policy.html',
-    summary_html: '<p>Our first published Privacy Policy. It explains what we collect, why, how long we keep it, and the rights POPIA gives you.</p>',
+    summary_html: '<p>Adds Google Sign-In. If you choose to sign in with your Google account, Google receives your IP address and confirms your email address and name to us. Signing in with a password is unchanged and sends Google nothing.</p>',
   },
   {
     slug: 'terms',

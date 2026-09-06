@@ -34,6 +34,21 @@
         <h2 class="auth-form-title">Create your account</h2>
         <p class="auth-form-sub">Already have an account? <a class="inline-link" routerLink="/login">Sign in</a></p>
 
+        <ng-container *ngIf="showGoogleWebButton || showGoogleNativeButton">
+          <!-- Above the form on purpose: it replaces most of what follows, so
+               offering it after the user has already filled it all in would be
+               a poor joke. -->
+          <div #googleBtn class="auth-google-btn" *ngIf="showGoogleWebButton"></div>
+
+          <ion-button *ngIf="showGoogleNativeButton" expand="block" fill="outline"
+                      class="auth-google-native-btn" [disabled]="isLoading"
+                      (click)="signUpWithGoogleNative()">
+            Continue with Google
+          </ion-button>
+
+          <div class="auth-divider"><span>or sign up with email</span></div>
+        </ng-container>
+
         <form [formGroup]="registerForm" (ngSubmit)="validateAndSubmit($event)">
 
           <!-- Account -->

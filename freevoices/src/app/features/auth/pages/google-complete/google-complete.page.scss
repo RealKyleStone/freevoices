@@ -71,7 +71,6 @@ ion-content {
   font-size: 0.875rem;
   width: 100%;
 }
-
 :host-context(.ion-palette-dark) .auth-field-input {
   --background: #1e1e1e;
   --color: #ffffff;
@@ -79,6 +78,7 @@ ion-content {
   -webkit-text-fill-color: #ffffff;
 }
 .auth-field-error { margin: 4px 0 0; font-size: 0.75rem; color: var(--ion-color-danger); }
+.auth-field-hint { margin: 4px 0 0; font-size: 0.75rem; color: var(--ion-color-medium); }
 .auth-error-banner { background: var(--fv-danger-bg); color: var(--fv-danger-text); border-radius: 10px; padding: 10px 14px; font-size: 0.82rem; margin-bottom: 1rem; font-weight: 500; }
 .auth-success-banner { background: var(--fv-success-bg); color: var(--fv-success-text); border-radius: 10px; padding: 10px 14px; font-size: 0.82rem; margin-bottom: 1rem; font-weight: 500; }
 .auth-submit-btn {
@@ -94,3 +94,16 @@ ion-content {
 }
 :host-context(.ion-palette-dark) .auth-links a { color: #14b8a6; }
 .auth-section-title { font-size: 0.72rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.08em; color: var(--fv-teal-text); background: var(--fv-teal-tint); padding: 6px 10px; border-radius: 6px; margin: 1.25rem 0 0.75rem; }
+
+/* Taller than the sign-in card and shorter than the full register form, so it
+   gets its own width rather than borrowing either. */
+.auth-right-panel {
+  width: 480px;
+  align-items: flex-start;
+  overflow-y: auto;
+  padding-top: 2.5rem;
+  padding-bottom: 2.5rem;
+  @media (max-width: 768px) { width: 100%; }
+}
+.auth-form-card { max-width: 420px; @media (max-width: 768px) { max-width: 100%; } }
+.auth-links-legal { margin-top: 0.75rem; opacity: 0.75; }

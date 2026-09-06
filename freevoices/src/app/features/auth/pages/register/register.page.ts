@@ -9,6 +9,7 @@ import { AuthService } from '../../../../core/auth/services/auth.service';
 import { DatabaseService } from '../../../../../services/database.service';
 import { CommonModule } from '@angular/common';
 import { CaptchaService } from '../../../../core/services/captcha.service';
+import { GoogleAuthService } from '../../../../core/services/google-auth.service';
 import { Platform } from '@ionic/angular';
 import { environment } from '../../../../../environments/environment';
 import { catchError, finalize } from 'rxjs/operators';
@@ -50,7 +51,8 @@ interface Bank {
 
 export class RegisterPage implements OnInit {
   @ViewChild('recaptcha') recaptchaElement?: ElementRef;
-  
+  @ViewChild('googleBtn') googleButtonElement?: ElementRef<HTMLElement>;
+
   banks: Bank[] = [];
   accountTypes = [
     { value: 'current', label: 'Current Account' },
@@ -73,6 +75,7 @@ export class RegisterPage implements OnInit {
     private dbService: DatabaseService,
     private router: Router,
     private captchaService: CaptchaService,
+    private googleAuth: GoogleAuthService,
     private platform: Platform,
     private cdr: ChangeDetectorRef
   ) {
@@ -187,6 +190,70 @@ export class RegisterPage implements OnInit {
         this.cdr.detectChanges();
       }
     }
+
+    if (this.showGoogleWebButton && this.googleButtonElement) {
+      try {
+        await this.googleAuth.renderButton(
+          this.googleButtonElement.nativeElement,
+          idToken => this.startGoogleSignUp(idToken)
+        );
+      } catch (error) {
+        // The long-form registration below still works without it.
+        console.error('Google sign-in unavailable:', error);
+      }
+    }
+  }
+
+  get showGoogleWebButton(): boolean {
+    return this.googleAuth.isConfigured && !this.googleAuth.isNative;
+  }
+
+  get showGoogleNativeButton(): boolean {
+    return this.googleAuth.isConfigured && this.googleAuth.isNative;
+  }
+
+  async signUpWithGoogleNative() {
+    this.errorMessage = '';
+    this.isLoading = true;
+    try {
+      const idToken = await this.googleAuth.signInNative();
+      if (!idToken) { this.isLoading = false; this.cdr.detectChanges(); return; }
+      this.startGoogleSignUp(idToken);
+    } catch (error) {
+      this.errorMessage = 'Google sign-up failed. Please try again.';
+      this.isLoading = false;
+      this.cdr.detectChanges();
+    }
+  }
+
+  /**
+   * Same call the sign-in page makes. Someone who already has an account and
+   * lands here by mistake gets signed in rather than told off, which is the
+   * behaviour they wanted either way.
+   */
+  private startGoogleSignUp(idToken: string) {
+    this.isLoading = true;
+    this.errorMessage = '';
+    this.cdr.detectChanges();
+
+    this.authService.signInWithGoogle(idToken)
+      .pipe(
+        catchError(error => {
+          this.errorMessage = error.error?.message || 'Google sign-up failed. Please try again.';
+          return of(null);
+        }),
+        finalize(() => { this.isLoading = false; this.cdr.detectChanges(); })
+      )
+      .subscribe(response => {
+        if (!response) return;
+        if (response.needsRegistration) {
+          this.router.navigate(['/auth/google-complete'], {
+            state: { idToken, email: response.email, name: response.name },
+          });
+          return;
+        }
+        this.router.navigate(['/dashboard']);
+      });
   }
 
   isFieldInvalid(fieldName: string): boolean {
