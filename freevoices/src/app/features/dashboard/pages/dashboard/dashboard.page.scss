@@ -60,18 +60,32 @@ ion-toolbar {
 
 .stat-card {
   margin: 0;
-  border-radius: 16px;
+  border-radius: var(--fv-radius-lg);
   box-shadow: none;
-  border: 1px solid rgba(128, 128, 128, 0.15);
+  border: 1px solid var(--fv-border);
   height: 100%;
 
+  /*
+   * Two cards per row on phones rather than four stacked full-width ones,
+   * which pushed Recent activity most of a screen down. At that width the
+   * icon sits above the figure instead of beside it; from 26rem up there is
+   * room for the original side-by-side arrangement.
+   */
   ion-card-content {
     display: flex;
-    align-items: center;
-    gap: 1rem;
-    padding: 1.25rem;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 0.6rem;
+    padding: 1rem;
     height: 100%;
     box-sizing: border-box;
+
+    @media (min-width: 26rem) {
+      flex-direction: row;
+      align-items: center;
+      gap: 1rem;
+      padding: 1.25rem;
+    }
   }
 
   .stat-icon {
@@ -107,15 +121,28 @@ ion-toolbar {
     font-weight: 500;
   }
 
+  /*
+   * The figure is the point of the card, so it gets a larger step in the
+   * type scale than its own label.
+   *
+   * It is deliberately allowed to wrap. It was nowrap + ellipsis, which
+   * truncates money — a revenue figure rendered as "ZAR184,3…" is worse
+   * than one that runs to a second line — and the two-up card layout on
+   * phones makes that reachable with ordinary amounts.
+   */
   .stat-value {
     margin: 0;
-    font-size: 1.1rem;
-    font-weight: 600;
+    font-size: var(--fv-text-lg);
+    font-weight: var(--fv-weight-semibold);
     color: var(--ion-text-color);
-    line-height: 1.2;
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
+    line-height: 1.15;
+    letter-spacing: -0.02em;
+    font-variant-numeric: tabular-nums;
+    overflow-wrap: anywhere;
+
+    @media (min-width: 26rem) {
+      font-size: var(--fv-text-xl);
+    }
   }
 
   .overdue-value { color: var(--fv-danger-text); }

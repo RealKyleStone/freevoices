@@ -3,7 +3,7 @@
   <ion-toolbar>
     <!-- Greeting on the left -->
     <div slot="start" class="toolbar-greeting">
-      <h2>{{ getGreeting() }}<span *ngIf="companyName">, {{ companyName }}</span> 👋</h2>
+      <h1>{{ getGreeting() }}<span *ngIf="companyName">, {{ companyName }}</span> 👋</h1>
       <p>{{ today | date:'EEEE, d MMMM y' }} · {{ today | date:'HH:mm' }}</p>
     </div>
     <!-- Action icons on the right -->
@@ -38,7 +38,7 @@
       <ion-row>
 
         <!-- Revenue -->
-        <ion-col size="12" size-sm="6" size-lg="3">
+        <ion-col size="6" size-lg="3">
           <ion-card class="stat-card">
             <ion-card-content>
               <div class="stat-icon teal">
@@ -46,18 +46,17 @@
               </div>
               <div class="stat-info">
                 <p class="stat-label">Revenue this month</p>
-                <h2 class="stat-value" *ngIf="!isLoading">
+                <p class="stat-value" *ngIf="!isLoading">
                   {{ summary.monthRevenue | currency:selectedCurrency:'symbol':'1.2-2' }}
-                </h2>
+                </p>
                 <ion-skeleton-text *ngIf="isLoading" animated class="skeleton-value"></ion-skeleton-text>
-                <p class="stat-sub">Paid invoices</p>
               </div>
             </ion-card-content>
           </ion-card>
         </ion-col>
 
         <!-- Customers -->
-        <ion-col size="12" size-sm="6" size-lg="3">
+        <ion-col size="6" size-lg="3">
           <ion-card class="stat-card">
             <ion-card-content>
               <div class="stat-icon success">
@@ -65,16 +64,15 @@
               </div>
               <div class="stat-info">
                 <p class="stat-label">Total customers</p>
-                <h2 class="stat-value" *ngIf="!isLoading">{{ summary.totalCustomers }}</h2>
+                <p class="stat-value" *ngIf="!isLoading">{{ summary.totalCustomers }}</p>
                 <ion-skeleton-text *ngIf="isLoading" animated class="skeleton-value"></ion-skeleton-text>
-                <p class="stat-sub">Active accounts</p>
               </div>
             </ion-card-content>
           </ion-card>
         </ion-col>
 
         <!-- Open Invoices -->
-        <ion-col size="12" size-sm="6" size-lg="3">
+        <ion-col size="6" size-lg="3">
           <ion-card class="stat-card">
             <ion-card-content>
               <div class="stat-icon warning">
@@ -82,16 +80,15 @@
               </div>
               <div class="stat-info">
                 <p class="stat-label">Open invoices</p>
-                <h2 class="stat-value" *ngIf="!isLoading">{{ summary.openInvoices }}</h2>
+                <p class="stat-value" *ngIf="!isLoading">{{ summary.openInvoices }}</p>
                 <ion-skeleton-text *ngIf="isLoading" animated class="skeleton-value"></ion-skeleton-text>
-                <p class="stat-sub">Awaiting payment</p>
               </div>
             </ion-card-content>
           </ion-card>
         </ion-col>
 
         <!-- Overdue -->
-        <ion-col size="12" size-sm="6" size-lg="3">
+        <ion-col size="6" size-lg="3">
           <ion-card class="stat-card">
             <ion-card-content>
               <div class="stat-icon danger">
@@ -99,7 +96,7 @@
               </div>
               <div class="stat-info">
                 <p class="stat-label">Overdue</p>
-                <h2 class="stat-value overdue-value" *ngIf="!isLoading">{{ summary.overdueInvoices }}</h2>
+                <p class="stat-value overdue-value" *ngIf="!isLoading">{{ summary.overdueInvoices }}</p>
                 <ion-skeleton-text *ngIf="isLoading" animated class="skeleton-value"></ion-skeleton-text>
                 <p class="stat-sub">Needs attention</p>
               </div>
