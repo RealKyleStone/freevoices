@@ -134,10 +134,58 @@
   // to the full width of an ultrawide display.
   --fv-content-max: 1120px;
 
+  /*
+   * Page gutter — the single horizontal inset every routed page uses.
+   *
+   * Previously each page set its own padding, so measured against the shell
+   * the left content edge landed at 403px, 419px, 427px, 436px and 486px on
+   * different screens of the same application. One token, stepped by
+   * viewport, gives every page the same edge.
+   */
+  --fv-gutter: 20px;
+
+  /*
+   * Navigation rail.
+   *
+   * ion-split-pane sizes the menu with --side-width, default 28%, and
+   * ignores ion-menu's own --width. At 1440px that gave seven navigation
+   * items a 403px column while the content got 1037px. A fixed rail keeps
+   * the proportion sane as the viewport grows.
+   */
+  --fv-rail: 264px;
+
+  /*
+   * Vertical rhythm. Three relationships, used consistently:
+   *   section  between major blocks of a page
+   *   block    between siblings inside a block (card to card, row to row)
+   *   tight    label to field, title to its supporting line
+   */
+  --fv-section-gap: 28px;
+  --fv-block-gap: 16px;
+  --fv-tight-gap: 6px;
+
+  // Bottom runway so a floating action button never covers the last row.
+  --fv-page-tail: 5.5rem;
+
   // ─── Motion ───────────────────────────────────────────────────
   --fv-duration-fast: 120ms;
   --fv-duration: 180ms;
   --fv-ease: cubic-bezier(0.2, 0, 0.2, 1);
+}
+
+/* Gutters and rhythm open up with the viewport; the scale stays the same. */
+@media (min-width: 768px) {
+  :root {
+    --fv-gutter: 28px;
+    --fv-section-gap: 32px;
+  }
+}
+
+@media (min-width: 1200px) {
+  :root {
+    --fv-gutter: 36px;
+    --fv-section-gap: 36px;
+  }
 }
 
 // ─── Dark mode ────────────────────────────────────────────────────

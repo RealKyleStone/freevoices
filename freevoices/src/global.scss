@@ -171,7 +171,21 @@ body {
   font-family: inherit;
 }
 
-ion-split-pane { --border: none; }
+/*
+ * Navigation rail.
+ *
+ * ion-split-pane sizes the side panel with --side-width, which defaults to
+ * 28% and overrides ion-menu's own --width. At 1440px that handed seven
+ * navigation items a 403px column against 1037px of content, and the
+ * imbalance grew with the viewport. A fixed rail keeps the shell in
+ * proportion at every width.
+ */
+ion-split-pane {
+  --border: none;
+  --side-width: var(--fv-rail);
+  --side-max-width: var(--fv-rail);
+  --side-min-width: var(--fv-rail);
+}
 
 ion-menu {
   --width: 240px;
@@ -307,30 +321,96 @@ ion-item.invoice-item {
 }
 
 /*
- * Application content width.
+ * The page grid.
  *
- * The settings, legal and portal pages already capped their own width
- * (640px, 760px, 780px), but the dashboard, the four list pages, the four
- * detail pages and the create/edit forms had no cap at all. With the split
- * pane open on a wide display, an invoice totals row stretched the full
- * width of the viewport, putting "Total" and its amount at opposite edges
- * of the screen.
+ * One inset, one measure, one bottom runway, for every routed page. Before
+ * this each page padded itself, so measured against the shell at 1440px the
+ * left content edge of pages in the same application landed at 403px, 419px,
+ * 427px, 436px and 486px depending on which screen you were looking at.
  *
- * Capping the existing container classes here rather than adding a wrapper
- * element keeps this to one rule and leaves every template untouched.
- * Forms get a narrower measure than data views, since they are a single
- * column of fields and gain nothing from the extra width.
+ * Applied to the container classes the templates already use, so the grid
+ * arrives without touching markup. Forms keep a narrower measure than data
+ * views: a single column of fields gains nothing from the extra width.
  */
 .dashboard-container,
 .list-container,
-.detail-container {
-  max-width: var(--fv-content-max);
+.detail-container,
+.form-container,
+.reports-container {
+  box-sizing: border-box;
+  width: 100%;
+  padding-inline: var(--fv-gutter);
+  padding-block: var(--fv-gutter) var(--fv-page-tail);
   margin-inline: auto;
 }
 
+.dashboard-container,
+.list-container,
+.detail-container,
+.reports-container {
+  max-width: calc(var(--fv-content-max) + var(--fv-gutter) * 2);
+}
+
 .form-container {
-  max-width: 760px;
-  margin-inline: auto;
+  max-width: calc(760px + var(--fv-gutter) * 2);
+}
+
+/*
+ * Vertical rhythm inside a page.
+ *
+ * Sections are separated by one value everywhere rather than by whatever
+ * margin each component happened to carry. Pages that lay their children
+ * out with flex get the gap; the rest fall back to a margin on the section.
+ */
+.dashboard-container,
+.detail-container,
+.form-container {
+  display: flex;
+  flex-direction: column;
+  gap: var(--fv-section-gap);
+}
+
+/*
+ * Page heading.
+ *
+ * Titles lived in three different places — an ion-title in the toolbar on
+ * list and report pages, a hand-built greeting in the dashboard toolbar, an
+ * h1 inside the content on settings — at three sizes, none of them aligned
+ * to the content edge below. Toolbar titles now share the page gutter and
+ * the type scale, so the heading sits on the same vertical line as the
+ * content it introduces.
+ */
+ion-header ion-toolbar {
+  --padding-start: 0;
+  --padding-end: 0;
+  --min-height: 60px;
+
+  ion-title {
+    padding-inline: var(--fv-gutter);
+    font-size: var(--fv-text-xl);
+    font-weight: var(--fv-weight-semibold);
+    letter-spacing: -0.02em;
+  }
+
+  /* Toolbar buttons align to the same gutter as the title. */
+  ion-buttons[slot="start"] { margin-inline-start: calc(var(--fv-gutter) - 12px); }
+  ion-buttons[slot="end"] { margin-inline-end: calc(var(--fv-gutter) - 12px); }
+
+  /* A back button already indents the title, so it must not double up. */
+  ion-buttons[slot="start"] ~ ion-title { padding-inline-start: 0; }
+}
+
+/*
+ * Section label — a quiet heading for a group of content, used instead of
+ * wrapping every group in its own bordered card.
+ */
+.fv-section-label {
+  margin: 0 0 var(--fv-block-gap);
+  font-size: var(--fv-text-2xs);
+  font-weight: var(--fv-weight-semibold);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--ion-color-medium);
 }
 
 /*

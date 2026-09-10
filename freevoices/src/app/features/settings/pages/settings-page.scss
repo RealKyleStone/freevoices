@@ -1,6 +1,10 @@
 .settings-page {
-  padding: 16px;
-  max-width: 640px;
+  /* Same inset and measure discipline as the other pages, at the narrower
+     form width, so the settings pane lines up with the shell rather than
+     starting 16px in from wherever ion-content happened to end. */
+  box-sizing: border-box;
+  padding: var(--fv-gutter) var(--fv-gutter) var(--fv-page-tail);
+  max-width: calc(680px + var(--fv-gutter) * 2);
 
   .settings-page-header {
     margin-bottom: 16px;

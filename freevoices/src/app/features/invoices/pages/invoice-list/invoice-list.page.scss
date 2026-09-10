@@ -5,9 +5,7 @@ ion-toolbar {
   ion-title { font-size: 1.1rem; font-weight: 600; }
 }
 
-.list-container {
-  padding: 0 1rem 6rem;
-}
+/* .list-container inset and tail come from the page grid. */
 
 .search-wrap {
   padding: 0.75rem 0 0.25rem;

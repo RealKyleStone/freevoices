@@ -32,10 +32,8 @@ ion-toolbar {
 }
 
 .dashboard-container {
-  padding: 1rem;
-  display: flex;
-  flex-direction: column;
-  gap: 1rem;
+  /* Inset, measure and section rhythm come from the page grid in
+     global.scss. */
 }
 
 .quick-actions {
