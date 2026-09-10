@@ -105,40 +105,21 @@
   unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF;
 }
 
+/*
+ * Colour tokens live in src/theme/variables.scss, which is loaded after this
+ * file. The palette used to be declared in both places with values that had
+ * drifted apart (--ion-color-secondary was #14b8a6 here and #0e9f6e there),
+ * so the effective value depended on stylesheet order rather than intent.
+ * Only the page-surface tokens below stay here; everything else is defined
+ * once, in variables.scss.
+ */
 :root {
-  --ion-color-primary: #0f766e;
-  --ion-color-primary-rgb: 15, 118, 110;
-  --ion-color-primary-contrast: #ffffff;
-  --ion-color-primary-contrast-rgb: 255, 255, 255;
-  --ion-color-primary-shade: #0d6860;
-  --ion-color-primary-tint: #27847d;
-
-  --ion-color-secondary: #14b8a6;
-  --ion-color-secondary-rgb: 20, 184, 166;
-  --ion-color-secondary-contrast: #ffffff;
-  --ion-color-secondary-contrast-rgb: 255, 255, 255;
-  --ion-color-secondary-shade: #0f9e8e;
-  --ion-color-secondary-tint: #2ec4b3;
-
   --ion-background-color: #ffffff;
   --ion-background-color-rgb: 255, 255, 255;
   --ion-text-color: #111827;
   --ion-text-color-rgb: 17, 24, 39;
   --ion-item-background: #ffffff;
   --ion-card-background: #ffffff;
-
-  --fv-teal-tint: #ccfbf1;
-  --fv-teal-text: #0f5e58;
-  --fv-success-bg: #dcfce7;
-  --fv-success-text: #166534;
-  --fv-warning-bg: #fef9c3;
-  --fv-warning-text: #854d0e;
-  --fv-danger-bg: #fee2e2;
-  --fv-danger-text: #991b1b;
-  --fv-info-bg: #dbeafe;
-  --fv-info-text: #1e40af;
-  --fv-medium-bg: #f3f4f6;
-  --fv-medium-text: #374151;
 }
 
 /* ── Dark mode ── */
@@ -172,23 +153,23 @@
 
   --ion-toolbar-background: #111111;
   --ion-tab-bar-background: #1a1a1a;
-
-  --fv-teal-tint: #042f2e;
-  --fv-teal-text: #5eead4;
-  --fv-success-bg: #052e16;
-  --fv-success-text: #4ade80;
-  --fv-warning-bg: #422006;
-  --fv-warning-text: #fbbf24;
-  --fv-danger-bg: #450a0a;
-  --fv-danger-text: #f87171;
-  --fv-info-bg: #1e3a5f;
-  --fv-info-text: #93c5fd;
-  --fv-medium-bg: #1f2937;
-  --fv-medium-text: #9ca3af;
 }
 
 /* Global styles */
-* { font-family: 'Poppins', sans-serif; }
+
+/*
+ * Poppins was applied with `* { font-family }`, which also overrode the
+ * monospace default on <code>/<pre>/<kbd> and reset the family on every
+ * Ionic internal element. Setting it once on :root and letting it inherit
+ * reaches the same elements without flattening those defaults.
+ */
+:root {
+  font-family: 'Poppins', sans-serif;
+}
+
+body {
+  font-family: inherit;
+}
 
 ion-split-pane { --border: none; }
 
@@ -253,22 +234,33 @@ ion-menu {
   }
 }
 
+/*
+ * One card language.
+ *
+ * Cards previously had three treatments: this rule (16px + drop shadow), the
+ * dashboard and detail pages (16px + hairline border, no shadow), and the
+ * settings pages (12px + a lighter shadow). A hairline border reads more
+ * cleanly than a shadow against the near-black dark surface, and it is the
+ * treatment the most-used screens had already converged on, so it becomes
+ * the default rather than something each page re-declares.
+ */
 ion-card {
-  border-radius: 16px;
+  border-radius: var(--fv-radius-lg);
   background: var(--ion-card-background);
-  box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+  border: 1px solid var(--fv-border);
+  box-shadow: none;
 }
 
 ion-button {
-  --border-radius: 10px;
-  font-weight: 500;
+  --border-radius: var(--fv-radius-md);
+  font-weight: var(--fv-weight-medium);
   text-transform: none;
 }
 
 ion-input, ion-textarea {
   --padding-start: 16px;
   --padding-end: 16px;
-  --border-radius: 10px;
+  --border-radius: var(--fv-radius-md);
 }
 
 /* Core CSS */
@@ -285,9 +277,14 @@ ion-input, ion-textarea {
 
 /* ── Dark mode input fix ── */
 /* Only set text color, never background — labels stay visible */
+/* ion-searchbar is included because it was previously omitted: the list
+   pages set its --background to a fixed light value and its --color to
+   --ion-text-color, which in dark mode resolved to the same #f9fafb as the
+   background, leaving typed search text invisible. */
 .ion-palette-dark ion-input,
 .ion-palette-dark ion-textarea,
-.ion-palette-dark ion-select {
+.ion-palette-dark ion-select,
+.ion-palette-dark ion-searchbar {
   --color: #ffffff;
   --placeholder-color: #6b7280;
 }

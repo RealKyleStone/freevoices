@@ -71,30 +71,116 @@
   --fv-info-text: #1e40af;
   --fv-medium-bg: #f3f4f6;
   --fv-medium-text: #374151;
+
+  // ─── Surfaces ─────────────────────────────────────────────────
+  // Page, raised (cards) and subtle (inputs, searchbars, chips).
+  // `--fv-surface-subtle` exists because several components wanted "a
+  // slightly recessed input surface" and reached for --ion-color-light,
+  // which is an Ionic *named colour* and so stays #f9fafb in both themes.
+  // That put near-white inputs on the dark page — and where the component
+  // also set --color to --ion-text-color, the text matched its own
+  // background exactly. A surface needs its own token so it can flip.
+  --fv-surface: #ffffff;
+  --fv-surface-raised: #ffffff;
+  --fv-surface-subtle: #f3f4f6;
+
+  // ─── Borders ──────────────────────────────────────────────────
+  // Alpha over --ion-color-medium-rgb, following the pattern already used
+  // in the dashboard, list and document-builder styles, so a single
+  // definition works in both themes.
+  --fv-border: rgba(var(--ion-color-medium-rgb), 0.18);
+  --fv-border-strong: rgba(var(--ion-color-medium-rgb), 0.32);
+
+  // ─── Radius ───────────────────────────────────────────────────
+  // Three tiers plus a pill. Replaces the 4/6/8/10/12/14/16/20px spread.
+  --fv-radius-sm: 6px;   // badges, inline chips
+  --fv-radius-md: 10px;  // buttons, inputs, icon tiles
+  --fv-radius-lg: 14px;  // cards, panels, list containers
+  --fv-radius-pill: 999px;
+
+  // ─── Spacing (4px base) ───────────────────────────────────────
+  --fv-space-1: 0.25rem;
+  --fv-space-2: 0.5rem;
+  --fv-space-3: 0.75rem;
+  --fv-space-4: 1rem;
+  --fv-space-5: 1.5rem;
+  --fv-space-6: 2rem;
+  --fv-space-7: 3rem;
+
+  // ─── Type scale ───────────────────────────────────────────────
+  // Eight steps: seven interface sizes plus one display size used only by
+  // the auth hero. Consolidates roughly thirty ad-hoc rem values, fourteen
+  // of which sat between 0.68rem and 0.95rem where the differences were
+  // too small to read as hierarchy.
+  --fv-text-2xs: 0.6875rem;  // 11px — uppercase eyebrows and field labels
+  --fv-text-xs: 0.75rem;     // 12px — captions, metadata, table headers
+  --fv-text-sm: 0.8125rem;   // 13px — secondary body
+  --fv-text-base: 0.875rem;  // 14px — body copy, inputs, list rows
+  --fv-text-md: 1rem;        // 16px — card titles, emphasis
+  --fv-text-lg: 1.125rem;    // 18px — section and page titles
+  --fv-text-xl: 1.375rem;    // 22px — page headings, KPI values
+  --fv-text-display: 2.5rem; // 40px — auth hero only
+
+  // Poppins is self-hosted at 300/400/500/600/700 only. Nothing may ask
+  // for 800: the browser would either snap to 700 or synthesise a smeared
+  // faux bold.
+  --fv-weight-regular: 400;
+  --fv-weight-medium: 500;
+  --fv-weight-semibold: 600;
+  --fv-weight-bold: 700;
+
+  // ─── Layout ───────────────────────────────────────────────────
+  // Caps the main content column so tables and totals rows do not stretch
+  // to the full width of an ultrawide display.
+  --fv-content-max: 1120px;
+
+  // ─── Motion ───────────────────────────────────────────────────
+  --fv-duration-fast: 120ms;
+  --fv-duration: 180ms;
+  --fv-ease: cubic-bezier(0.2, 0, 0.2, 1);
 }
 
 // ─── Dark mode ────────────────────────────────────────────────────
-@media (prefers-color-scheme: dark) {
-  :root {
-    --ion-color-primary: #14b8a6;
-    --ion-color-primary-rgb: 20, 184, 166;
-    --ion-color-primary-shade: #0f9e8e;
-    --ion-color-primary-tint: #2ec4b3;
+//
+// Keyed to `.ion-palette-dark`, which AppComponent toggles, rather than to
+// `@media (prefers-color-scheme: dark)`.
+//
+// These tokens previously lived behind the media query, so they followed the
+// operating system while every other dark token followed the in-app switch.
+// Two of the four combinations were wrong as a result:
+//
+//   OS dark + app light  — white surfaces kept the dark tint values, so
+//                          --fv-teal-tint (#042f2e) and --fv-success-bg
+//                          (#052e16) rendered as near-black tiles and badges
+//                          on white cards across the dashboard and lists.
+//   OS light + app dark  — dark surfaces never received the lighter teal, so
+//                          the primary accent stayed #0f766e on #111111.
+//
+// Moving the selector (rather than deleting the block) keeps the intended
+// dark teal while making the user's explicit choice authoritative.
+.ion-palette-dark {
+  --ion-color-primary: #14b8a6;
+  --ion-color-primary-rgb: 20, 184, 166;
+  --ion-color-primary-shade: #0f9e8e;
+  --ion-color-primary-tint: #2ec4b3;
 
-    --fv-teal-tint: #042f2e;
-    --fv-teal-text: #5eead4;
+  --fv-teal-tint: #042f2e;
+  --fv-teal-text: #5eead4;
 
-    --fv-success-bg: #052e16;
-    --fv-success-text: #4ade80;
-    --fv-warning-bg: #422006;
-    --fv-warning-text: #fbbf24;
-    --fv-danger-bg: #450a0a;
-    --fv-danger-text: #f87171;
-    --fv-info-bg: #1e3a5f;
-    --fv-info-text: #93c5fd;
-    --fv-medium-bg: #1f2937;
-    --fv-medium-text: #9ca3af;
-  }
+  --fv-success-bg: #052e16;
+  --fv-success-text: #4ade80;
+  --fv-warning-bg: #422006;
+  --fv-warning-text: #fbbf24;
+  --fv-danger-bg: #450a0a;
+  --fv-danger-text: #f87171;
+  --fv-info-bg: #1e3a5f;
+  --fv-info-text: #93c5fd;
+  --fv-medium-bg: #1f2937;
+  --fv-medium-text: #9ca3af;
+
+  --fv-surface: #111111;
+  --fv-surface-raised: #1e1e1e;
+  --fv-surface-subtle: #1e1e1e;
 }
 /*
  * Edge-to-edge safe areas (Android 15 / API 35).
