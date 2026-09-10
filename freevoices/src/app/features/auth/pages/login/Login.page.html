@@ -65,7 +65,7 @@
             <span *ngIf="isLoading">Signing in...</span>
           </ion-button>
 
-          <ng-container *ngIf="showGoogleWebButton || showGoogleNativeButton">
+          <ng-container *ngIf="(showGoogleWebButton || showGoogleNativeButton) && !googleUnavailable">
             <div class="auth-divider"><span>or</span></div>
 
             <!-- Web: Google renders its own button in here. Their branding

@@ -20,11 +20,6 @@ ion-content {
 :host-context(.ion-palette-dark) .auth-left-panel::after { background: #14b8a6; opacity: 0.12; }
 
 .auth-brand { display: flex; align-items: center; gap: 10px; position: relative; z-index: 1; }
-.auth-brand-icon {
-  width: 40px; height: 40px; border-radius: 10px; background: rgba(255,255,255,0.15);
-  display: flex; align-items: center; justify-content: center; flex-shrink: 0;
-  ion-icon { font-size: 22px; color: white; }
-}
 .auth-brand-name { font-size: 1.1rem; font-weight: 700; color: white; letter-spacing: -0.01em; }
 .auth-hero { position: relative; z-index: 1; }
 .auth-eyebrow { font-size: 0.68rem; font-weight: 700; letter-spacing: 0.12em; text-transform: uppercase; color: rgba(255,255,255,0.6); margin: 0 0 0.75rem; }
@@ -34,27 +29,31 @@ ion-content {
 :host-context(.ion-palette-dark) .auth-headline-accent { color: #14b8a6; }
 .auth-hero-sub { font-size: 0.875rem; line-height: 1.65; color: rgba(255,255,255,0.65); max-width: 360px; margin: 0; }
 :host-context(.ion-palette-dark) .auth-hero-sub { color: #94a3b8; }
-.auth-feature-list {
-  list-style: none; padding: 0; margin: 0; position: relative; z-index: 1;
-  li { display: flex; align-items: center; gap: 10px; font-size: 0.82rem; color: rgba(255,255,255,0.65); margin-bottom: 8px; &::before { display: none; } }
-}
-:host-context(.ion-palette-dark) .auth-feature-list li { color: #94a3b8; }
-.auth-feat-dot { width: 5px; height: 5px; border-radius: 50%; background: white; flex-shrink: 0; }
-:host-context(.ion-palette-dark) .auth-feat-dot { background: #14b8a6; }
 .auth-copyright { font-size: 0.7rem; color: rgba(255,255,255,0.35); margin: 0; position: relative; z-index: 1; }
 
+/*
+ * Wider than the sign-in card and shorter than the full registration form,
+ * so this step gets its own measure rather than borrowing either. Previously
+ * this block and .auth-form-card were each declared twice in this file, the
+ * first copied from the sign-in page and then overridden at the bottom.
+ */
 .auth-right-panel {
-  width: 420px; display: flex; align-items: center; justify-content: center;
-  padding: 2rem 3rem; background: #ffffff;
-  @media (max-width: 768px) { width: 100%; padding: 2.5rem 1.25rem; align-items: flex-start; }
+  width: 480px;
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  padding: 2.5rem 3rem;
+  overflow-y: auto;
+  background: #ffffff;
+
+  @media (max-width: 768px) { width: 100%; padding: 2.5rem 1.25rem; }
 }
 :host-context(.ion-palette-dark) .auth-right-panel { background: #111111; }
 
-.auth-form-card { width: 100%; max-width: 340px; @media (max-width: 768px) { max-width: 100%; } }
+.auth-form-card { width: 100%; max-width: 420px; @media (max-width: 768px) { max-width: 100%; } }
 .auth-mobile-brand {
   display: none; align-items: center; gap: 8px; margin-bottom: 2rem;
   @media (max-width: 768px) { display: flex; }
-  .auth-brand-icon-sm { width: 32px; height: 32px; border-radius: 8px; background: var(--fv-teal-tint); display: flex; align-items: center; justify-content: center; ion-icon { font-size: 18px; color: var(--fv-teal-text); } }
   .auth-brand-name-dark { font-size: 1rem; font-weight: 700; color: var(--ion-text-color); letter-spacing: -0.01em; }
 }
 .auth-form-title { font-size: 1.4rem; font-weight: 700; color: var(--ion-text-color); margin: 0 0 4px; letter-spacing: -0.01em; }
@@ -80,7 +79,6 @@ ion-content {
 .auth-field-error { margin: 4px 0 0; font-size: 0.75rem; color: var(--ion-color-danger); }
 .auth-field-hint { margin: 4px 0 0; font-size: 0.75rem; color: var(--ion-color-medium); }
 .auth-error-banner { background: var(--fv-danger-bg); color: var(--fv-danger-text); border-radius: 10px; padding: 10px 14px; font-size: 0.82rem; margin-bottom: 1rem; font-weight: 500; }
-.auth-success-banner { background: var(--fv-success-bg); color: var(--fv-success-text); border-radius: 10px; padding: 10px 14px; font-size: 0.82rem; margin-bottom: 1rem; font-weight: 500; }
 .auth-submit-btn {
   --background: #0f766e; --background-activated: #0d6860; --background-hover: #0d6860;
   --border-radius: 10px; --color: white; --box-shadow: none;
@@ -95,15 +93,4 @@ ion-content {
 :host-context(.ion-palette-dark) .auth-links a { color: #14b8a6; }
 .auth-section-title { font-size: 0.72rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.08em; color: var(--fv-teal-text); background: var(--fv-teal-tint); padding: 6px 10px; border-radius: 6px; margin: 1.25rem 0 0.75rem; }
 
-/* Taller than the sign-in card and shorter than the full register form, so it
-   gets its own width rather than borrowing either. */
-.auth-right-panel {
-  width: 480px;
-  align-items: flex-start;
-  overflow-y: auto;
-  padding-top: 2.5rem;
-  padding-bottom: 2.5rem;
-  @media (max-width: 768px) { width: 100%; }
-}
-.auth-form-card { max-width: 420px; @media (max-width: 768px) { max-width: 100%; } }
 .auth-links-legal { margin-top: 0.75rem; opacity: 0.75; }

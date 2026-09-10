@@ -1,6 +1,6 @@
 import { Component, ElementRef, OnInit, ViewChild, ChangeDetectorRef, AfterViewInit } from '@angular/core';
 import { FormBuilder, FormGroup, Validators, ReactiveFormsModule } from '@angular/forms';
-import { Router, RouterLink } from '@angular/router';
+import { ActivatedRoute, Router, RouterLink } from '@angular/router';
 import { IonContent, IonButton, IonInput, IonSpinner, IonIcon } from '@ionic/angular/standalone';
 import { AuthService } from '../../../core/auth/services/auth.service';
 import { CommonModule } from '@angular/common';
@@ -30,11 +30,19 @@ export class LoginPage implements OnInit, AfterViewInit {
   isMobile: boolean;
   captchaInitialized = false;
   isDarkMode = false;
+  /**
+   * Set when Google's script cannot be reached — a blocked request, an
+   * offline device, or a region where accounts.google.com is unavailable.
+   * The template uses it to drop the "or" rule and the empty slot the widget
+   * would have filled, rather than leaving a divider pointing at nothing.
+   */
+  googleUnavailable = false;
 
   constructor(
     private fb: FormBuilder,
     private authService: AuthService,
     private router: Router,
+    private route: ActivatedRoute,
     private captchaService: CaptchaService,
     private googleAuth: GoogleAuthService,
     private platform: Platform,
@@ -46,6 +54,7 @@ export class LoginPage implements OnInit, AfterViewInit {
     });
     this.isMobile = this.platform.is('ios') || this.platform.is('android');
     addIcons({ documentTextOutline, sunnyOutline, moonOutline });
+
 
     const saved = localStorage.getItem('fv-theme');
     if (saved) {
@@ -69,9 +78,39 @@ export class LoginPage implements OnInit, AfterViewInit {
     this.isDarkMode = !this.isDarkMode;
     localStorage.setItem('fv-theme', this.isDarkMode ? 'dark' : 'light');
     this.applyTheme();
+    // Google's widget is an iframe it renders itself, with the theme baked in
+    // at draw time, so it has to be redrawn to follow the switch.
+    if (this.showGoogleWebButton && this.googleButtonElement && !this.googleUnavailable) {
+      this.googleAuth.mountButton(this.googleButtonElement.nativeElement);
+    }
   }
 
   async ngOnInit() {
+    /*
+     * Surface the reason google-complete sent the user back here.
+     *
+     * That page bounces to sign-in when its Google token has gone (a refresh,
+     * or the page opened directly). It passed the reason along but nothing
+     * read it, so the user landed on a bare form with no explanation of being
+     * dropped mid-signup.
+     *
+     * A query parameter, read through the observable rather than the snapshot:
+     * Ionic's router outlet keeps page components alive, so the constructor
+     * does not run again on return and a snapshot read taken on entry is
+     * stale. The observable emits on every change.
+     *
+     * The message is assigned unconditionally so that a message shown on a
+     * previous visit is cleared when the user next arrives at a clean /login.
+     * Query params only change on navigation, never on submit, so this cannot
+     * wipe an error the user has just triggered.
+     */
+    this.route.queryParamMap.subscribe(params => {
+      this.errorMessage = params.get('reason') === 'google-expired'
+        ? 'Your Google sign-in expired. Please try again.'
+        : '';
+      this.cdr.detectChanges();
+    });
+
     if (!this.isMobile && !environment.bypassCaptcha) {
       try { await this.captchaService.loadScript(); }
       catch (error) {
@@ -103,6 +142,8 @@ export class LoginPage implements OnInit, AfterViewInit {
         // A blocked or failed GIS script must not take the password form down
         // with it — that is still a perfectly good way to sign in.
         console.error('Google sign-in unavailable:', error);
+        this.googleUnavailable = true;
+        this.cdr.detectChanges();
       }
     }
   }
