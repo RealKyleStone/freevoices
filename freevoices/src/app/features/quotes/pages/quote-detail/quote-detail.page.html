@@ -3,10 +3,10 @@
     <ion-buttons slot="start">
       <ion-back-button defaultHref="/quotes"></ion-back-button>
     </ion-buttons>
-    <ion-title>{{ quote?.document_number || 'Quote' }}</ion-title>
     <ion-buttons slot="end">
-      <ion-button *ngIf="canEdit" aria-label="Edit quote" [routerLink]="['/quotes', quoteId, 'edit']">
-        <ion-icon slot="icon-only" name="create-outline"></ion-icon>
+      <ion-button *ngIf="canEdit" fill="clear" [routerLink]="['/quotes', quoteId, 'edit']">
+        <ion-icon slot="start" name="create-outline"></ion-icon>
+        Edit
       </ion-button>
     </ion-buttons>
   </ion-toolbar>
@@ -20,142 +20,144 @@
   <ng-container *ngIf="!isLoading && quote">
     <div class="detail-container">
 
-      <!-- Header -->
-      <ion-card>
-        <ion-card-content>
-          <div class="invoice-header">
-            <div class="header-left">
-              <h2>{{ quote.document_number }}</h2>
-              <p class="customer">{{ quote.customer_name }}</p>
-              <p class="sub" *ngIf="quote.customer_billing_address">{{ quote.customer_billing_address }}</p>
+      <!-- Identity: what this is, who it is for, where it stands. -->
+      <header class="page-head">
+        <div class="page-head-text">
+          <h1>{{ quote.document_number }}</h1>
+          <p>{{ quote.customer_name }}</p>
+        </div>
+        <span class="doc-status" [ngClass]="'badge-' + getStatusColor(quote.status)">
+          {{ quote.status | titlecase }}
+        </span>
+      </header>
+
+      <!-- Key figures and dates as one compact strip. -->
+      <dl class="detail-meta">
+        <div class="meta-cell">
+          <dt>Issued</dt>
+          <dd>{{ quote.issue_date | date:'d MMM y' }}</dd>
+        </div>
+        <div class="meta-cell" *ngIf="quote.valid_until">
+          <dt>Valid until</dt>
+          <dd>{{ quote.valid_until | date:'d MMM y' }}</dd>
+        </div>
+        <div class="meta-cell" *ngIf="quote.payment_terms != null">
+          <dt>Payment terms</dt>
+          <dd>{{ quote.payment_terms }} days</dd>
+        </div>
+        <div class="meta-cell meta-cell-total">
+          <dt>Total</dt>
+          <dd>R {{ quote.total | number:'1.2-2' }}</dd>
+        </div>
+      </dl>
+
+      <div class="detail-grid">
+
+        <!-- The document itself. -->
+        <main class="detail-main">
+
+          <section>
+            <div class="section-head">
+              <h2 class="fv-section-label">Line items</h2>
             </div>
-            <span class="status-badge" [ngClass]="'badge-' + getStatusColor(quote.status)">{{ quote.status | titlecase }}</span>
-          </div>
-        </ion-card-content>
-      </ion-card>
-
-      <!-- Dates -->
-      <ion-card>
-        <ion-card-content class="ion-no-padding">
-          <ion-list lines="full">
-            <ion-item>
-              <div slot="start" class="detail-icon-wrap">
-                <ion-icon name="calendar-outline"></ion-icon>
+            <div class="panel panel-pad">
+              <div class="items-table">
+                <div class="items-header">
+                  <span class="desc">Description</span>
+                  <span class="qty">Qty</span>
+                  <span class="price">Price</span>
+                  <span class="amount">Total</span>
+                </div>
+                <div class="item-row" *ngFor="let item of quote.items">
+                  <span class="desc">
+                    {{ item.description }}
+                    <small *ngIf="item.vat_rate > 0" class="vat-note">+{{ item.vat_rate }}% VAT</small>
+                  </span>
+                  <span class="qty">{{ item.quantity }}</span>
+                  <span class="price">R {{ item.unit_price | number:'1.2-2' }}</span>
+                  <span class="amount">R {{ item.total | number:'1.2-2' }}</span>
+                </div>
               </div>
-              <ion-label>
-                <p class="detail-label">Issued</p>
-                <h3>{{ quote.issue_date | date:'mediumDate' }}</h3>
-              </ion-label>
-            </ion-item>
-            <ion-item *ngIf="quote.valid_until">
-              <div slot="start" class="detail-icon-wrap">
-                <ion-icon name="timer-outline"></ion-icon>
-              </div>
-              <ion-label>
-                <p class="detail-label">Valid until</p>
-                <h3>{{ quote.valid_until | date:'mediumDate' }}</h3>
-              </ion-label>
-            </ion-item>
-            <ion-item *ngIf="quote.payment_terms != null" lines="none">
-              <div slot="start" class="detail-icon-wrap">
-                <ion-icon name="time-outline"></ion-icon>
-              </div>
-              <ion-label>
-                <p class="detail-label">Payment terms</p>
-                <h3>{{ quote.payment_terms }} days</h3>
-              </ion-label>
-            </ion-item>
-          </ion-list>
-        </ion-card-content>
-      </ion-card>
-
-      <!-- Line items -->
-      <ion-card>
-        <ion-card-header><ion-card-title>Line items</ion-card-title></ion-card-header>
-        <ion-card-content>
-          <div class="items-table">
-            <div class="items-header">
-              <span class="desc">Description</span>
-              <span class="qty">Qty</span>
-              <span class="price">Price</span>
-              <span class="amount">Total</span>
-            </div>
-            <div class="item-row" *ngFor="let item of quote.items">
-              <span class="desc">
-                {{ item.description }}
-                <small *ngIf="item.vat_rate > 0" class="vat-note">+{{ item.vat_rate }}% VAT</small>
-              </span>
-              <span class="qty">{{ item.quantity }}</span>
-              <span class="price">R {{ item.unit_price | number:'1.2-2' }}</span>
-              <span class="amount">R {{ item.total | number:'1.2-2' }}</span>
-            </div>
-          </div>
-          <div class="totals">
-            <div class="totals-row"><span>Subtotal</span><span>R {{ quote.subtotal | number:'1.2-2' }}</span></div>
-            <div class="totals-row"><span>VAT</span><span>R {{ quote.vat_amount | number:'1.2-2' }}</span></div>
-            <div class="totals-row total-row"><strong>Total</strong><strong>R {{ quote.total | number:'1.2-2' }}</strong></div>
-          </div>
-        </ion-card-content>
-      </ion-card>
-
-      <!-- Notes -->
-      <ion-card *ngIf="quote.notes || quote.terms_conditions">
-        <ion-card-content>
-          <div *ngIf="quote.notes">
-            <p class="note-label">Notes</p>
-            <p>{{ quote.notes }}</p>
-          </div>
-          <div *ngIf="quote.terms_conditions" [class.mt]="quote.notes">
-            <p class="note-label">Terms & conditions</p>
-            <p>{{ quote.terms_conditions }}</p>
-          </div>
-        </ion-card-content>
-      </ion-card>
-
-      <!-- Actions -->
-      <ion-card>
-        <ion-card-content>
-          <!-- Solid on whichever step comes next for this quote: send it while
-               it is a draft, then convert it once the customer has it. -->
-          <div class="actions">
-            <ion-button *ngIf="canSend" expand="block" [fill]="quote.status === 'DRAFT' ? 'solid' : 'outline'" color="primary" (click)="confirmSend()">
-              <ion-icon slot="start" name="send-outline"></ion-icon>
-              Mark as sent
-            </ion-button>
-            <ion-button *ngIf="canConvert" expand="block" [fill]="quote.status === 'DRAFT' ? 'outline' : 'solid'" color="primary" (click)="confirmConvert()" [disabled]="isConverting">
-              <ion-spinner *ngIf="isConverting" slot="start" name="crescent"></ion-spinner>
-              <ion-icon *ngIf="!isConverting" slot="start" name="document-text-outline"></ion-icon>
-              Convert to invoice
-            </ion-button>
-          </div>
-
-          <div class="actions actions-secondary">
-            <ion-button expand="block" fill="outline" color="medium" (click)="downloadPdf()" [disabled]="isDownloading">
-              <ion-spinner *ngIf="isDownloading" slot="start" name="crescent"></ion-spinner>
-              <ion-icon *ngIf="!isDownloading" slot="start" name="download-outline"></ion-icon>
-              {{ isDownloading ? 'Generating...' : 'Download quote' }}
-            </ion-button>
-          </div>
-        </ion-card-content>
-      </ion-card>
-
-      <!-- Timeline -->
-      <ion-card *ngIf="quote.tracking && quote.tracking.length > 0">
-        <ion-card-header><ion-card-title>History</ion-card-title></ion-card-header>
-        <ion-card-content>
-          <div class="timeline">
-            <div class="timeline-item" *ngFor="let event of quote.tracking">
-              <div class="timeline-icon">
-                <ion-icon [name]="getTrackingIcon(event.event_type)"></ion-icon>
-              </div>
-              <div class="timeline-content">
-                <p class="event-type">{{ event.event_type | titlecase }}</p>
-                <p class="event-date">{{ event.event_date | date:'medium' }}</p>
+              <div class="totals">
+                <div class="totals-row"><span>Subtotal</span><span>R {{ quote.subtotal | number:'1.2-2' }}</span></div>
+                <div class="totals-row"><span>VAT</span><span>R {{ quote.vat_amount | number:'1.2-2' }}</span></div>
+                <div class="totals-row total-row"><strong>Total</strong><strong>R {{ quote.total | number:'1.2-2' }}</strong></div>
               </div>
             </div>
-          </div>
-        </ion-card-content>
-      </ion-card>
+          </section>
+
+          <section *ngIf="quote.notes || quote.terms_conditions">
+            <div class="section-head">
+              <h2 class="fv-section-label">Notes and terms</h2>
+            </div>
+            <div class="panel panel-pad notes-panel">
+              <div *ngIf="quote.notes">
+                <p class="note-label">Notes</p>
+                <p>{{ quote.notes }}</p>
+              </div>
+              <div *ngIf="quote.terms_conditions" [class.mt]="quote.notes">
+                <p class="note-label">Terms &amp; conditions</p>
+                <p>{{ quote.terms_conditions }}</p>
+              </div>
+            </div>
+          </section>
+
+        </main>
+
+        <!-- What you do with it, and what has happened to it. -->
+        <aside class="detail-rail">
+
+          <section>
+            <div class="section-head">
+              <h2 class="fv-section-label">Actions</h2>
+            </div>
+            <div class="panel panel-pad">
+              <!-- Solid on whichever step comes next for this quote: send it
+                   while it is a draft, then convert it once the customer has
+                   it. -->
+              <div class="actions">
+                <ion-button *ngIf="canSend" expand="block" [fill]="quote.status === 'DRAFT' ? 'solid' : 'outline'" color="primary" (click)="confirmSend()">
+                  <ion-icon slot="start" name="send-outline"></ion-icon>
+                  Mark as sent
+                </ion-button>
+                <ion-button *ngIf="canConvert" expand="block" [fill]="quote.status === 'DRAFT' ? 'outline' : 'solid'" color="primary" (click)="confirmConvert()" [disabled]="isConverting">
+                  <ion-spinner *ngIf="isConverting" slot="start" name="crescent"></ion-spinner>
+                  <ion-icon *ngIf="!isConverting" slot="start" name="document-text-outline"></ion-icon>
+                  Convert to invoice
+                </ion-button>
+              </div>
+
+              <div class="actions actions-secondary">
+                <ion-button expand="block" fill="outline" color="medium" (click)="downloadPdf()" [disabled]="isDownloading">
+                  <ion-spinner *ngIf="isDownloading" slot="start" name="crescent"></ion-spinner>
+                  <ion-icon *ngIf="!isDownloading" slot="start" name="download-outline"></ion-icon>
+                  {{ isDownloading ? 'Generating...' : 'Download quote' }}
+                </ion-button>
+              </div>
+            </div>
+          </section>
+
+          <section *ngIf="quote.tracking && quote.tracking.length > 0">
+            <div class="section-head">
+              <h2 class="fv-section-label">History</h2>
+            </div>
+            <div class="panel panel-pad">
+              <div class="timeline">
+                <div class="timeline-item" *ngFor="let event of quote.tracking">
+                  <div class="timeline-icon">
+                    <ion-icon [name]="getTrackingIcon(event.event_type)" aria-hidden="true"></ion-icon>
+                  </div>
+                  <div class="timeline-content">
+                    <p class="event-type">{{ event.event_type | titlecase }}</p>
+                    <p class="event-date">{{ event.event_date | date:'d MMM y, HH:mm' }}</p>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </section>
+
+        </aside>
+      </div>
 
     </div>
   </ng-container>
