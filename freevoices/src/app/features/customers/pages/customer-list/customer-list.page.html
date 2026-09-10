@@ -1,55 +1,60 @@
 <!-- src/app/features/customers/pages/customer-list/customer-list.page.html -->
 <ion-header class="ion-no-border">
   <ion-toolbar>
-    <ion-title>Customers</ion-title>
+    <ion-buttons slot="start" class="ion-hide-md-up">
+      <ion-menu-button></ion-menu-button>
+    </ion-buttons>
   </ion-toolbar>
 </ion-header>
 
 <ion-content>
   <div class="list-container">
 
-    <!-- Search bar -->
-    <div class="search-wrap">
+    <header class="page-head">
+      <div class="page-head-text">
+        <h1>Customers</h1>
+        <p *ngIf="!isLoading">{{ total }} customer{{ total === 1 ? '' : 's' }}</p>
+      </div>
+      <div class="page-head-actions">
+        <ion-button color="primary" routerLink="/customers/new">
+          <ion-icon name="add-outline" slot="start"></ion-icon>
+          Add customer
+        </ion-button>
+      </div>
+    </header>
+
+    <div class="list-toolbar">
       <ion-searchbar
         [(ngModel)]="searchTerm"
         (ionInput)="onSearchChange()"
         placeholder="Search by name or email"
-        debounce="0"
-        class="custom-searchbar">
+        debounce="0">
       </ion-searchbar>
     </div>
 
-    <!-- Results count -->
-    <p class="results-count" *ngIf="!isLoading && customers.length > 0">
-      {{ total }} customer{{ total === 1 ? '' : 's' }}
-    </p>
-
-    <!-- Customer list -->
-    <div class="customer-list" *ngIf="!isLoading && customers.length > 0">
+    <div class="list-rows" *ngIf="!isLoading && customers.length > 0">
       <ion-item
         *ngFor="let customer of customers"
         [routerLink]="['/customers', customer.id]"
         detail="false"
         button
-        class="customer-item">
+        class="list-row">
 
-        <!-- Avatar with initials -->
-        <div slot="start" class="avatar-circle">
+        <!-- Initials stand in for a mark the customer does not have. -->
+        <div slot="start" class="row-lead row-lead-round" aria-hidden="true">
           {{ customer.name.charAt(0).toUpperCase() }}
         </div>
 
-        <!-- Name, email, phone -->
         <ion-label>
-          <h2 class="customer-name">{{ customer.name }}</h2>
-          <p class="customer-email">{{ customer.email }}</p>
-          <p class="customer-phone" *ngIf="customer.phone">{{ customer.phone }}</p>
+          <h2 class="row-title">{{ customer.name }}</h2>
+          <p class="row-meta">
+            {{ customer.email }}<ng-container *ngIf="customer.phone"> · {{ customer.phone }}</ng-container>
+          </p>
         </ion-label>
 
-        <!-- Edit + Delete actions -->
         <div slot="end" class="row-actions">
           <ion-button
             fill="clear"
-            class="action-btn"
             [routerLink]="['/customers', customer.id, 'edit']"
             [attr.aria-label]="'Edit ' + customer.name"
             (click)="$event.stopPropagation()">
@@ -58,7 +63,6 @@
           <ion-button
             fill="clear"
             color="danger"
-            class="action-btn"
             [attr.aria-label]="'Delete ' + customer.name"
             (click)="$event.stopPropagation(); confirmDelete(customer)">
             <ion-icon slot="icon-only" name="trash-outline"></ion-icon>
@@ -68,33 +72,28 @@
       </ion-item>
     </div>
 
-    <!-- Empty state -->
     <div class="empty-state" *ngIf="!isLoading && customers.length === 0">
       <div class="empty-icon-wrap">
-        <ion-icon name="people-outline"></ion-icon>
+        <ion-icon name="people-outline" aria-hidden="true"></ion-icon>
       </div>
-      <h3 *ngIf="searchTerm">No results found</h3>
-      <h3 *ngIf="!searchTerm">No customers yet</h3>
-      <p *ngIf="searchTerm">No customers match "{{ searchTerm }}"</p>
-      <p *ngIf="!searchTerm">Add your first customer to get started.</p>
+      <h3>{{ searchTerm ? 'No results found' : 'No customers yet' }}</h3>
+      <p>{{ searchTerm ? 'No customers match "' + searchTerm + '".' : 'Add your first customer to get started.' }}</p>
       <ion-button *ngIf="!searchTerm" routerLink="/customers/new" color="primary">
         <ion-icon name="add-outline" slot="start"></ion-icon>
         Add customer
       </ion-button>
     </div>
 
-    <!-- Loading skeletons -->
-    <div class="customer-list" *ngIf="isLoading">
-      <ion-item class="customer-item" *ngFor="let _ of [1,2,3,4,5]">
-        <ion-skeleton-text animated slot="start" class="skeleton-avatar"></ion-skeleton-text>
+    <div class="list-rows" *ngIf="isLoading">
+      <ion-item class="list-row" *ngFor="let _ of [1,2,3,4,5]">
+        <ion-skeleton-text animated slot="start" class="skeleton-lead"></ion-skeleton-text>
         <ion-label>
-          <ion-skeleton-text animated class="skeleton-name"></ion-skeleton-text>
-          <ion-skeleton-text animated class="skeleton-email"></ion-skeleton-text>
+          <ion-skeleton-text animated class="skeleton-title"></ion-skeleton-text>
+          <ion-skeleton-text animated class="skeleton-meta"></ion-skeleton-text>
         </ion-label>
       </ion-item>
     </div>
 
-    <!-- Pagination -->
     <div class="pagination" *ngIf="!isLoading && totalPages > 1">
       <ion-button fill="clear" aria-label="Previous page" [disabled]="page === 1" (click)="prevPage()">
         <ion-icon slot="icon-only" name="chevron-back-outline"></ion-icon>
@@ -107,9 +106,8 @@
 
   </div>
 
-  <!-- FAB: Add customer -->
   <ion-fab vertical="bottom" horizontal="end" slot="fixed">
-    <ion-fab-button routerLink="/customers/new" color="primary">
+    <ion-fab-button routerLink="/customers/new" color="primary" aria-label="Add customer">
       <ion-icon name="add"></ion-icon>
     </ion-fab-button>
   </ion-fab>
