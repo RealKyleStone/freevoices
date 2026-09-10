@@ -223,7 +223,7 @@ ion-menu {
       --padding-start: 1rem;
       --border-radius: 8px;
       margin-bottom: 0.5rem;
-      transition: background 0.15s ease;
+      transition: background var(--fv-duration-fast) var(--fv-ease);
 
       &:hover:not(.selected) {
         --background: rgba(15, 118, 110, 0.08);
@@ -282,6 +282,28 @@ ion-input, ion-textarea {
   --padding-start: 16px;
   --padding-end: 16px;
   --border-radius: var(--fv-radius-md);
+}
+
+/*
+ * Interactive list rows.
+ *
+ * A row is the main way into a customer, invoice, quote or product, and all
+ * four lists already set the same hover tint — but only the customer list
+ * transitioned it, and none of them gave any pressed feedback, so on touch a
+ * tap produced nothing until the next page arrived.
+ *
+ * One rule for all four, on the shared motion tokens. Background only: rows
+ * do not lift, scale or shift, which would be noise in a list you scan.
+ *
+ * The class names differ because the invoice, quote and product lists all
+ * reuse .invoice-item; left as-is rather than renamed, to keep this to a
+ * styling change.
+ */
+ion-item.customer-item,
+ion-item.invoice-item {
+  --background-activated: rgba(var(--ion-color-primary-rgb), 0.1);
+  --background-focused: rgba(var(--ion-color-primary-rgb), 0.08);
+  --transition: background var(--fv-duration-fast) var(--fv-ease);
 }
 
 /*
