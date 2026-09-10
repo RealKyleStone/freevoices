@@ -120,49 +120,61 @@
       <!-- Actions -->
       <ion-card>
         <ion-card-content>
+          <!-- The action that moves this invoice forward, given its status. -->
           <div class="actions">
+            <ion-button *ngIf="invoice.status === 'PAID'" expand="block" fill="solid" color="primary" (click)="confirmSendReceipt()" [disabled]="isSendingReceipt">
+              <ion-spinner *ngIf="isSendingReceipt" slot="start" name="crescent"></ion-spinner>
+              <ion-icon *ngIf="!isSendingReceipt" slot="start" name="mail-outline"></ion-icon>
+              {{ isSendingReceipt ? 'Sending...' : 'Email receipt to customer' }}
+            </ion-button>
+
+            <!-- Solid while the invoice still needs sending, outline once it is
+                 out and the next step is getting paid. -->
+            <ion-button *ngIf="canSend" expand="block" [fill]="invoice.status === 'DRAFT' ? 'solid' : 'outline'" color="primary" (click)="confirmSend()" [disabled]="isSending">
+              <ion-spinner *ngIf="isSending" slot="start" name="crescent"></ion-spinner>
+              <ion-icon *ngIf="!isSending" slot="start" name="send-outline"></ion-icon>
+              {{ isSending ? 'Sending...' : 'Email to customer' }}
+            </ion-button>
+
+            <ion-button *ngIf="canMarkPaid" expand="block" [fill]="invoice.status === 'DRAFT' ? 'outline' : 'solid'" color="primary" (click)="togglePaymentForm()">
+              <ion-icon slot="start" name="cash-outline"></ion-icon>
+              {{ showPaymentForm ? 'Cancel' : 'Record payment' }}
+            </ion-button>
+          </div>
+
+          <!-- Documents and sharing: always available, never the main event. -->
+          <div class="actions actions-secondary">
             <ion-button expand="block" fill="outline" color="medium" (click)="confirmDownload()" [disabled]="isDownloading">
               <ion-spinner *ngIf="isDownloading" slot="start" name="crescent"></ion-spinner>
               <ion-icon *ngIf="!isDownloading" slot="start" name="download-outline"></ion-icon>
               {{ isDownloading ? 'Generating...' : 'Download PDF' }}
             </ion-button>
 
-            <ion-button *ngIf="invoice.status === 'PAID'" expand="block" fill="outline" color="success" (click)="downloadReceipt()" [disabled]="isDownloadingReceipt">
+            <ion-button *ngIf="invoice.status === 'PAID'" expand="block" fill="outline" color="medium" (click)="downloadReceipt()" [disabled]="isDownloadingReceipt">
               <ion-spinner *ngIf="isDownloadingReceipt" slot="start" name="crescent"></ion-spinner>
               <ion-icon *ngIf="!isDownloadingReceipt" slot="start" name="checkmark-circle-outline"></ion-icon>
               {{ isDownloadingReceipt ? 'Generating...' : 'Download receipt' }}
             </ion-button>
 
-            <ion-button *ngIf="invoice.status === 'PAID'" expand="block" fill="outline" color="success" (click)="confirmSendReceipt()" [disabled]="isSendingReceipt">
-              <ion-spinner *ngIf="isSendingReceipt" slot="start" name="crescent"></ion-spinner>
-              <ion-icon *ngIf="!isSendingReceipt" slot="start" name="mail-outline"></ion-icon>
-              {{ isSendingReceipt ? 'Sending...' : 'Email receipt to customer' }}
-            </ion-button>
-
-            <ion-button *ngIf="canSend" expand="block" fill="outline" (click)="confirmSend()" [disabled]="isSending">
-              <ion-spinner *ngIf="isSending" slot="start" name="crescent"></ion-spinner>
-              <ion-icon *ngIf="!isSending" slot="start" name="send-outline"></ion-icon>
-              {{ isSending ? 'Sending...' : 'Email to customer' }}
-            </ion-button>
-
-            <ion-button *ngIf="canMarkPaid" expand="block" fill="outline" color="success" (click)="togglePaymentForm()">
-              <ion-icon slot="start" name="cash-outline"></ion-icon>
-              {{ showPaymentForm ? 'Cancel' : 'Record payment' }}
-            </ion-button>
-
-            <ion-button expand="block" fill="outline" color="tertiary" (click)="generateShareLink()" [disabled]="isSharing">
+            <!-- Was the tertiary colour, which this theme never defines, so it
+                 rendered in Ionic's stock indigo on an otherwise teal product. -->
+            <ion-button expand="block" fill="outline" color="medium" (click)="generateShareLink()" [disabled]="isSharing">
               <ion-spinner *ngIf="isSharing" slot="start" name="crescent"></ion-spinner>
               <ion-icon *ngIf="!isSharing" slot="start" name="share-social-outline"></ion-icon>
               {{ isSharing ? 'Generating...' : 'Share with customer' }}
             </ion-button>
+          </div>
 
-            <ion-button expand="block" fill="outline" [color]="invoice.notifications_muted ? 'medium' : 'warning'" (click)="toggleNotificationMute()" [disabled]="isTogglingMute">
+          <!-- Utility toggle and the destructive action, held apart from the
+               things a user does routinely. -->
+          <div class="actions-utility">
+            <ion-button fill="clear" size="small" color="medium" (click)="toggleNotificationMute()" [disabled]="isTogglingMute">
               <ion-spinner *ngIf="isTogglingMute" slot="start" name="crescent"></ion-spinner>
               <ion-icon *ngIf="!isTogglingMute" slot="start" [name]="invoice.notifications_muted ? 'notifications-outline' : 'notifications-off-outline'"></ion-icon>
               {{ isTogglingMute ? 'Updating...' : (invoice.notifications_muted ? 'Enable notifications' : 'Mute notifications') }}
             </ion-button>
 
-            <ion-button *ngIf="canCancel" expand="block" fill="outline" color="danger" (click)="confirmCancel()" [disabled]="isCancelling">
+            <ion-button *ngIf="canCancel" fill="clear" size="small" color="danger" (click)="confirmCancel()" [disabled]="isCancelling">
               <ion-spinner *ngIf="isCancelling" slot="start" name="crescent"></ion-spinner>
               <ion-icon *ngIf="!isCancelling" slot="start" name="ban-outline"></ion-icon>
               {{ isCancelling ? 'Cancelling...' : 'Cancel invoice' }}

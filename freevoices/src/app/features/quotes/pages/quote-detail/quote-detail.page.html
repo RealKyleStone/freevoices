@@ -115,20 +115,25 @@
       <!-- Actions -->
       <ion-card>
         <ion-card-content>
+          <!-- Solid on whichever step comes next for this quote: send it while
+               it is a draft, then convert it once the customer has it. -->
           <div class="actions">
+            <ion-button *ngIf="canSend" expand="block" [fill]="quote.status === 'DRAFT' ? 'solid' : 'outline'" color="primary" (click)="confirmSend()">
+              <ion-icon slot="start" name="send-outline"></ion-icon>
+              Mark as sent
+            </ion-button>
+            <ion-button *ngIf="canConvert" expand="block" [fill]="quote.status === 'DRAFT' ? 'outline' : 'solid'" color="primary" (click)="confirmConvert()" [disabled]="isConverting">
+              <ion-spinner *ngIf="isConverting" slot="start" name="crescent"></ion-spinner>
+              <ion-icon *ngIf="!isConverting" slot="start" name="document-text-outline"></ion-icon>
+              Convert to invoice
+            </ion-button>
+          </div>
+
+          <div class="actions actions-secondary">
             <ion-button expand="block" fill="outline" color="medium" (click)="downloadPdf()" [disabled]="isDownloading">
               <ion-spinner *ngIf="isDownloading" slot="start" name="crescent"></ion-spinner>
               <ion-icon *ngIf="!isDownloading" slot="start" name="download-outline"></ion-icon>
               {{ isDownloading ? 'Generating...' : 'Download quote' }}
-            </ion-button>
-            <ion-button *ngIf="canSend" expand="block" fill="outline" (click)="confirmSend()">
-              <ion-icon slot="start" name="send-outline"></ion-icon>
-              Mark as sent
-            </ion-button>
-            <ion-button *ngIf="canConvert" expand="block" fill="outline" color="success" (click)="confirmConvert()" [disabled]="isConverting">
-              <ion-spinner *ngIf="isConverting" slot="start" name="crescent"></ion-spinner>
-              <ion-icon *ngIf="!isConverting" slot="start" name="document-text-outline"></ion-icon>
-              Convert to invoice
             </ion-button>
           </div>
         </ion-card-content>
