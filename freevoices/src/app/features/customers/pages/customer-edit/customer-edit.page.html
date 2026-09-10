@@ -20,22 +20,22 @@
           <ion-card-title>Contact details</ion-card-title>
         </ion-card-header>
         <ion-card-content>
-          <ion-item [class.ion-invalid]="isInvalid('name')" fill="outline">
-            <ion-label position="floating">Name <ion-text color="danger">*</ion-text></ion-label>
+          <ion-item [class.ion-invalid]="isInvalid('name')">
+            <ion-label position="stacked">Name <ion-text color="danger">*</ion-text></ion-label>
             <ion-input aria-label="Name" formControlName="name" type="text"></ion-input>
             <ion-note slot="error">Name is required (min 2 characters)</ion-note>
           </ion-item>
-          <ion-item [class.ion-invalid]="isInvalid('email')" fill="outline">
-            <ion-label position="floating">Email <ion-text color="danger">*</ion-text></ion-label>
+          <ion-item [class.ion-invalid]="isInvalid('email')">
+            <ion-label position="stacked">Email <ion-text color="danger">*</ion-text></ion-label>
             <ion-input aria-label="Email" formControlName="email" type="email"></ion-input>
             <ion-note slot="error">Valid email is required</ion-note>
           </ion-item>
-          <ion-item fill="outline">
-            <ion-label position="floating">Phone</ion-label>
+          <ion-item>
+            <ion-label position="stacked">Phone</ion-label>
             <ion-input aria-label="Phone" formControlName="phone" type="tel"></ion-input>
           </ion-item>
-          <ion-item fill="outline">
-            <ion-label position="floating">VAT number</ion-label>
+          <ion-item>
+            <ion-label position="stacked">VAT number</ion-label>
             <ion-input aria-label="VAT number" formControlName="vat_number" type="text"></ion-input>
           </ion-item>
         </ion-card-content>
@@ -46,13 +46,13 @@
           <ion-card-title>Addresses</ion-card-title>
         </ion-card-header>
         <ion-card-content>
-          <ion-item [class.ion-invalid]="isInvalid('billing_address')" fill="outline">
-            <ion-label position="floating">Billing address <ion-text color="danger">*</ion-text></ion-label>
+          <ion-item [class.ion-invalid]="isInvalid('billing_address')">
+            <ion-label position="stacked">Billing address <ion-text color="danger">*</ion-text></ion-label>
             <ion-textarea aria-label="Billing address" formControlName="billing_address" rows="3"></ion-textarea>
             <ion-note slot="error">Billing address is required</ion-note>
           </ion-item>
-          <ion-item fill="outline">
-            <ion-label position="floating">Shipping address</ion-label>
+          <ion-item>
+            <ion-label position="stacked">Shipping address</ion-label>
             <ion-textarea aria-label="Shipping address" formControlName="shipping_address" rows="3"></ion-textarea>
           </ion-item>
         </ion-card-content>
@@ -63,12 +63,12 @@
           <ion-card-title>Terms</ion-card-title>
         </ion-card-header>
         <ion-card-content>
-          <ion-item fill="outline">
-            <ion-label position="floating">Payment terms (days)</ion-label>
+          <ion-item>
+            <ion-label position="stacked">Payment terms (days)</ion-label>
             <ion-input aria-label="Payment terms (days)" formControlName="payment_terms" type="number" min="0"></ion-input>
           </ion-item>
-          <ion-item fill="outline">
-            <ion-label position="floating">Notes</ion-label>
+          <ion-item>
+            <ion-label position="stacked">Notes</ion-label>
             <ion-textarea aria-label="Notes" formControlName="notes" rows="3"></ion-textarea>
           </ion-item>
         </ion-card-content>

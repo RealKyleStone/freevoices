@@ -581,6 +581,44 @@ ion-item.ion-focused {
 }
 
 /*
+ * Form fields focus on the field, not on the row.
+ *
+ * A form field is an ion-item holding a stacked label and a control, so the
+ * ring above enclosed the label as well as the input — it marked the pair
+ * rather than the thing being typed into. The ring is drawn on the field
+ * surface instead, which is the filled box the user sees.
+ *
+ * These rules are global rather than in shared/styles/form-page.scss because
+ * .input-wrapper and .textarea-wrapper are created by Ionic at runtime and
+ * carry no Angular scoping attribute, so a component-scoped selector cannot
+ * reach them. item-label-stacked is Ionic's own class and appears only on
+ * this composition, never on a list row.
+ */
+ion-item.item-label-stacked.ion-focused {
+  outline: none;
+}
+
+ion-item ion-input:focus-within .input-wrapper,
+ion-item ion-textarea:focus-within .textarea-wrapper {
+  outline: 2px solid var(--ion-color-primary);
+  outline-offset: 0;
+}
+
+/*
+ * ion-select cannot take focus on its host — it delegates inward, and Ionic
+ * marks the surrounding ion-item instead. So the select is rung from the
+ * item's focused state rather than from its own, which also means the rule
+ * above cannot be relied on to cover it.
+ */
+ion-item.ion-focused ion-select,
+ion-item ion-select.ion-focused,
+ion-item ion-select.select-expanded {
+  outline: 2px solid var(--ion-color-primary);
+  outline-offset: 0;
+  border-radius: var(--fv-radius-md);
+}
+
+/*
  * Minimum touch target.
  *
  * The row edit/delete actions and the dashboard toolbar buttons were 36px,

@@ -188,25 +188,25 @@
               </div>
 
               <div class="payment-form" *ngIf="showPaymentForm" [formGroup]="paymentForm">
-                <ion-item fill="outline">
+                <ion-item>
                   <ion-label position="stacked">Amount <ion-text color="danger">*</ion-text></ion-label>
                   <ion-input aria-label="Amount" formControlName="amount" type="number" min="0.01" step="0.01"></ion-input>
                 </ion-item>
-                <ion-item fill="outline">
+                <ion-item>
                   <ion-label position="stacked">Payment date <ion-text color="danger">*</ion-text></ion-label>
                   <ion-input aria-label="Payment date" formControlName="payment_date" type="date"></ion-input>
                 </ion-item>
-                <ion-item fill="outline">
+                <ion-item>
                   <ion-label position="stacked">Payment method <ion-text color="danger">*</ion-text></ion-label>
                   <ion-select aria-label="Payment method" formControlName="payment_method" interface="popover">
                     <ion-select-option *ngFor="let m of paymentMethods" [value]="m.value">{{ m.label }}</ion-select-option>
                   </ion-select>
                 </ion-item>
-                <ion-item fill="outline">
+                <ion-item>
                   <ion-label position="stacked">Reference</ion-label>
                   <ion-input aria-label="Reference" formControlName="transaction_reference" type="text"></ion-input>
                 </ion-item>
-                <ion-item fill="outline">
+                <ion-item>
                   <ion-label position="stacked">Notes</ion-label>
                   <ion-textarea aria-label="Notes" formControlName="notes" rows="2"></ion-textarea>
                 </ion-item>

@@ -1,0 +1,280 @@
+/*
+ * Shared layout for the create and edit forms.
+ *
+ * Invoices, quotes, customers and products each styled their own fields, so
+ * label size, field spacing and input height differed between forms that
+ * are filled in one after another. All four also used
+ * ion-label position="floating", which does not lift for a control that
+ * shows something of its own while empty — an ion-select with a
+ * placeholder, or an <input type="date"> showing mm/dd/yyyy — so the label
+ * sat directly on top of the field's own text. Every label is stacked now,
+ * which cannot collide, and matches what the settings forms already used.
+ *
+ * Imported with @use, the same way settings-page.scss is.
+ */
+
+.loading-state {
+  display: flex;
+  justify-content: center;
+  padding: var(--fv-space-7);
+}
+
+/* ── Fields ──────────────────────────────────────────────────────── */
+
+/*
+ * One field. Ionic's ion-item is doing the work of a form row here rather
+ * than a list row, so its list chrome is removed and the spacing comes
+ * from the form's own rhythm.
+ */
+ion-item {
+  --background: transparent;
+  --padding-start: 0;
+  --inner-padding-end: 0;
+  --min-height: 0;
+  --border-width: 0;
+  /* The row line lives on ion-item's inner element, which --border-width
+     does not reach, so a 1px rule was still being drawn underneath every
+     filled field. The field has its own edge; it does not need a second one. */
+  --inner-border-width: 0;
+  /* Same for the md focus bar: it is drawn under the item, which is below
+     the label as well as the field, so it marked the wrong thing. The ring
+     further down replaces it. */
+  --highlight-height: 0;
+  /* Field-to-field distance, applied here rather than by each form, so the
+     rhythm is the same on every one of them. */
+  margin: 0 0 var(--fv-space-4);
+
+  &:last-child { margin-bottom: 0; }
+
+  /* The label sits directly above its field at the tight distance, and the
+     field is separated from the next one at block distance. */
+  ion-label[position="stacked"] {
+    margin-bottom: var(--fv-tight-gap);
+    font-size: var(--fv-text-2xs);
+    font-weight: var(--fv-weight-semibold);
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+    color: var(--ion-color-medium);
+    /* Ionic scales stacked labels down; the size above is the intended one. */
+    transform: none;
+    --color: var(--ion-color-medium);
+  }
+
+  ion-input,
+  ion-select,
+  ion-textarea {
+    --background: var(--fv-surface-subtle);
+    --border-radius: var(--fv-radius-md);
+    --padding-start: 12px;
+    --padding-end: 12px;
+    --padding-top: 10px;
+    --padding-bottom: 10px;
+    --color: var(--ion-text-color);
+    --placeholder-color: var(--ion-color-medium);
+    font-size: var(--fv-text-base);
+    min-height: 44px;
+  }
+
+  /* ion-select applies --padding-start inside its own shadow root, so a
+     padding-inline here as well set its value text 24px in against the
+     12px of every input and textarea beside it. */
+
+  ion-note[slot="error"] {
+    margin-top: var(--fv-tight-gap);
+    font-size: var(--fv-text-xs);
+    color: var(--ion-color-danger);
+  }
+}
+
+/*
+ * Focus is not set here. The ring has to be drawn on the wrapper element
+ * Ionic creates at runtime, which carries no Angular scoping attribute, so a
+ * rule in a component stylesheet can never match it. It lives in
+ * global.scss instead, next to the app's other focus rules.
+ */
+
+/* The required marker is quiet: it flags, it does not shout. */
+ion-label ion-text[color="danger"],
+.required {
+  color: var(--ion-color-danger);
+  font-weight: var(--fv-weight-semibold);
+}
+
+/* ── Field groups ────────────────────────────────────────────────── */
+
+/*
+ * A group of fields inside a section. Replaces per-field bottom margins,
+ * so the distance between any two fields is the same on every form.
+ */
+/* Where a grid is doing the spacing, the per-field margin stands down. */
+.field-grid ion-item { margin-bottom: 0; }
+
+.field-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: var(--fv-space-4);
+
+  /* Short, related fields pair up once there is room. */
+  @media (min-width: 640px) {
+    &.field-grid-2 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    &.field-grid-3 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  }
+
+  .field-span-2 { grid-column: 1 / -1; }
+}
+
+/* ── Sections ────────────────────────────────────────────────────── */
+
+.form-section {
+  display: flex;
+  flex-direction: column;
+  gap: var(--fv-block-gap);
+}
+
+/* ── Line items ──────────────────────────────────────────────────── */
+
+.line-item {
+  padding: var(--fv-space-4);
+  border: 1px solid var(--fv-border);
+  border-radius: var(--fv-radius-md);
+  background: var(--ion-card-background);
+
+  & + .line-item { margin-top: var(--fv-space-3); }
+
+  .line-item-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: var(--fv-space-3);
+
+    .line-item-num {
+      font-size: var(--fv-text-2xs);
+      font-weight: var(--fv-weight-semibold);
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+      color: var(--ion-color-medium);
+    }
+
+    ion-button {
+      --color: var(--ion-color-medium);
+      --padding-start: 0;
+      --padding-end: 0;
+      margin: 0;
+      width: 36px;
+      height: 36px;
+
+      /* Quiet until reached for, as in the list rows. */
+      ion-icon { color: var(--ion-color-medium); font-size: 16px; }
+      &:hover ion-icon,
+      &.ion-focused ion-icon { color: var(--fv-danger-text); }
+    }
+  }
+
+  /* The three number fields share a row from 480px up; they are short and
+     belong together. */
+  .item-row {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    gap: var(--fv-space-3);
+    margin-top: var(--fv-space-4);
+
+    @media (min-width: 480px) {
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+    }
+
+    .flex-1, .flex-2 { min-width: 0; }
+  }
+
+  .item-totals {
+    display: flex;
+    justify-content: flex-end;
+    gap: var(--fv-space-5);
+    margin-top: var(--fv-space-3);
+    padding-top: var(--fv-space-3);
+    border-top: 1px solid var(--fv-border);
+    font-size: var(--fv-text-sm);
+    color: var(--ion-color-medium);
+    font-variant-numeric: tabular-nums;
+
+    strong { color: var(--ion-text-color); font-weight: var(--fv-weight-semibold); }
+  }
+}
+
+.add-item-btn {
+  --border-radius: var(--fv-radius-md);
+  --border-color: var(--fv-border-strong);
+  --color: var(--ion-color-primary);
+  margin-top: var(--fv-space-3);
+  height: 42px;
+  text-transform: none;
+  font-weight: var(--fv-weight-medium);
+  letter-spacing: 0;
+}
+
+/* ── Totals ──────────────────────────────────────────────────────── */
+
+.totals {
+  margin-left: auto;
+  max-width: 22rem;
+
+  .totals-row {
+    display: flex;
+    justify-content: space-between;
+    gap: var(--fv-space-4);
+    padding: 5px 0;
+    font-size: var(--fv-text-base);
+    color: var(--ion-color-medium);
+    font-variant-numeric: tabular-nums;
+  }
+
+  .total-row {
+    margin-top: var(--fv-space-2);
+    padding-top: var(--fv-space-3);
+    border-top: 1px solid var(--fv-border);
+    border-bottom: none;
+    font-size: var(--fv-text-md);
+    font-weight: var(--fv-weight-semibold);
+    color: var(--ion-text-color);
+  }
+}
+
+/* ── Hints ───────────────────────────────────────────────────────── */
+
+.hint {
+  margin: 0;
+  font-size: var(--fv-text-xs);
+  color: var(--ion-color-medium);
+}
+
+/* ── Submit ──────────────────────────────────────────────────────── */
+
+/*
+ * The submit control sits at the end of the form, right-aligned with the
+ * fields above it rather than stretched across the page, with cancel
+ * beside it as the quieter option.
+ */
+.form-actions {
+  display: flex;
+  flex-direction: column;
+  gap: var(--fv-space-2);
+  padding-top: var(--fv-space-2);
+
+  ion-button {
+    --border-radius: var(--fv-radius-md);
+    margin: 0;
+    height: 44px;
+    text-transform: none;
+    font-weight: var(--fv-weight-medium);
+    letter-spacing: 0;
+    font-size: var(--fv-text-base);
+  }
+
+  @media (min-width: 600px) {
+    flex-direction: row;
+    justify-content: flex-end;
+
+    ion-button { min-width: 140px; }
+    ion-button[fill="outline"],
+    ion-button[fill="clear"] { order: -1; }
+  }
+}

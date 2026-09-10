@@ -1,13 +1,23 @@
-.loading-state {
-  display: flex;
-  justify-content: center;
-  padding: 3rem;
+@use '../../../../shared/styles/form-page';
+
+/*
+ * Field, group and submit layout come from shared/styles/form-page.scss,
+ * which every create and edit form uses, so a customer form and an invoice
+ * form no longer disagree about label size, field spacing or input height.
+ * Only page-specific rules belong here.
+ */
+
+ion-toolbar {
+  --background: var(--ion-background-color);
+  --border-width: 0;
 }
 
-.form-actions {
-  padding: 1rem 0;
-}
+/* Card radius and elevation come from the shared ion-card rule. */
+ion-card {
+  margin: 0;
 
-ion-item {
-  margin-bottom: 0.75rem;
+  ion-card-title {
+    font-size: var(--fv-text-md);
+    font-weight: var(--fv-weight-semibold);
+  }
 }

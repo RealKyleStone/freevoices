@@ -7,12 +7,12 @@
   </ion-toolbar>
 </ion-header>
 
-<ion-content class="ion-padding">
+<ion-content>
   <div class="loading-state" *ngIf="isFetching">
     <ion-spinner></ion-spinner>
   </div>
 
-  <form [formGroup]="form" (ngSubmit)="onSubmit()" *ngIf="!isFetching">
+  <form class="form-container" [formGroup]="form" (ngSubmit)="onSubmit()" *ngIf="!isFetching">
 
     <ion-card>
       <ion-card-header>
@@ -20,19 +20,19 @@
       </ion-card-header>
       <ion-card-content>
 
-        <ion-item [class.ion-invalid]="isInvalid('name')" fill="outline">
-          <ion-label position="floating">Name <ion-text color="danger">*</ion-text></ion-label>
+        <ion-item [class.ion-invalid]="isInvalid('name')">
+          <ion-label position="stacked">Name <ion-text color="danger">*</ion-text></ion-label>
           <ion-input aria-label="Name" formControlName="name" type="text"></ion-input>
           <ion-note slot="error">Name is required (min 2 characters)</ion-note>
         </ion-item>
 
-        <ion-item fill="outline">
-          <ion-label position="floating">Description</ion-label>
+        <ion-item>
+          <ion-label position="stacked">Description</ion-label>
           <ion-textarea aria-label="Description" formControlName="description" rows="3"></ion-textarea>
         </ion-item>
 
-        <ion-item [class.ion-invalid]="isInvalid('price')" fill="outline">
-          <ion-label position="floating">Price <ion-text color="danger">*</ion-text></ion-label>
+        <ion-item [class.ion-invalid]="isInvalid('price')">
+          <ion-label position="stacked">Price <ion-text color="danger">*</ion-text></ion-label>
           <ion-input aria-label="Price" formControlName="price" type="number" min="0" step="0.01"></ion-input>
           <ion-note slot="error">A valid price is required</ion-note>
         </ion-item>

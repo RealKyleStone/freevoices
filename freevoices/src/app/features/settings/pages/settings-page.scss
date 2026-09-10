@@ -1,3 +1,11 @@
+@use '../../../shared/styles/form-page';
+
+/*
+ * Settings shares the field treatment used by the create and edit
+ * forms, so a settings form and an invoice form agree about label
+ * size, field spacing and input height.
+ */
+
 .settings-page {
   /* Same inset and measure discipline as the other pages, at the narrower
      form width, so the settings pane lines up with the shell rather than
@@ -49,17 +57,9 @@
     }
   }
 
-  ion-item {
-    --padding-start: 0;
-    margin-bottom: 8px;
-
-    ion-label[position="stacked"] {
-      font-size: 0.8rem;
-      font-weight: 500;
-      color: var(--ion-color-medium-shade);
-      margin-bottom: 4px;
-    }
-  }
+  /* Field and label treatment comes from the shared form styles above; the
+     settings pages used to set their own smaller label at a different
+     weight and colour. */
 
   .required {
     color: var(--ion-color-danger);
