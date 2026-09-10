@@ -199,11 +199,13 @@ ion-menu {
   .menu-header {
     display: block;
     width: 100%;
-    padding: var(--fv-space-4) var(--fv-space-2);
+    /* Left-aligned to the same inset as the navigation items below it. The
+       wordmark was centred while every item under it was left-aligned. */
+    padding: var(--fv-space-5) 24px var(--fv-space-3);
     border: 0;
     background: none;
     font: inherit;
-    text-align: center;
+    text-align: left;
     cursor: pointer;
     transition: opacity var(--fv-duration) var(--fv-ease);
 
@@ -226,46 +228,73 @@ ion-menu {
     }
   }
 
+  /*
+   * Navigation items.
+   *
+   * These never set lines="none", so every one drew ion-item's default
+   * bottom border and the rail read as a table of data rather than a set of
+   * destinations. They are now borderless pills, inset from the rail edge,
+   * at a tighter row height, with the hover and active tints derived from
+   * the primary token so they follow the theme — they were hard-coded to
+   * rgba(15, 118, 110, …), the light-mode teal, in both themes.
+   */
+  --fv-rail-inset: 12px;
+
   ion-list {
-    padding-top: 1rem;
+    padding: var(--fv-space-2) var(--fv-rail-inset);
     background: none;
 
     ion-item {
       --background: transparent;
-      --background-hover: rgba(15, 118, 110, 0.1);
-      --background-activated: rgba(15, 118, 110, 0.15);
-      --padding-start: 1rem;
-      --border-radius: 8px;
-      margin-bottom: 0.5rem;
+      --background-hover: rgba(var(--ion-color-primary-rgb), 0.08);
+      --background-activated: rgba(var(--ion-color-primary-rgb), 0.14);
+      --border-width: 0;
+      --padding-start: 12px;
+      --inner-padding-end: 8px;
+      --min-height: 42px;
+      --border-radius: var(--fv-radius-md);
+      border-radius: var(--fv-radius-md);
+      margin-bottom: 2px;
+      font-size: var(--fv-text-base);
+      font-weight: var(--fv-weight-medium);
       transition: background var(--fv-duration-fast) var(--fv-ease);
 
-      &:hover:not(.selected) {
-        --background: rgba(15, 118, 110, 0.08);
-        cursor: pointer;
-      }
+      &:hover:not(.selected) { cursor: pointer; }
 
       &.selected {
         --background: var(--ion-color-primary);
-        --color: #fff;
-        font-weight: 600;
-        border-radius: 10px;
-        ion-icon { color: #fff; }
+        --color: var(--ion-color-primary-contrast);
+        font-weight: var(--fv-weight-semibold);
+        ion-icon { color: var(--ion-color-primary-contrast); }
       }
 
       ion-icon {
-        font-size: 1.25rem;
-        margin-right: 0.75rem;
-        color: var(--ion-text-color);
+        font-size: 18px;
+        margin-right: 12px;
+        color: var(--ion-color-medium);
       }
-
-      font-size: 1rem;
-      font-weight: 500;
     }
   }
 
   ion-footer {
-    padding: 1rem 0.5rem;
-    border-top: 1px solid rgba(128, 128, 128, 0.15);
+    padding: var(--fv-space-2) var(--fv-rail-inset) var(--fv-space-3);
+    border-top: 1px solid var(--fv-border);
+    background: var(--ion-background-color);
+
+    ion-item {
+      --background: transparent;
+      --background-hover: rgba(var(--ion-color-primary-rgb), 0.08);
+      --border-width: 0;
+      --padding-start: 12px;
+      --min-height: 40px;
+      --border-radius: var(--fv-radius-md);
+      border-radius: var(--fv-radius-md);
+      font-size: var(--fv-text-sm);
+      font-weight: var(--fv-weight-medium);
+      cursor: pointer;
+
+      ion-icon { font-size: 17px; margin-right: 12px; color: var(--ion-color-medium); }
+    }
   }
 }
 
@@ -405,12 +434,118 @@ ion-header ion-toolbar {
  * wrapping every group in its own bordered card.
  */
 .fv-section-label {
-  margin: 0 0 var(--fv-block-gap);
+  margin: 0;
   font-size: var(--fv-text-2xs);
   font-weight: var(--fv-weight-semibold);
   letter-spacing: 0.08em;
   text-transform: uppercase;
   color: var(--ion-color-medium);
+}
+
+/*
+ * ── Composition primitives ────────────────────────────────────────
+ *
+ * Three shapes cover most of this application's pages. Defining them once
+ * is what stops each screen from re-inventing its own header, its own
+ * surface and its own idea of how far apart two things should sit.
+ */
+
+/*
+ * .page-head — the title block. Identity on the left, the action for this
+ * page on the right, baseline-aligned, wrapping to stacked on narrow
+ * screens with the actions going full width so they stay easy to hit.
+ */
+.page-head {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: var(--fv-block-gap);
+  flex-wrap: wrap;
+
+  .page-head-text { min-width: 0; }
+
+  h1 {
+    margin: 0;
+    font-size: var(--fv-text-2xl);
+    font-weight: var(--fv-weight-semibold);
+    line-height: 1.2;
+    letter-spacing: -0.02em;
+    color: var(--ion-text-color);
+  }
+
+  p {
+    margin: var(--fv-tight-gap) 0 0;
+    font-size: var(--fv-text-base);
+    color: var(--ion-color-medium);
+  }
+
+  .page-head-actions {
+    display: flex;
+    gap: var(--fv-space-2);
+    flex-shrink: 0;
+
+    ion-button {
+      margin: 0;
+      height: 42px;
+      font-size: var(--fv-text-base);
+    }
+
+    /*
+     * The secondary action takes a neutral border but keeps body-text
+     * colour. color="medium" alone tinted the label grey, which read as
+     * disabled next to the solid primary rather than as the second choice.
+     */
+    ion-button[fill="outline"] {
+      --border-color: var(--fv-border-strong);
+      --color: var(--ion-text-color);
+      font-weight: var(--fv-weight-medium);
+    }
+  }
+
+  @media (max-width: 599px) {
+    align-items: stretch;
+
+    .page-head-actions {
+      width: 100%;
+      ion-button { flex: 1; }
+    }
+  }
+}
+
+/*
+ * .section-head — a label and, optionally, one quiet action for the group
+ * beneath it. Sits directly above its content at block distance.
+ */
+.section-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--fv-space-3);
+  min-height: 28px;
+  margin-bottom: var(--fv-block-gap);
+
+  ion-button {
+    margin: 0;
+    --padding-start: 0;
+    --padding-end: 0;
+    height: 24px;
+    font-size: var(--fv-text-sm);
+    text-transform: none;
+    letter-spacing: 0;
+  }
+}
+
+/*
+ * .panel — one containing surface, matching ion-card's treatment, for
+ * content that genuinely benefits from being bounded. Used in place of an
+ * ion-card whose only job was to hold a title the section label now
+ * carries, which is how pages ended up as a column of titled boxes.
+ */
+.panel {
+  border: 1px solid var(--fv-border);
+  border-radius: var(--fv-radius-lg);
+  background: var(--ion-card-background);
+  overflow: hidden;
 }
 
 /*
