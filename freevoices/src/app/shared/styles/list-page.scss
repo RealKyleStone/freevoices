@@ -82,7 +82,15 @@
 
   ion-segment-button {
     --background-checked: var(--ion-card-background);
-    --color: var(--ion-color-medium);
+    /*
+     * --ion-color-medium would be the obvious choice, but these labels sit
+     * on the recessed track above rather than on the card, and grey on grey
+     * measured 4.39:1 at 13px — just under the 4.5:1 minimum. The medium
+     * text token clears it on both tracks (9.1:1 light, 5.7:1 dark) and no
+     * single fixed colour can, because the two tracks sit on opposite sides
+     * of the scale.
+     */
+    --color: var(--fv-medium-text);
     --color-checked: var(--ion-text-color);
     --indicator-color: transparent;
     --indicator-box-shadow: none;

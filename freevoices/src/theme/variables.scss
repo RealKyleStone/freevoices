@@ -213,6 +213,23 @@
   --ion-color-primary-shade: #0f9e8e;
   --ion-color-primary-tint: #2ec4b3;
 
+  /*
+   * Medium is the app's secondary text colour — field labels, row meta,
+   * section labels, timestamps, hints — in around sixty places. It was
+   * declared once for both themes, so the same #6b7280 that reads at 4.84:1
+   * on a white card fell to 3.45:1 on a dark one, under the 4.5:1 minimum
+   * for text that size. Re-keyed for dark the way primary already is, which
+   * takes it to 6.58:1 and fixes every one of those places at the source.
+   *
+   * --fv-border derives from -rgb, so the hairlines lift with it; they were
+   * mixing a near-black grey into a near-black surface.
+   */
+  --ion-color-medium: #9ca3af;
+  --ion-color-medium-rgb: 156, 163, 175;
+  --ion-color-medium-contrast: #111111;
+  --ion-color-medium-shade: #7d838d;
+  --ion-color-medium-tint: #a6acb7;
+
   --fv-teal-tint: #042f2e;
   --fv-teal-text: #5eead4;
 
@@ -229,7 +246,14 @@
 
   --fv-surface: #111111;
   --fv-surface-raised: #1e1e1e;
-  --fv-surface-subtle: #1e1e1e;
+  /*
+   * A step above the card, not level with it. This was #1e1e1e, the same
+   * value as --ion-card-background, so every subtle surface drawn on a card
+   * in dark mode was invisible: the form fields, the share-link panel and
+   * the history icons all disappeared into the card behind them. #2a2a2a is
+   * --ion-color-step-100, so it stays on the palette's own scale.
+   */
+  --fv-surface-subtle: #2a2a2a;
 }
 /*
  * Edge-to-edge safe areas (Android 15 / API 35).
