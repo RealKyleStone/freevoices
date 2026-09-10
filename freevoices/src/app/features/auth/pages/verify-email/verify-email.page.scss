@@ -1,8 +1,5 @@
 @use '../auth-layout';
 
-:host-context(.ion-palette-dark) .auth-left-panel { background: #0a0a0a; }
-:host-context(.ion-palette-dark) .auth-left-panel::before { background: #0f766e; opacity: 0.18; }
-:host-context(.ion-palette-dark) .auth-left-panel::after { background: #14b8a6; opacity: 0.12; }
 .auth-brand-icon {
   width: 40px; height: 40px; border-radius: 10px; background: rgba(255,255,255,0.15);
   display: flex; align-items: center; justify-content: center; flex-shrink: 0;

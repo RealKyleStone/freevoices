@@ -1,11 +1,5 @@
 @use '../auth-layout';
 
-:host-context(.ion-palette-dark) .auth-left-panel {
-  background: #0a0a0a;
-  &::before { background: #0f766e; opacity: 0.18; }
-  &::after { background: #14b8a6; opacity: 0.12; }
-}
-
 .auth-brand-logo {
   width: 40px;
   height: 40px;

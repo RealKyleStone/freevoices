@@ -58,37 +58,35 @@ ion-content {
   justify-content: space-between;
   position: relative;
   overflow: hidden;
-  background: #0f766e;
 
-  &::before {
-    content: '';
-    position: absolute;
-    width: 400px;
-    height: 400px;
-    border-radius: 50%;
-    background: #14b8a6;
-    top: -120px;
-    right: -100px;
-    filter: blur(60px);
-    opacity: 0.25;
-    pointer-events: none;
-  }
+  /*
+   * The panel used to carry two large blurred circles — a 400px one bleeding
+   * off the top-right and a 300px one off the bottom-left, each behind a
+   * blur(50-60px) filter. Two things were wrong with them: they are the most
+   * recognisable stock flourish in this kind of layout, and each forced its
+   * own compositing layer for no information.
+   *
+   * Replaced with a single same-hue gradient. It runs only darker than the
+   * base teal, never lighter, so every contrast ratio measured against the
+   * flat colour holds or improves — a stop toward #14b8a6 would have taken
+   * the hero text to about 2.2:1.
+   */
+  background: linear-gradient(168deg, #0f766e 0%, #0b5a54 100%);
 
-  &::after {
-    content: '';
-    position: absolute;
-    width: 300px;
-    height: 300px;
-    border-radius: 50%;
-    background: #042f2e;
-    bottom: -80px;
-    left: 20px;
-    filter: blur(50px);
-    opacity: 0.35;
-    pointer-events: none;
-  }
+  /*
+   * Hairline between the panels. In dark mode the two sides are #0a0a0a and
+   * #111111, close enough that the blurred circles were the only thing
+   * separating them; the split needs to survive their removal.
+   */
+  border-right: 1px solid rgba(255, 255, 255, 0.08);
 
   @media (max-width: 768px) { display: none; }
+}
+
+/* Same treatment in dark mode: a single darker-direction gradient, with a
+   faint teal cast at the top so the panel is not a flat black rectangle. */
+:host-context(.ion-palette-dark) .auth-left-panel {
+  background: linear-gradient(168deg, #0f1a19 0%, #0a0a0a 100%);
 }
 
 .auth-brand { display: flex; align-items: center; gap: 10px; position: relative; z-index: 1; }
