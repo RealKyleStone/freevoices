@@ -152,6 +152,12 @@
   --padding-end: var(--fv-space-3);
   --inner-padding-end: 0;
   --border-width: 0;
+  /* The separator below is the row's own, drawn on the host and inset
+     with it. --border-width does not reach ion-item's inner element,
+     which was still drawing a second 1px line at a different inset -- so
+     every gap between two rows carried two offset hairlines, and the last
+     row carried a trailing one with nothing under it. */
+  --inner-border-width: 0;
   /* Two text lines rather than three, so a row is 64px instead of 82px and
      more records fit the first screen. */
   --min-height: 64px;

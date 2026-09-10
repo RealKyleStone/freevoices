@@ -249,6 +249,15 @@ ion-menu {
       --background-hover: rgba(var(--ion-color-primary-rgb), 0.08);
       --background-activated: rgba(var(--ion-color-primary-rgb), 0.14);
       --border-width: 0;
+      /*
+       * --border-width alone did not do it. The row line is drawn on
+       * ion-item's inner element, which that property does not reach, so
+       * every navigation row was still drawing a 1px divider and the rail
+       * still read as a table of data rather than a set of destinations.
+       * The settings list gets away with --border-width because its
+       * template also sets lines="none"; the rail's does not.
+       */
+      --inner-border-width: 0;
       --padding-start: 12px;
       --inner-padding-end: 8px;
       --min-height: 42px;
@@ -285,6 +294,7 @@ ion-menu {
       --background: transparent;
       --background-hover: rgba(var(--ion-color-primary-rgb), 0.08);
       --border-width: 0;
+      --inner-border-width: 0;
       --padding-start: 12px;
       --min-height: 40px;
       --border-radius: var(--fv-radius-md);
