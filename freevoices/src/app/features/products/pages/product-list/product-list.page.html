@@ -40,10 +40,10 @@
           </p>
         </ion-label>
         <div slot="end" class="row-actions">
-          <ion-button fill="clear" class="action-btn" [routerLink]="['/products', product.id, 'edit']" (click)="$event.stopPropagation()">
+          <ion-button fill="clear" class="action-btn" [routerLink]="['/products', product.id, 'edit']" [attr.aria-label]="'Edit ' + product.name" (click)="$event.stopPropagation()">
             <ion-icon slot="icon-only" name="create-outline"></ion-icon>
           </ion-button>
-          <ion-button fill="clear" color="danger" class="action-btn" (click)="$event.stopPropagation(); confirmDelete(product)">
+          <ion-button fill="clear" color="danger" class="action-btn" [attr.aria-label]="'Delete ' + product.name" (click)="$event.stopPropagation(); confirmDelete(product)">
             <ion-icon slot="icon-only" name="trash-outline"></ion-icon>
           </ion-button>
         </div>
@@ -73,11 +73,11 @@
     </div>
 
     <div class="pagination" *ngIf="!isLoading && totalPages > 1">
-      <ion-button fill="clear" [disabled]="page === 1" (click)="prevPage()">
+      <ion-button fill="clear" aria-label="Previous page" [disabled]="page === 1" (click)="prevPage()">
         <ion-icon slot="icon-only" name="chevron-back-outline"></ion-icon>
       </ion-button>
       <span class="page-label">{{ page }} of {{ totalPages }}</span>
-      <ion-button fill="clear" [disabled]="page === totalPages" (click)="nextPage()">
+      <ion-button fill="clear" aria-label="Next page" [disabled]="page === totalPages" (click)="nextPage()">
         <ion-icon slot="icon-only" name="chevron-forward-outline"></ion-icon>
       </ion-button>
     </div>

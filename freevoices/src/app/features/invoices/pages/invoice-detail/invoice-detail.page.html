@@ -5,7 +5,7 @@
     </ion-buttons>
     <ion-title>{{ invoice?.document_number || 'Invoice' }}</ion-title>
     <ion-buttons slot="end">
-      <ion-button *ngIf="canEdit" [routerLink]="['/invoices', invoiceId, 'edit']">
+      <ion-button *ngIf="canEdit" aria-label="Edit invoice" [routerLink]="['/invoices', invoiceId, 'edit']">
         <ion-icon slot="icon-only" name="create-outline"></ion-icon>
       </ion-button>
     </ion-buttons>
@@ -173,7 +173,7 @@
             <p class="share-label">Customer portal link (valid 30 days)</p>
             <div class="share-link-row">
               <span class="share-url">{{ shareLink }}</span>
-              <ion-button fill="clear" size="small" (click)="copyShareLink()">
+              <ion-button fill="clear" size="small" aria-label="Copy portal link" (click)="copyShareLink()">
                 <ion-icon slot="icon-only" name="copy-outline"></ion-icon>
               </ion-button>
             </div>
@@ -182,25 +182,25 @@
           <div class="payment-form" *ngIf="showPaymentForm" [formGroup]="paymentForm">
             <ion-item fill="outline">
               <ion-label position="floating">Amount <ion-text color="danger">*</ion-text></ion-label>
-              <ion-input formControlName="amount" type="number" min="0.01" step="0.01"></ion-input>
+              <ion-input aria-label="Amount" formControlName="amount" type="number" min="0.01" step="0.01"></ion-input>
             </ion-item>
             <ion-item fill="outline">
               <ion-label position="floating">Payment date <ion-text color="danger">*</ion-text></ion-label>
-              <ion-input formControlName="payment_date" type="date"></ion-input>
+              <ion-input aria-label="Payment date" formControlName="payment_date" type="date"></ion-input>
             </ion-item>
             <ion-item fill="outline">
               <ion-label position="floating">Payment method <ion-text color="danger">*</ion-text></ion-label>
-              <ion-select formControlName="payment_method" interface="popover">
+              <ion-select aria-label="Payment method" formControlName="payment_method" interface="popover">
                 <ion-select-option *ngFor="let m of paymentMethods" [value]="m.value">{{ m.label }}</ion-select-option>
               </ion-select>
             </ion-item>
             <ion-item fill="outline">
               <ion-label position="floating">Reference</ion-label>
-              <ion-input formControlName="transaction_reference" type="text"></ion-input>
+              <ion-input aria-label="Reference" formControlName="transaction_reference" type="text"></ion-input>
             </ion-item>
             <ion-item fill="outline">
               <ion-label position="floating">Notes</ion-label>
-              <ion-textarea formControlName="notes" rows="2"></ion-textarea>
+              <ion-textarea aria-label="Notes" formControlName="notes" rows="2"></ion-textarea>
             </ion-item>
             <ion-button expand="block" (click)="submitPayment()" [disabled]="isSubmittingPayment" color="primary" class="payment-submit-btn">
               <ion-spinner *ngIf="isSubmittingPayment" slot="start" name="crescent"></ion-spinner>

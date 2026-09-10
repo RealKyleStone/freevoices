@@ -8,10 +8,10 @@
     </div>
     <!-- Action icons on the right -->
     <ion-buttons slot="end">
-      <ion-button class="toolbar-icon-btn" (click)="openNotifications()">
+      <ion-button class="toolbar-icon-btn" aria-label="Notifications" (click)="openNotifications()">
         <ion-icon slot="icon-only" name="notifications-outline"></ion-icon>
       </ion-button>
-      <ion-button class="toolbar-icon-btn" (click)="openProfile($event)">
+      <ion-button class="toolbar-icon-btn" aria-label="Profile and account" (click)="openProfile($event)">
         <ion-icon slot="icon-only" name="person-circle-outline"></ion-icon>
       </ion-button>
     </ion-buttons>

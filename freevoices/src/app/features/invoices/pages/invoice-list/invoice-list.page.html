@@ -80,11 +80,11 @@
     </div>
 
     <div class="pagination" *ngIf="!isLoading && totalPages > 1">
-      <ion-button fill="clear" [disabled]="page === 1" (click)="prevPage()">
+      <ion-button fill="clear" aria-label="Previous page" [disabled]="page === 1" (click)="prevPage()">
         <ion-icon slot="icon-only" name="chevron-back-outline"></ion-icon>
       </ion-button>
       <span class="page-label">{{ page }} of {{ totalPages }}</span>
-      <ion-button fill="clear" [disabled]="page === totalPages" (click)="nextPage()">
+      <ion-button fill="clear" aria-label="Next page" [disabled]="page === totalPages" (click)="nextPage()">
         <ion-icon slot="icon-only" name="chevron-forward-outline"></ion-icon>
       </ion-button>
     </div>

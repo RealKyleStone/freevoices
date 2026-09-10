@@ -5,10 +5,10 @@
     </ion-buttons>
     <ion-title>{{ product?.name || 'Product' }}</ion-title>
     <ion-buttons slot="end">
-      <ion-button [routerLink]="['/products', productId, 'edit']">
+      <ion-button aria-label="Edit product" [routerLink]="['/products', productId, 'edit']">
         <ion-icon slot="icon-only" name="create-outline"></ion-icon>
       </ion-button>
-      <ion-button (click)="confirmDelete()" color="danger">
+      <ion-button aria-label="Delete product" (click)="confirmDelete()" color="danger">
         <ion-icon slot="icon-only" name="trash-outline"></ion-icon>
       </ion-button>
     </ion-buttons>

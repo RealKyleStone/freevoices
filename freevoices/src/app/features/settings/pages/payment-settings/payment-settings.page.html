@@ -19,22 +19,22 @@
       <ion-card-content>
         <ion-item>
           <ion-label position="stacked">Bank Name</ion-label>
-          <ion-input formControlName="bank_name" type="text" placeholder="e.g. FNB, ABSA, Standard Bank"></ion-input>
+          <ion-input aria-label="Bank Name" formControlName="bank_name" type="text" placeholder="e.g. FNB, ABSA, Standard Bank"></ion-input>
         </ion-item>
 
         <ion-item>
           <ion-label position="stacked">Account Number</ion-label>
-          <ion-input formControlName="bank_account_number" type="text" placeholder="1234567890"></ion-input>
+          <ion-input aria-label="Account Number" formControlName="bank_account_number" type="text" placeholder="1234567890"></ion-input>
         </ion-item>
 
         <ion-item>
           <ion-label position="stacked">Branch Code</ion-label>
-          <ion-input formControlName="bank_branch_code" type="text" placeholder="250655"></ion-input>
+          <ion-input aria-label="Branch Code" formControlName="bank_branch_code" type="text" placeholder="250655"></ion-input>
         </ion-item>
 
         <ion-item>
           <ion-label position="stacked">Account Type</ion-label>
-          <ion-select formControlName="bank_account_type" interface="popover" placeholder="Select type">
+          <ion-select aria-label="Account Type" formControlName="bank_account_type" interface="popover" placeholder="Select type">
             <ion-select-option *ngFor="let type of accountTypes" [value]="type">{{ type }}</ion-select-option>
           </ion-select>
         </ion-item>
