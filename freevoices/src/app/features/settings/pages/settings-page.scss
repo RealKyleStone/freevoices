@@ -5,7 +5,7 @@
   .settings-page-header {
     margin-bottom: 16px;
 
-    h2 {
+    h1 {
       font-size: 1.4rem;
       font-weight: 600;
       margin: 0 0 4px;
@@ -26,8 +26,10 @@
 
   ion-card {
     margin: 0 0 16px;
-    border-radius: 12px;
-    box-shadow: 0 1px 6px rgba(0, 0, 0, 0.08);
+    /* Radius and elevation come from the shared ion-card rule in
+       global.scss. These pages used to declare a 12px radius and their own
+       drop shadow, which after that rule landed left them with a border and
+       a shadow at a different radius from every other card in the app. */
 
     ion-card-title {
       display: flex;
