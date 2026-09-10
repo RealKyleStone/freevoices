@@ -110,7 +110,7 @@
                 <p>{{ doc.issue_date | date:'mediumDate' }} — Due {{ doc.due_date | date:'mediumDate' }}</p>
               </ion-label>
               <div slot="end" class="doc-end">
-                <span class="activity-badge" [ngClass]="'badge-' + getStatusColor(doc.status)">{{ doc.status }}</span>
+                <span class="activity-badge" [ngClass]="'badge-' + getStatusColor(doc.status)">{{ doc.status | titlecase }}</span>
                 <p class="doc-amount">R {{ doc.total | number:'1.2-2' }}</p>
               </div>
             </ion-item>

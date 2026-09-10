@@ -50,7 +50,7 @@
           </p>
         </ion-label>
         <div slot="end" class="invoice-end">
-          <span class="activity-badge" [ngClass]="'badge-' + getStatusColor(quote.status)">{{ quote.status }}</span>
+          <span class="activity-badge" [ngClass]="'badge-' + getStatusColor(quote.status)">{{ quote.status | titlecase }}</span>
           <p class="doc-amount">R {{ quote.total | number:'1.2-2' }}</p>
         </div>
       </ion-item>

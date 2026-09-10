@@ -18,14 +18,14 @@
       </ion-card-header>
       <ion-card-content>
         <ion-item [class.ion-invalid]="isInvalid('contact_person')" [class.ion-touched]="form.get('contact_person')?.touched">
-          <ion-label position="stacked">Full Name <span class="required">*</span></ion-label>
-          <ion-input aria-label="Full Name" formControlName="contact_person" type="text" placeholder="Your full name"></ion-input>
+          <ion-label position="stacked">Full name <span class="required">*</span></ion-label>
+          <ion-input aria-label="Full name" formControlName="contact_person" type="text" placeholder="Your full name"></ion-input>
           <ion-note slot="error">Full name is required</ion-note>
         </ion-item>
 
         <ion-item [class.ion-invalid]="isInvalid('email')" [class.ion-touched]="form.get('email')?.touched">
-          <ion-label position="stacked">Email Address <span class="required">*</span></ion-label>
-          <ion-input aria-label="Email Address" formControlName="email" type="email" placeholder="you@example.com"></ion-input>
+          <ion-label position="stacked">Email address <span class="required">*</span></ion-label>
+          <ion-input aria-label="Email address" formControlName="email" type="email" placeholder="you@example.com"></ion-input>
           <ion-note slot="error">A valid email address is required</ion-note>
         </ion-item>
 
@@ -47,8 +47,8 @@
         <p class="hint">Leave these fields blank to keep your current password.</p>
 
         <ion-item>
-          <ion-label position="stacked">Current Password</ion-label>
-          <ion-input aria-label="Current Password"
+          <ion-label position="stacked">Current password</ion-label>
+          <ion-input aria-label="Current password"
             formControlName="current_password"
             [type]="showCurrentPassword ? 'text' : 'password'"
             placeholder="Current password"
@@ -59,8 +59,8 @@
         </ion-item>
 
         <ion-item [class.ion-invalid]="isInvalid('new_password')" [class.ion-touched]="form.get('new_password')?.touched">
-          <ion-label position="stacked">New Password</ion-label>
-          <ion-input aria-label="New Password"
+          <ion-label position="stacked">New password</ion-label>
+          <ion-input aria-label="New password"
             formControlName="new_password"
             [type]="showNewPassword ? 'text' : 'password'"
             placeholder="Minimum 8 characters"
@@ -72,8 +72,8 @@
         </ion-item>
 
         <ion-item [class.ion-invalid]="isInvalid('confirm_password')" [class.ion-touched]="form.get('confirm_password')?.touched">
-          <ion-label position="stacked">Confirm New Password</ion-label>
-          <ion-input aria-label="Confirm New Password"
+          <ion-label position="stacked">Confirm new password</ion-label>
+          <ion-input aria-label="Confirm new password"
             formControlName="confirm_password"
             type="password"
             placeholder="Repeat new password"

@@ -1,6 +1,6 @@
 <div class="settings-page">
   <div class="settings-page-header">
-    <h2>Payment Details</h2>
+    <h2>Payment details</h2>
     <p>Your banking details are displayed on invoices so clients know where to pay.</p>
   </div>
 
@@ -18,23 +18,23 @@
       </ion-card-header>
       <ion-card-content>
         <ion-item>
-          <ion-label position="stacked">Bank Name</ion-label>
-          <ion-input aria-label="Bank Name" formControlName="bank_name" type="text" placeholder="e.g. FNB, ABSA, Standard Bank"></ion-input>
+          <ion-label position="stacked">Bank name</ion-label>
+          <ion-input aria-label="Bank name" formControlName="bank_name" type="text" placeholder="e.g. FNB, ABSA, Standard Bank"></ion-input>
         </ion-item>
 
         <ion-item>
-          <ion-label position="stacked">Account Number</ion-label>
-          <ion-input aria-label="Account Number" formControlName="bank_account_number" type="text" placeholder="1234567890"></ion-input>
+          <ion-label position="stacked">Account number</ion-label>
+          <ion-input aria-label="Account number" formControlName="bank_account_number" type="text" placeholder="1234567890"></ion-input>
         </ion-item>
 
         <ion-item>
-          <ion-label position="stacked">Branch Code</ion-label>
-          <ion-input aria-label="Branch Code" formControlName="bank_branch_code" type="text" placeholder="250655"></ion-input>
+          <ion-label position="stacked">Branch code</ion-label>
+          <ion-input aria-label="Branch code" formControlName="bank_branch_code" type="text" placeholder="250655"></ion-input>
         </ion-item>
 
         <ion-item>
-          <ion-label position="stacked">Account Type</ion-label>
-          <ion-select aria-label="Account Type" formControlName="bank_account_type" interface="popover" placeholder="Select type">
+          <ion-label position="stacked">Account type</ion-label>
+          <ion-select aria-label="Account type" formControlName="bank_account_type" interface="popover" placeholder="Select type">
             <ion-select-option *ngFor="let type of accountTypes" [value]="type">{{ type }}</ion-select-option>
           </ion-select>
         </ion-item>
@@ -44,7 +44,7 @@
     <div class="form-actions">
       <ion-button type="submit" [disabled]="isSaving" expand="block" color="primary">
         <ion-spinner *ngIf="isSaving" name="crescent" slot="start"></ion-spinner>
-        {{ isSaving ? 'Saving...' : 'Save Payment Details' }}
+        {{ isSaving ? 'Saving...' : 'Save Payment details' }}
       </ion-button>
     </div>
   </form>

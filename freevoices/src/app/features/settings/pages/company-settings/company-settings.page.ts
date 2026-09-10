@@ -94,15 +94,15 @@ export class CompanySettingsPage implements OnInit {
 
     // On native — show action sheet with camera and gallery options
     const actionSheet = await this.actionSheetCtrl.create({
-      header: 'Select Logo',
+      header: 'Select logo',
       buttons: [
         {
-          text: 'Take Photo',
+          text: 'Take photo',
           icon: 'camera-outline',
           handler: () => this.captureImage(CameraSource.Camera)
         },
         {
-          text: 'Choose from Gallery',
+          text: 'Choose from gallery',
           icon: 'images-outline',
           handler: () => this.captureImage(CameraSource.Photos)
         },

@@ -60,6 +60,18 @@ export class InvoiceDetailPage implements OnInit {
     { value: 'OTHER',         label: 'Other' }
   ];
 
+  /**
+   * Display label for a stored payment method.
+   *
+   * The payment history rendered the raw column value, so a recorded
+   * payment read "BANK_TRANSFER". These labels already existed for the
+   * select above; this just reuses them for display. Unknown values fall
+   * through unchanged rather than being hidden.
+   */
+  paymentMethodLabel(value: string): string {
+    return this.paymentMethods.find(m => m.value === value)?.label ?? value;
+  }
+
   constructor(
     private route: ActivatedRoute,
     private router: Router,

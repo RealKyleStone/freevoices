@@ -1,6 +1,6 @@
 <div class="settings-page">
   <div class="settings-page-header">
-    <h2>Invoice Defaults</h2>
+    <h2>Invoice defaults</h2>
     <p>These defaults are applied when creating new invoices.</p>
   </div>
 
@@ -18,15 +18,15 @@
       </ion-card-header>
       <ion-card-content>
         <ion-item [class.ion-invalid]="isInvalid('invoice_prefix')" [class.ion-touched]="form.get('invoice_prefix')?.touched">
-          <ion-label position="stacked">Invoice Number Prefix <span class="required">*</span></ion-label>
-          <ion-input aria-label="Invoice Number Prefix" formControlName="invoice_prefix" type="text" placeholder="INV"></ion-input>
+          <ion-label position="stacked">Invoice number prefix <span class="required">*</span></ion-label>
+          <ion-input aria-label="Invoice number prefix" formControlName="invoice_prefix" type="text" placeholder="INV"></ion-input>
           <ion-note slot="helper">e.g. INV, FV, 2024-</ion-note>
           <ion-note slot="error">Prefix is required</ion-note>
         </ion-item>
 
         <ion-item [class.ion-invalid]="isInvalid('invoice_next_number')" [class.ion-touched]="form.get('invoice_next_number')?.touched">
-          <ion-label position="stacked">Next Invoice Number <span class="required">*</span></ion-label>
-          <ion-input aria-label="Next Invoice Number" formControlName="invoice_next_number" type="number" min="1" placeholder="1"></ion-input>
+          <ion-label position="stacked">Next invoice number <span class="required">*</span></ion-label>
+          <ion-input aria-label="Next invoice number" formControlName="invoice_next_number" type="number" min="1" placeholder="1"></ion-input>
           <ion-note slot="helper">The counter for your next invoice (e.g. INV-0001)</ion-note>
           <ion-note slot="error">Must be 1 or greater</ion-note>
         </ion-item>
@@ -42,22 +42,22 @@
       </ion-card-header>
       <ion-card-content>
         <ion-item [class.ion-invalid]="isInvalid('invoice_payment_terms')" [class.ion-touched]="form.get('invoice_payment_terms')?.touched">
-          <ion-label position="stacked">Default Payment Terms (days) <span class="required">*</span></ion-label>
-          <ion-input aria-label="Default Payment Terms (days)" formControlName="invoice_payment_terms" type="number" min="0" placeholder="30"></ion-input>
+          <ion-label position="stacked">Default payment terms (days) <span class="required">*</span></ion-label>
+          <ion-input aria-label="Default payment terms (days)" formControlName="invoice_payment_terms" type="number" min="0" placeholder="30"></ion-input>
           <ion-note slot="helper">Number of days until invoice is due</ion-note>
           <ion-note slot="error">Must be 0 or greater</ion-note>
         </ion-item>
 
         <ion-item [class.ion-invalid]="isInvalid('invoice_vat_rate')" [class.ion-touched]="form.get('invoice_vat_rate')?.touched">
-          <ion-label position="stacked">Default VAT Rate (%) <span class="required">*</span></ion-label>
-          <ion-input aria-label="Default VAT Rate (%)" formControlName="invoice_vat_rate" type="number" min="0" max="100" step="0.1" placeholder="15"></ion-input>
+          <ion-label position="stacked">Default VAT rate (%) <span class="required">*</span></ion-label>
+          <ion-input aria-label="Default VAT rate (%)" formControlName="invoice_vat_rate" type="number" min="0" max="100" step="0.1" placeholder="15"></ion-input>
           <ion-note slot="helper">Enter 0 for VAT-exempt</ion-note>
           <ion-note slot="error">Must be between 0 and 100</ion-note>
         </ion-item>
 
         <ion-item>
-          <ion-label position="stacked">Default Invoice Notes / Terms</ion-label>
-          <ion-textarea aria-label="Default Invoice Notes / Terms"
+          <ion-label position="stacked">Default invoice notes and terms</ion-label>
+          <ion-textarea aria-label="Default invoice notes and terms"
             formControlName="invoice_notes"
             placeholder="e.g. Thank you for your business. Payment is due within 30 days."
             rows="4"
@@ -66,8 +66,8 @@
         </ion-item>
 
         <ion-item [class.ion-invalid]="isInvalid('default_currency_id')" [class.ion-touched]="form.get('default_currency_id')?.touched">
-          <ion-label position="stacked">Default Currency <span class="required">*</span></ion-label>
-          <ion-select aria-label="Default Currency" formControlName="default_currency_id" interface="popover" placeholder="Select currency">
+          <ion-label position="stacked">Default currency <span class="required">*</span></ion-label>
+          <ion-select aria-label="Default currency" formControlName="default_currency_id" interface="popover" placeholder="Select currency">
             <ion-select-option *ngFor="let c of currencies" [value]="c.id">{{ c.code }} — {{ c.name }} ({{ c.symbol }})</ion-select-option>
           </ion-select>
           <ion-note slot="error">Currency is required</ion-note>

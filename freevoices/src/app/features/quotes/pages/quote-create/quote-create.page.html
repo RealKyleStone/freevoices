@@ -3,7 +3,7 @@
     <ion-buttons slot="start">
       <ion-back-button defaultHref="/quotes"></ion-back-button>
     </ion-buttons>
-    <ion-title>New Quote</ion-title>
+    <ion-title>New quote</ion-title>
   </ion-toolbar>
 </ion-header>
 
@@ -13,7 +13,7 @@
   <form [formGroup]="form" (ngSubmit)="onSubmit()" *ngIf="!isLoadingData">
 
     <ion-card>
-      <ion-card-header><ion-card-title>Quote Details</ion-card-title></ion-card-header>
+      <ion-card-header><ion-card-title>Quote details</ion-card-title></ion-card-header>
       <ion-card-content>
 
         <ion-item [class.ion-invalid]="isInvalid('customer_id')" fill="outline">
@@ -39,20 +39,20 @@
         </ion-item>
 
         <ion-item fill="outline">
-          <ion-label position="floating">Valid Until</ion-label>
-          <ion-input aria-label="Valid Until" formControlName="valid_until" type="date"></ion-input>
+          <ion-label position="floating">Valid until</ion-label>
+          <ion-input aria-label="Valid until" formControlName="valid_until" type="date"></ion-input>
         </ion-item>
 
         <ion-item fill="outline">
-          <ion-label position="floating">Payment Terms (days)</ion-label>
-          <ion-input aria-label="Payment Terms (days)" formControlName="payment_terms" type="number" min="0"></ion-input>
+          <ion-label position="floating">Payment terms (days)</ion-label>
+          <ion-input aria-label="Payment terms (days)" formControlName="payment_terms" type="number" min="0"></ion-input>
         </ion-item>
 
       </ion-card-content>
     </ion-card>
 
     <ion-card>
-      <ion-card-header><ion-card-title>Line Items</ion-card-title></ion-card-header>
+      <ion-card-header><ion-card-title>Line items</ion-card-title></ion-card-header>
       <ion-card-content formArrayName="items">
 
         <div *ngFor="let item of items.controls; let i = index" [formGroupName]="i" class="line-item">
@@ -84,8 +84,8 @@
               <ion-input aria-label="Qty" formControlName="quantity" type="number" min="0.01" step="0.01"></ion-input>
             </ion-item>
             <ion-item [class.ion-invalid]="isItemInvalid(i, 'unit_price')" fill="outline" class="flex-2">
-              <ion-label position="floating">Unit Price <ion-text color="danger">*</ion-text></ion-label>
-              <ion-input aria-label="Unit Price" formControlName="unit_price" type="number" min="0" step="0.01"></ion-input>
+              <ion-label position="floating">Unit price <ion-text color="danger">*</ion-text></ion-label>
+              <ion-input aria-label="Unit price" formControlName="unit_price" type="number" min="0" step="0.01"></ion-input>
             </ion-item>
             <ion-item fill="outline" class="flex-1">
               <ion-label position="floating">VAT %</ion-label>
@@ -119,7 +119,7 @@
     </ion-card>
 
     <ion-card>
-      <ion-card-header><ion-card-title>Additional Info</ion-card-title></ion-card-header>
+      <ion-card-header><ion-card-title>Additional info</ion-card-title></ion-card-header>
       <ion-card-content>
         <ion-item fill="outline">
           <ion-label position="floating">Notes</ion-label>

@@ -29,7 +29,7 @@
               <p class="customer">{{ quote.customer_name }}</p>
               <p class="sub" *ngIf="quote.customer_billing_address">{{ quote.customer_billing_address }}</p>
             </div>
-            <span class="status-badge" [ngClass]="'badge-' + getStatusColor(quote.status)">{{ quote.status }}</span>
+            <span class="status-badge" [ngClass]="'badge-' + getStatusColor(quote.status)">{{ quote.status | titlecase }}</span>
           </div>
         </ion-card-content>
       </ion-card>
@@ -149,7 +149,7 @@
                 <ion-icon [name]="getTrackingIcon(event.event_type)"></ion-icon>
               </div>
               <div class="timeline-content">
-                <p class="event-type">{{ event.event_type }}</p>
+                <p class="event-type">{{ event.event_type | titlecase }}</p>
                 <p class="event-date">{{ event.event_date | date:'medium' }}</p>
               </div>
             </div>

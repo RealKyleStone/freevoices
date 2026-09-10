@@ -29,7 +29,7 @@
               <p class="customer">{{ invoice.customer_name }}</p>
               <p class="sub" *ngIf="invoice.customer_billing_address">{{ invoice.customer_billing_address }}</p>
             </div>
-            <span class="status-badge" [ngClass]="'badge-' + getStatusColor(invoice.status)">{{ invoice.status }}</span>
+            <span class="status-badge" [ngClass]="'badge-' + getStatusColor(invoice.status)">{{ invoice.status | titlecase }}</span>
           </div>
         </ion-card-content>
       </ion-card>
@@ -233,7 +233,7 @@
               </div>
               <ion-label>
                 <h3>{{ currencySymbol }} {{ payment.amount | number:'1.2-2' }}</h3>
-                <p>{{ payment.payment_date | date:'mediumDate' }} — {{ payment.payment_method }}</p>
+                <p>{{ payment.payment_date | date:'mediumDate' }} — {{ paymentMethodLabel(payment.payment_method) }}</p>
                 <p *ngIf="payment.transaction_reference">Ref: {{ payment.transaction_reference }}</p>
               </ion-label>
             </ion-item>
@@ -251,7 +251,7 @@
                 <ion-icon [name]="getTrackingIcon(event.event_type)"></ion-icon>
               </div>
               <div class="timeline-content">
-                <p class="event-type">{{ event.event_type }}</p>
+                <p class="event-type">{{ event.event_type | titlecase }}</p>
                 <p class="event-date">{{ event.event_date | date:'medium' }}</p>
               </div>
             </div>

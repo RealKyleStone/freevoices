@@ -49,7 +49,7 @@
         <div class="logo-upload-area" *ngIf="!logoPreview">
           <button type="button" class="upload-label" (click)="onLogoTap()">
             <ion-icon name="cloud-upload-outline" aria-hidden="true"></ion-icon>
-            <span>{{ logoUrl ? 'Replace Logo' : 'Choose Logo' }}</span>
+            <span>{{ logoUrl ? 'Replace logo' : 'Choose logo' }}</span>
           </button>
           <!-- Hidden file input used on web only — triggered programmatically by onLogoTap() -->
           <input
@@ -74,23 +74,23 @@
         </ion-card-header>
         <ion-card-content>
           <ion-item>
-            <ion-label position="stacked">Company Name</ion-label>
-            <ion-input aria-label="Company Name" formControlName="company_name" type="text" placeholder="Acme Pty Ltd"></ion-input>
+            <ion-label position="stacked">Company name</ion-label>
+            <ion-input aria-label="Company name" formControlName="company_name" type="text" placeholder="Acme Pty Ltd"></ion-input>
           </ion-item>
 
           <ion-item>
-            <ion-label position="stacked">Registration Number</ion-label>
-            <ion-input aria-label="Registration Number" formControlName="company_registration" type="text" placeholder="2020/123456/07"></ion-input>
+            <ion-label position="stacked">Registration number</ion-label>
+            <ion-input aria-label="Registration number" formControlName="company_registration" type="text" placeholder="2020/123456/07"></ion-input>
           </ion-item>
 
           <ion-item>
-            <ion-label position="stacked">VAT Number</ion-label>
-            <ion-input aria-label="VAT Number" formControlName="vat_number" type="text" placeholder="4123456789"></ion-input>
+            <ion-label position="stacked">VAT number</ion-label>
+            <ion-input aria-label="VAT number" formControlName="vat_number" type="text" placeholder="4123456789"></ion-input>
           </ion-item>
 
           <ion-item>
-            <ion-label position="stacked">Business Address</ion-label>
-            <ion-textarea aria-label="Business Address"
+            <ion-label position="stacked">Business address</ion-label>
+            <ion-textarea aria-label="Business address"
               formControlName="address"
               placeholder="123 Main Street&#10;Cape Town, 8001"
               rows="3"

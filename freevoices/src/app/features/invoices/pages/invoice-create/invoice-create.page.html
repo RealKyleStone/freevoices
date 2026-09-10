@@ -3,7 +3,7 @@
     <ion-buttons slot="start">
       <ion-back-button defaultHref="/invoices"></ion-back-button>
     </ion-buttons>
-    <ion-title>New Invoice</ion-title>
+    <ion-title>New invoice</ion-title>
   </ion-toolbar>
 </ion-header>
 
@@ -16,7 +16,7 @@
 
     <!-- Header details -->
     <ion-card>
-      <ion-card-header><ion-card-title>Invoice Details</ion-card-title></ion-card-header>
+      <ion-card-header><ion-card-title>Invoice details</ion-card-title></ion-card-header>
       <ion-card-content>
 
         <ion-item [class.ion-invalid]="isInvalid('customer_id')" [class.ion-touched]="isInvalid('customer_id')" fill="outline">
@@ -42,13 +42,13 @@
         </ion-item>
 
         <ion-item fill="outline">
-          <ion-label position="floating">Due Date</ion-label>
-          <ion-input aria-label="Due Date" formControlName="due_date" type="date"></ion-input>
+          <ion-label position="floating">Due date</ion-label>
+          <ion-input aria-label="Due date" formControlName="due_date" type="date"></ion-input>
         </ion-item>
 
         <ion-item fill="outline">
-          <ion-label position="floating">Payment Terms (days)</ion-label>
-          <ion-input aria-label="Payment Terms (days)" formControlName="payment_terms" type="number" min="0"></ion-input>
+          <ion-label position="floating">Payment terms (days)</ion-label>
+          <ion-input aria-label="Payment terms (days)" formControlName="payment_terms" type="number" min="0"></ion-input>
         </ion-item>
 
       </ion-card-content>
@@ -57,7 +57,7 @@
     <!-- Line items -->
     <ion-card>
       <ion-card-header>
-        <ion-card-title>Line Items</ion-card-title>
+        <ion-card-title>Line items</ion-card-title>
       </ion-card-header>
       <ion-card-content formArrayName="items">
 
@@ -92,8 +92,8 @@
             </ion-item>
 
             <ion-item [class.ion-invalid]="isItemInvalid(i, 'unit_price')" [class.ion-touched]="isItemInvalid(i, 'unit_price')" fill="outline" class="flex-2">
-              <ion-label position="floating">Unit Price <ion-text color="danger">*</ion-text></ion-label>
-              <ion-input aria-label="Unit Price" formControlName="unit_price" type="number" min="0" step="0.01"></ion-input>
+              <ion-label position="floating">Unit price <ion-text color="danger">*</ion-text></ion-label>
+              <ion-input aria-label="Unit price" formControlName="unit_price" type="number" min="0" step="0.01"></ion-input>
               <ion-note slot="error">Required</ion-note>
             </ion-item>
 
@@ -131,7 +131,7 @@
 
     <!-- Recurring -->
     <ion-card>
-      <ion-card-header><ion-card-title>Recurring Schedule</ion-card-title></ion-card-header>
+      <ion-card-header><ion-card-title>Recurring schedule</ion-card-title></ion-card-header>
       <ion-card-content>
 
         <ion-item>
@@ -151,8 +151,8 @@
           </ion-item>
 
           <ion-item fill="outline">
-            <ion-label position="floating">End Date (optional)</ion-label>
-            <ion-input aria-label="End Date (optional)" formControlName="recurrence_end_date" type="date"></ion-input>
+            <ion-label position="floating">End date (optional)</ion-label>
+            <ion-input aria-label="End date (optional)" formControlName="recurrence_end_date" type="date"></ion-input>
           </ion-item>
 
           <ion-item>
@@ -166,7 +166,7 @@
 
     <!-- Notes -->
     <ion-card>
-      <ion-card-header><ion-card-title>Additional Info</ion-card-title></ion-card-header>
+      <ion-card-header><ion-card-title>Additional info</ion-card-title></ion-card-header>
       <ion-card-content>
 
         <ion-item fill="outline">
