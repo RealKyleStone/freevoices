@@ -82,7 +82,7 @@ ion-item {
   ion-note[slot="error"] {
     margin-top: var(--fv-tight-gap);
     font-size: var(--fv-text-xs);
-    color: var(--ion-color-danger);
+    color: var(--fv-danger-text);
   }
 }
 
@@ -96,7 +96,7 @@ ion-item {
 /* The required marker is quiet: it flags, it does not shout. */
 ion-label ion-text[color="danger"],
 .required {
-  color: var(--ion-color-danger);
+  color: var(--fv-danger-text);
   font-weight: var(--fv-weight-semibold);
 }
 

@@ -212,6 +212,16 @@
   --ion-color-primary-rgb: 20, 184, 166;
   --ion-color-primary-shade: #0f9e8e;
   --ion-color-primary-tint: #2ec4b3;
+  /*
+   * Dark mode's primary is a light teal, so white is the wrong thing to put
+   * on it. The contrast token was left at #ffffff, which meant every solid
+   * primary surface in dark mode carried white text at 2.49:1 — including
+   * the selected item in the navigation rail, the one row on screen whose
+   * job is to say which page you are on. A very dark teal rather than flat
+   * black, so the brand colour still reads in the pairing: 6.8:1.
+   */
+  --ion-color-primary-contrast: #04211f;
+  --ion-color-primary-contrast-rgb: 4, 33, 31;
 
   /*
    * Medium is the app's secondary text colour — field labels, row meta,
