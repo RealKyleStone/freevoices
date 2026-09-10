@@ -33,9 +33,12 @@
   gap: 8px;
   padding: 10px 20px;
   border: 2px dashed var(--ion-color-primary);
-  border-radius: 8px;
+  border-radius: var(--fv-radius-md);
+  background: none;
   color: var(--ion-color-primary);
   cursor: pointer;
+  font-family: inherit;
+  min-height: 44px;
   font-size: 0.9rem;
   font-weight: 500;
   transition: background 0.2s;

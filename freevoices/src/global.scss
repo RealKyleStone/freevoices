@@ -178,15 +178,36 @@ ion-menu {
 
   ion-content { --background: var(--ion-background-color); }
 
+  /*
+   * The brand is a <button> (it navigates to the dashboard), so the UA
+   * button styling has to be reset back to the block it used to be.
+   */
   .menu-header {
-    padding: 1rem 0.5rem;
+    display: block;
+    width: 100%;
+    padding: var(--fv-space-4) var(--fv-space-2);
+    border: 0;
+    background: none;
+    font: inherit;
     text-align: center;
     cursor: pointer;
+    transition: opacity var(--fv-duration) var(--fv-ease);
+
     &:hover { opacity: 0.8; }
-    h1 {
+
+    .menu-header-name {
+      display: block;
       margin: 0;
-      font-size: 1rem;
-      font-weight: 700;
+      font-size: var(--fv-text-md);
+      font-weight: var(--fv-weight-bold);
+      letter-spacing: -0.01em;
+      /*
+       * Flat primary rather than a clipped gradient. The wordmark was
+       * painted with `background: linear-gradient(...)` plus
+       * `-webkit-text-fill-color: transparent`, which has no measurable
+       * contrast ratio and renders as invisible text wherever
+       * background-clip:text is unsupported.
+       */
       color: var(--ion-color-primary);
     }
   }
@@ -261,6 +282,70 @@ ion-input, ion-textarea {
   --padding-start: 16px;
   --padding-end: 16px;
   --border-radius: var(--fv-radius-md);
+}
+
+/*
+ * Visible keyboard focus.
+ *
+ * Ionic styles focus for its own components, but the app also uses bare
+ * <button> and <a> elements which had none — there was no :focus rule
+ * anywhere in the codebase. :focus-visible keeps pointer users from seeing
+ * a ring on click.
+ */
+:focus-visible {
+  outline: 2px solid var(--ion-color-primary);
+  outline-offset: 2px;
+  border-radius: var(--fv-radius-sm);
+}
+
+/* Ionic components manage their own inner ring; don't double up. */
+ion-button:focus-visible,
+ion-item:focus-visible,
+ion-fab-button:focus-visible,
+ion-searchbar:focus-visible {
+  outline: none;
+}
+
+/* Ionic sets .ion-focused on keyboard focus for these. */
+ion-button.ion-focused,
+ion-fab-button.ion-focused,
+ion-item.ion-focused {
+  position: relative;
+  z-index: 1;
+  outline: 2px solid var(--ion-color-primary);
+  outline-offset: 2px;
+}
+
+/*
+ * Minimum touch target.
+ *
+ * The row edit/delete actions and the dashboard toolbar buttons were 36px,
+ * below the 44px recommended minimum, and the row pair sat flush against
+ * each other. Ionic's own default for a bare ion-button already clears 44px;
+ * this only raises the ones the app had shrunk.
+ */
+ion-button.action-btn,
+ion-button.toolbar-icon-btn {
+  min-width: 44px;
+  min-height: 44px;
+}
+
+/*
+ * Reduced motion.
+ *
+ * Covers the app's own transitions and Ionic's animated skeletons. Ionic's
+ * page transitions are driven in JavaScript and are not affected by this, so
+ * it is a floor rather than a complete guarantee.
+ */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
 }
 
 /* Core CSS */

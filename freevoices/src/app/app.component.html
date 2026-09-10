@@ -3,9 +3,11 @@
   <ion-split-pane contentId="main-content" *ngIf="isLoggedIn$ | async">
     <ion-menu contentId="main-content">
       <ion-content>
-        <div class="menu-header" routerLink="/dashboard" (click)="closeMenu()">
-          <h1>FreeVoices</h1>
-        </div>
+        <!-- A button rather than a div: it navigates, so it has to be
+             focusable and operable from the keyboard. -->
+        <button type="button" class="menu-header" routerLink="/dashboard" (click)="closeMenu()">
+          <span class="menu-header-name">FreeVoices</span>
+        </button>
 
         <ion-list>
           <ion-menu-toggle auto-hide="false">
