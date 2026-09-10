@@ -14,30 +14,34 @@
   padding: var(--fv-gutter) var(--fv-gutter) var(--fv-page-tail);
   max-width: calc(680px + var(--fv-gutter) * 2);
 
+  /* Same shape as .page-head on the other pages, on the same scales, so a
+     settings section is headed the way an invoice list is. */
   .settings-page-header {
-    margin-bottom: 16px;
+    margin-bottom: var(--fv-section-gap);
 
     h1 {
-      font-size: 1.4rem;
-      font-weight: 600;
-      margin: 0 0 4px;
+      margin: 0 0 var(--fv-tight-gap);
+      font-size: var(--fv-text-2xl);
+      font-weight: var(--fv-weight-semibold);
+      letter-spacing: -0.01em;
+      line-height: 1.2;
     }
 
     p {
-      color: var(--ion-color-medium);
       margin: 0;
-      font-size: 0.9rem;
+      font-size: var(--fv-text-base);
+      color: var(--ion-color-medium);
     }
   }
 
   .loading-container {
     display: flex;
     justify-content: center;
-    padding: 48px 0;
+    padding: var(--fv-space-7) 0;
   }
 
   ion-card {
-    margin: 0 0 16px;
+    margin: 0 0 var(--fv-block-gap);
     /* Radius and elevation come from the shared ion-card rule in
        global.scss. These pages used to declare a 12px radius and their own
        drop shadow, which after that rule landed left them with a border and
@@ -46,12 +50,12 @@
     ion-card-title {
       display: flex;
       align-items: center;
-      gap: 8px;
-      font-size: 1rem;
-      font-weight: 600;
+      gap: var(--fv-space-2);
+      font-size: var(--fv-text-md);
+      font-weight: var(--fv-weight-semibold);
 
       ion-icon {
-        font-size: 1.1rem;
+        font-size: 18px;
         color: var(--ion-color-primary);
       }
     }
@@ -62,17 +66,16 @@
      weight and colour. */
 
   .required {
-    color: var(--ion-color-danger);
+    color: var(--fv-danger-text);
   }
 
   .hint {
-    font-size: 0.82rem;
+    margin: 0 0 var(--fv-space-3);
+    font-size: var(--fv-text-xs);
     color: var(--ion-color-medium);
-    margin: 0 0 12px;
   }
 
   .form-actions {
-    margin-top: 8px;
-    margin-bottom: 24px;
+    margin-top: var(--fv-space-2);
   }
 }

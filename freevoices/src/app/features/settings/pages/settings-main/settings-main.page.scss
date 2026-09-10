@@ -1,57 +1,100 @@
+/*
+ * Settings shell.
+ *
+ * The section list is the app's second navigation, and it did not look or
+ * behave like the first: 48px rows drawing ion-item's default border
+ * against the rail's 42px borderless pills, and a divider hard-coded to
+ * #e0e0e0 through an --ion-border-color fallback that is never defined, so
+ * a light grey line was drawn down a #111111 surface in dark mode.
+ *
+ * Worse, the selected section was the least readable item in the list:
+ * --ion-color-primary-tint is a mid-teal fill, not a tint, so the active
+ * row put #0f766e text on #27847d — 1.22:1 in light and 1.15:1 in dark.
+ * It now uses the same solid-primary treatment as the main rail's selected
+ * item, which is legible and makes the two navigations agree.
+ */
+
 .settings-layout {
   display: flex;
   height: 100%;
 }
 
 .settings-nav {
+  --settings-nav-inset: 8px;
+
   width: 220px;
   min-width: 220px;
-  border-right: 1px solid var(--ion-border-color, #e0e0e0);
+  border-right: 1px solid var(--fv-border);
   background: var(--ion-background-color);
 
+  ion-list {
+    padding: var(--fv-space-2) var(--settings-nav-inset);
+    background: none;
+  }
+
   ion-item {
-    --padding-start: 16px;
-    --border-radius: 8px;
-    margin: 4px 8px;
+    --background: transparent;
+    --background-hover: rgba(var(--ion-color-primary-rgb), 0.08);
+    --background-activated: rgba(var(--ion-color-primary-rgb), 0.14);
+    --border-width: 0;
+    --padding-start: 12px;
+    --inner-padding-end: 8px;
+    --min-height: 42px;
+    --border-radius: var(--fv-radius-md);
+    border-radius: var(--fv-radius-md);
+    margin-bottom: 2px;
+    font-size: var(--fv-text-sm);
+    font-weight: var(--fv-weight-medium);
+    transition: background var(--fv-duration-fast) var(--fv-ease);
+
+    ion-icon {
+      font-size: 17px;
+      margin-right: 12px;
+      color: var(--ion-color-medium);
+    }
 
     &.active-nav {
-      --background: var(--ion-color-primary-tint);
-      --color: var(--ion-color-primary);
-      font-weight: 600;
+      --background: var(--ion-color-primary);
+      --color: var(--ion-color-primary-contrast);
+      font-weight: var(--fv-weight-semibold);
 
-      ion-icon {
-        color: var(--ion-color-primary);
-      }
+      ion-icon { color: var(--ion-color-primary-contrast); }
     }
   }
 }
 
 .settings-content {
   flex: 1;
+  min-width: 0;
   overflow-y: auto;
-  padding: 0;
 }
 
+/*
+ * Below 600px the sections become a scrolling row above the content. The
+ * pills keep their shape here; only the direction changes.
+ */
 @media (max-width: 600px) {
-  .settings-layout {
-    flex-direction: column;
-  }
+  .settings-layout { flex-direction: column; }
 
   .settings-nav {
     width: 100%;
-    min-width: unset;
+    min-width: 0;
     border-right: none;
-    border-bottom: 1px solid var(--ion-border-color, #e0e0e0);
+    border-bottom: 1px solid var(--fv-border);
 
     ion-list {
       display: flex;
+      gap: 2px;
+      padding-inline: var(--fv-gutter);
       overflow-x: auto;
-      padding: 0 8px;
+      scrollbar-width: none;
+      &::-webkit-scrollbar { display: none; }
+    }
 
-      ion-item {
-        min-width: max-content;
-        margin: 4px 2px;
-      }
+    ion-item {
+      flex: 0 0 auto;
+      min-width: max-content;
+      margin-bottom: 0;
     }
   }
 }
