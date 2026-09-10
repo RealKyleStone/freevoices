@@ -9,12 +9,26 @@ import { forkJoin } from 'rxjs';
 
 Chart.register(...registerables);
 
-const STATUS_COLORS: Record<string, string> = {
-  DRAFT:     '#9ca3af',
-  SENT:      '#4a90e2',
-  PAID:      '#16a34a',
-  OVERDUE:   '#f59e0b',
-  CANCELLED: '#ef4444'
+/*
+ * Chart colours are read from the theme at build time rather than hard-coded.
+ *
+ * The five status colours used to be literals, two of which (#4a90e2 and
+ * #f59e0b) appear nowhere else in the product, so the charts disagreed with
+ * the status badges on every other screen. These map to the same tokens the
+ * badges use, via the DRAFT/SENT/PAID/OVERDUE/CANCELLED mapping the list
+ * pages already apply (medium / primary / success / warning / danger).
+ */
+const STATUS_TOKENS: Record<string, string> = {
+  DRAFT:     '--fv-medium-text',
+  SENT:      '--fv-teal-text',
+  PAID:      '--fv-success-text',
+  OVERDUE:   '--fv-warning-text',
+  CANCELLED: '--fv-danger-text'
+};
+
+const STATUS_LABELS: Record<string, string> = {
+  DRAFT: 'Draft', SENT: 'Sent', PAID: 'Paid',
+  OVERDUE: 'Overdue', CANCELLED: 'Cancelled'
 };
 
 const MONTH_LABELS: Record<string, string> = {
@@ -48,6 +62,7 @@ export class ReportsPage implements OnInit, OnDestroy {
   vatRows: VatSummaryRow[]    = [];
 
   private charts: Chart[] = [];
+  private themeObserver?: MutationObserver;
 
   private revenueData?: RevenueByMonth[];
   private statusData?:  InvoiceStatusBreakdown[];
@@ -56,6 +71,35 @@ export class ReportsPage implements OnInit, OnDestroy {
 
 
   constructor(private reports: ReportsService) {}
+
+  /** Resolve a CSS custom property against the document root. */
+  private token(name: string, fallback: string): string {
+    const v = getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+    return v || fallback;
+  }
+
+  /**
+   * Colours for the current theme.
+   *
+   * Chart.js draws to a canvas, so it cannot inherit CSS. Left to its own
+   * defaults it paints tick labels, legend text and grid lines in #666 and
+   * rgba(0,0,0,0.1), which is low contrast on the light surface and close to
+   * invisible on the #111111 dark one.
+   */
+  private themeColors() {
+    return {
+      // --fv-medium-text and --ion-text-color-rgb both flip with the theme,
+      // where --ion-color-medium does not: it stays #6b7280 in dark mode,
+      // which is only about 3.45:1 against the #1e1e1e card. These measure
+      // 10.5:1 in light and 6.6:1 in dark.
+      text: this.token('--fv-medium-text', '#374151'),
+      grid: `rgba(${this.token('--ion-text-color-rgb', '17, 24, 39')}, 0.12)`,
+      primary: this.token('--ion-color-primary', '#0f766e'),
+      accent: this.token('--fv-warning-text', '#854d0e'),
+      status: (status: string) =>
+        this.token(STATUS_TOKENS[status] ?? '--fv-medium-text', '#6b7280')
+    };
+  }
 
   ngOnInit() {
     forkJoin({
@@ -84,14 +128,48 @@ export class ReportsPage implements OnInit, OnDestroy {
 
 
   ngOnDestroy() {
+    this.themeObserver?.disconnect();
+    this.destroyCharts();
+  }
+
+  /**
+   * Redraw when the theme changes.
+   *
+   * AppComponent toggles .ion-palette-dark on the document element, and the
+   * charts bake their colours in at draw time, so they have to be rebuilt to
+   * follow it — otherwise switching theme leaves four charts painted for the
+   * previous one until the page is revisited.
+   */
+  private watchTheme() {
+    if (this.themeObserver) return;
+    this.themeObserver = new MutationObserver(() => {
+      if (this.charts.length) this.buildCharts();
+    });
+    this.themeObserver.observe(document.documentElement, {
+      attributes: true,
+      attributeFilter: ['class']
+    });
+  }
+
+  private destroyCharts() {
     this.charts.forEach(c => c.destroy());
+    this.charts = [];
   }
 
   private buildCharts() {
+    // Rebuilding reuses the same canvases, so the previous instances have to
+    // be released first or Chart.js refuses to attach to them.
+    this.destroyCharts();
+
+    const t = this.themeColors();
+    Chart.defaults.color = t.text;
+    Chart.defaults.borderColor = t.grid;
+
     this.buildRevenueChart();
     this.buildStatusChart();
     this.buildCustomersChart();
     this.buildVatChart();
+    this.watchTheme();
   }
 
   private register(chart: Chart) {
@@ -107,7 +185,7 @@ export class ReportsPage implements OnInit, OnDestroy {
         datasets: [{
           label: 'Revenue (R)',
           data: data.map(r => +r.revenue),
-          backgroundColor: '#4a90e2',
+          backgroundColor: this.themeColors().primary,
           borderRadius: 4
         }]
       },
@@ -128,10 +206,10 @@ export class ReportsPage implements OnInit, OnDestroy {
     const cfg: ChartConfiguration = {
       type: 'doughnut',
       data: {
-        labels: data.map(r => r.status),
+        labels: data.map(r => STATUS_LABELS[r.status] ?? r.status),
         datasets: [{
           data: data.map(r => +r.count),
-          backgroundColor: data.map(r => STATUS_COLORS[r.status] ?? '#9ca3af')
+          backgroundColor: data.map(r => this.themeColors().status(r.status))
         }]
       },
       options: {
@@ -152,7 +230,7 @@ export class ReportsPage implements OnInit, OnDestroy {
         datasets: [{
           label: 'Revenue (R)',
           data: data.map(r => +r.revenue),
-          backgroundColor: '#16a34a',
+          backgroundColor: this.themeColors().primary,
           borderRadius: 4
         }]
       },
@@ -179,14 +257,14 @@ export class ReportsPage implements OnInit, OnDestroy {
           {
             label: 'Subtotal',
             data: data.map(r => +r.subtotal),
-            backgroundColor: '#4a90e2',
+            backgroundColor: this.themeColors().primary,
             borderRadius: 4,
             stack: 'vat'
           },
           {
             label: 'VAT',
             data: data.map(r => +r.vat_amount),
-            backgroundColor: '#f59e0b',
+            backgroundColor: this.themeColors().accent,
             borderRadius: 4,
             stack: 'vat'
           }
