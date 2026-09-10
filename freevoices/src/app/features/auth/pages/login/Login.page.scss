@@ -112,25 +112,32 @@
   margin-bottom: 1rem;
 }
 
+/*
+ * Theme toggle.
+ *
+ * It sat over the white form panel with a 30%-black fill and a white icon,
+ * which reads as roughly 1.9:1 — the icon nearly disappeared in light mode.
+ * It now uses the shared surface and border tokens so it inverts with the
+ * theme, and the icon takes the current text colour. Also raised from 40px
+ * to the 44px minimum touch target.
+ */
 .login-theme-btn {
   position: fixed;
   top: 1rem;
   right: 1rem;
   z-index: 9999;
-  width: 40px;
-  height: 40px;
+  width: 44px;
+  height: 44px;
   border-radius: 50%;
-  border: 1px solid rgba(255,255,255,0.25);
-  background: rgba(0,0,0,0.3);
+  border: 1px solid var(--fv-border-strong);
+  background: var(--fv-surface-subtle);
   display: flex;
   align-items: center;
   justify-content: center;
   cursor: pointer;
-  ion-icon { font-size: 20px; color: white; pointer-events: none; }
-}
+  transition: background var(--fv-duration-fast) var(--fv-ease);
 
-:host-context(.ion-palette-dark) .login-theme-btn {
-  background: rgba(255,255,255,0.1);
+  ion-icon { font-size: 20px; color: var(--ion-text-color); pointer-events: none; }
 }
 // Legal links sit below the account links, deliberately quieter but present —
 // Play requires the privacy policy to be reachable before sign-in.
