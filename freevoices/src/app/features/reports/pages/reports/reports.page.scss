@@ -27,7 +27,7 @@
 .summary-chip {
   flex: 1;
   min-width: 140px;
-  background: var(--ion-color-light);
+  background: var(--fv-surface-subtle);
   border-radius: 12px;
   padding: 0.875rem 1rem;
   display: flex;
@@ -79,7 +79,7 @@
   th, td {
     padding: 0.5rem 0.75rem;
     text-align: left;
-    border-bottom: 1px solid var(--ion-color-light);
+    border-bottom: 1px solid var(--fv-border);
   }
 
   th {
@@ -91,7 +91,7 @@
   }
 
   tfoot td {
-    border-top: 2px solid var(--ion-color-light);
+    border-top: 2px solid var(--fv-border-strong);
     border-bottom: none;
   }
 
