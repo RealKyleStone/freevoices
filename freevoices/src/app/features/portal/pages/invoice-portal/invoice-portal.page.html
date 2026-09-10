@@ -42,7 +42,7 @@
       </div>
       <div class="dates">
         <div class="date-row">
-          <span class="date-label">Issue Date</span>
+          <span class="date-label">Issue date</span>
           <span>{{ invoice.issue_date | date:'mediumDate' }}</span>
         </div>
         <div class="date-row" *ngIf="invoice.due_date">
@@ -50,7 +50,7 @@
           <span>{{ invoice.due_date | date:'mediumDate' }}</span>
         </div>
         <div class="date-row" *ngIf="invoice.payment_terms != null">
-          <span class="date-label">Payment Terms</span>
+          <span class="date-label">Payment terms</span>
           <span>{{ invoice.payment_terms }} days</span>
         </div>
       </div>
