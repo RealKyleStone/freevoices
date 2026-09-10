@@ -285,6 +285,33 @@ ion-input, ion-textarea {
 }
 
 /*
+ * Application content width.
+ *
+ * The settings, legal and portal pages already capped their own width
+ * (640px, 760px, 780px), but the dashboard, the four list pages, the four
+ * detail pages and the create/edit forms had no cap at all. With the split
+ * pane open on a wide display, an invoice totals row stretched the full
+ * width of the viewport, putting "Total" and its amount at opposite edges
+ * of the screen.
+ *
+ * Capping the existing container classes here rather than adding a wrapper
+ * element keeps this to one rule and leaves every template untouched.
+ * Forms get a narrower measure than data views, since they are a single
+ * column of fields and gain nothing from the extra width.
+ */
+.dashboard-container,
+.list-container,
+.detail-container {
+  max-width: var(--fv-content-max);
+  margin-inline: auto;
+}
+
+.form-container {
+  max-width: 760px;
+  margin-inline: auto;
+}
+
+/*
  * Visible keyboard focus.
  *
  * Ionic styles focus for its own components, but the app also uses bare

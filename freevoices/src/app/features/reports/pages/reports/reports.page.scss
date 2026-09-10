@@ -70,10 +70,16 @@
   font-size: 0.9rem;
 }
 
+.vat-table-scroll {
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  margin-top: 1.25rem;
+}
+
 .vat-table {
   width: 100%;
+  min-width: 26rem;
   border-collapse: collapse;
-  margin-top: 1.25rem;
   font-size: 0.875rem;
 
   th, td {

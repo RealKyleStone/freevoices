@@ -83,8 +83,11 @@
           <canvas #vatCanvas></canvas>
         </div>
 
-        <!-- VAT table for tax filing -->
-        <table class="vat-table" *ngIf="vatRows.length > 0">
+        <!-- VAT table for tax filing.
+             Wrapped so the four money columns scroll on a narrow phone
+             instead of overflowing the card. -->
+        <div class="vat-table-scroll" *ngIf="vatRows.length > 0">
+        <table class="vat-table">
           <thead>
             <tr>
               <th>Month</th>
@@ -110,6 +113,7 @@
             </tr>
           </tfoot>
         </table>
+        </div>
       </ion-card-content>
     </ion-card>
 

@@ -87,10 +87,23 @@ ion-label h3 {
   font-size: 0.875rem;
   margin-bottom: 1rem;
 
+  /*
+   * The three money columns were a fixed 13rem plus 1.5rem of gaps. Inside
+   * the card and container padding that left roughly 24px for Description on
+   * a 320px phone, so descriptions wrapped to two characters per line.
+   *
+   * The columns are narrower now and the grid keeps a min-width, so the
+   * table scrolls horizontally on the narrowest phones instead of crushing
+   * the one column that carries the actual text.
+   */
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+
   .items-header {
     display: grid;
-    grid-template-columns: 1fr 3rem 5rem 5rem;
+    grid-template-columns: minmax(7rem, 1fr) 2.5rem 4.75rem 4.75rem;
     gap: 0.5rem;
+    min-width: 20rem;
     font-weight: 600;
     color: var(--ion-color-medium);
     padding-bottom: 0.5rem;
@@ -103,13 +116,68 @@ ion-label h3 {
 
   .item-row {
     display: grid;
-    grid-template-columns: 1fr 3rem 5rem 5rem;
+    grid-template-columns: minmax(7rem, 1fr) 2.5rem 4.75rem 4.75rem;
     gap: 0.5rem;
+    min-width: 20rem;
     padding: 0.5rem 0;
     border-bottom: 1px solid rgba(var(--ion-color-medium-rgb), 0.08);
 
+    .desc { min-width: 0; overflow-wrap: anywhere; }
     .vat-note { display: block; color: var(--ion-color-medium); font-size: 0.75rem; margin-top: 2px; }
     .qty, .price, .amount { text-align: right; }
+  }
+}
+
+/*
+ * Line items below 30rem.
+ *
+ * Four money columns do not fit the ~256px left inside the card and
+ * container padding on a 320px phone, so rather than scroll the table
+ * sideways each row becomes a block: the description on its own line, then
+ * quantity, unit price and total on a wrapping meta line.
+ *
+ * The column labels come from generated content because the header row is
+ * hidden here, and doing it this way keeps the change to the stylesheet
+ * instead of restructuring the template every detail page shares.
+ */
+@media (max-width: 30rem) {
+  .items-table {
+    overflow-x: visible;
+
+    .items-header { display: none; }
+
+    .item-row {
+      display: block;
+      min-width: 0;
+      padding: 0.75rem 0;
+
+      .desc {
+        display: block;
+        margin-bottom: 0.35rem;
+        font-weight: var(--fv-weight-medium);
+      }
+
+      .qty, .price, .amount {
+        display: inline-block;
+        text-align: left;
+        margin-right: 0.85rem;
+        font-variant-numeric: tabular-nums;
+        white-space: nowrap;
+
+        &::before {
+          color: var(--ion-color-medium);
+          font-size: var(--fv-text-xs);
+          text-transform: uppercase;
+          letter-spacing: 0.04em;
+        }
+      }
+
+      .qty::before { content: 'Qty '; }
+      .price::before { content: 'Unit '; }
+      .amount::before { content: 'Total '; }
+
+      .amount { font-weight: var(--fv-weight-semibold); margin-right: 0; }
+    }
   }
 }
 
