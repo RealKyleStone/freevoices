@@ -112,7 +112,7 @@
   min-width: 0;
 }
 
-.panel-pad { padding: var(--fv-space-4); }
+/* .panel-pad lives in global.scss, beside .panel. */
 
 /* ── Line items ──────────────────────────────────────────────────── */
 

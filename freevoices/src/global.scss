@@ -548,6 +548,12 @@ ion-header ion-toolbar {
   overflow: hidden;
 }
 
+/* A panel whose content is not itself edge-to-edge, such as a chart or a
+   block of text, as opposed to a list of rows that supply their own
+   padding. Global rather than in the detail partial because the reports
+   page composes from the same two primitives. */
+.panel-pad { padding: var(--fv-space-4); }
+
 /*
  * Visible keyboard focus.
  *
