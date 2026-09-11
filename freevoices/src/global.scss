@@ -266,7 +266,6 @@ ion-menu {
       margin-bottom: 2px;
       font-size: var(--fv-text-base);
       font-weight: var(--fv-weight-medium);
-      transition: background var(--fv-duration-fast) var(--fv-ease);
 
       &:hover:not(.selected) { cursor: pointer; }
 
@@ -352,12 +351,13 @@ ion-input, ion-textarea {
  * reuse .invoice-item; left as-is rather than renamed, to keep this to a
  * styling change.
  */
-ion-item.customer-item,
-ion-item.invoice-item {
-  --background-activated: rgba(var(--ion-color-primary-rgb), 0.1);
-  --background-focused: rgba(var(--ion-color-primary-rgb), 0.08);
-  --transition: background var(--fv-duration-fast) var(--fv-ease);
-}
+/*
+ * The rule that lived here targeted .customer-item and .invoice-item, which
+ * no longer appear in any template -- the four lists share .list-row now.
+ * Its --transition would not have done anything either: ion-item does not
+ * consume that property. See the note on .list-row in
+ * shared/styles/list-page.scss.
+ */
 
 /*
  * The page grid.

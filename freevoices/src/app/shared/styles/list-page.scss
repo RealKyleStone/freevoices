@@ -161,7 +161,14 @@
   /* Two text lines rather than three, so a row is 64px instead of 82px and
      more records fit the first screen. */
   --min-height: 64px;
-  --transition: background var(--fv-duration-fast) var(--fv-ease);
+  /*
+   * No transition is declared for the hover and pressed tints above, because
+   * none can be. ion-item paints them on an element inside its shadow root,
+   * which a stylesheet cannot reach, and it does not consume a --transition
+   * property; Ionic's own 15ms linear governs the change. A transition set
+   * here, or on the host, measures as applied and does nothing -- the host
+   * itself is transparent.
+   */
 
   & + .list-row { border-top: 1px solid var(--fv-border); }
 
