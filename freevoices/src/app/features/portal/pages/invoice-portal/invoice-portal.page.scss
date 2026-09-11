@@ -239,7 +239,15 @@ ion-content.portal-content {
   }
 
   .total-row {
-    background: #4a90e2;
+    /*
+     * A darker step of the same accent blue. #4a90e2 with white on it
+     * measured 3.29:1, under the 4.5:1 minimum, and this is the one figure
+     * the customer opened the link to read. #2b6cb0 is the same hue family,
+     * so the document still matches the PDF and the emails, and measures
+     * 5.42:1. The shared palette itself -- #4a90e2 and #1a1a2e in
+     * pdf.service.js, email.service.js and server.js -- is untouched.
+     */
+    background: #2b6cb0;
     color: #fff;
     padding: 6px 12px;
     border-radius: 4px;
@@ -288,5 +296,13 @@ ion-content.portal-content {
   text-align: center;
   margin-top: 24px;
   font-size: 0.75rem;
-  color: #9ca3af;
+  /*
+   * The footer is the one part of this page outside the white paper --
+   * it sits on the page background, which does follow the theme. A fixed
+   * grey cannot serve both: #9ca3af measured 2.54:1 on the light page and
+   * #6b7280 measured 3.91:1 on the dark one. The medium text token is
+   * keyed per theme and clears both. The paper above keeps its own fixed
+   * colours, which match the PDF and the emails.
+   */
+  color: var(--fv-medium-text);
 }
