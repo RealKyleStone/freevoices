@@ -55,7 +55,6 @@ export class LoginPage implements OnInit, AfterViewInit {
     this.isMobile = this.platform.is('ios') || this.platform.is('android');
     addIcons({ documentTextOutline, sunnyOutline, moonOutline });
 
-
     const saved = localStorage.getItem('fv-theme');
     if (saved) {
       this.isDarkMode = saved === 'dark';
