@@ -111,7 +111,12 @@ function loadKeyring() {
     if (!trimmed) continue;
     const separator = trimmed.indexOf(':');
     if (separator === -1) {
-      throw new Error(`DATA_ENCRYPTION_KEYS: entry "${trimmed.slice(0, 12)}..." is not in <id>:<base64> form`);
+      throw new Error(
+        `DATA_ENCRYPTION_KEYS: the entry starting "${trimmed.slice(0, 8)}..." has no key id. ` +
+        'Every entry must be <id>:<base64> — put an id and a colon in front of the key, e.g. ' +
+        `DATA_ENCRYPTION_KEYS=1:${trimmed.slice(0, 8)}...  and set DATA_ENCRYPTION_KEY_ACTIVE=1. ` +
+        'The key itself is fine; only the prefix is missing, so there is no need to generate a new one.'
+      );
     }
     const id = trimmed.slice(0, separator).trim();
     const material = trimmed.slice(separator + 1).trim();
@@ -127,7 +132,8 @@ function loadKeyring() {
     if (decoded.length !== KEY_BYTES) {
       throw new Error(
         `DATA_ENCRYPTION_KEYS: key "${id}" decodes to ${decoded.length} bytes, expected ${KEY_BYTES}. ` +
-        'Generate one with: node -e "console.log(require(\'crypto\').randomBytes(32).toString(\'base64\'))"'
+        'Generate a ready-to-paste entry with: ' +
+        'node -e "console.log(\'1:\' + require(\'crypto\').randomBytes(32).toString(\'base64\'))"'
       );
     }
     keys.set(id, decoded);

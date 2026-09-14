@@ -187,7 +187,7 @@ test('a keyring that is present is validated strictly', (t) => {
     ['a key that is too short', `1:${crypto.randomBytes(16).toString('base64')}`, /decodes to 16 bytes/],
     ['a key that is too long', `1:${crypto.randomBytes(64).toString('base64')}`, /decodes to 64 bytes/],
     ['a passphrase instead of a key', '1:hunter2', /decodes to .* bytes/],
-    ['a missing colon', 'justsomebase64', /not in <id>:<base64> form/],
+    ['a missing colon', 'justsomebase64', /has no key id/],
     ['a duplicate key id', `1:${KEY_1},1:${KEY_2}`, /appears more than once/],
     ['a non-alphanumeric id', `a b:${KEY_1}`, /must be alphanumeric/],
   ];
