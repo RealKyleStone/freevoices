@@ -45,6 +45,8 @@ ion-toolbar {
   border: 1px solid var(--fv-border);
   border-radius: var(--fv-radius-lg);
   background: var(--ion-card-background);
+  /* Makes the card the reference for the cqi units on .stat-value below. */
+  container-type: inline-size;
 }
 
 /*
@@ -77,13 +79,22 @@ ion-toolbar {
 .stat-value {
   margin: 0;
   /*
-   * Scales to the card rather than being fixed and wrapping. A revenue
-   * figure is up to 13 characters once the currency code is included
-   * ("ZAR184,320.50"), which does not fit a two-up card at 390px at the
-   * full 22px, and breaking a number mid-digits is worse than setting it
-   * a little smaller. Capped at the type-scale step it belongs to.
+   * A number is never broken across lines. At 1024px the browser was
+   * breaking at the comma, splitting "ZAR184,320.50" into "ZAR184,320." and
+   * "50" — which reads as a different figure entirely.
    */
-  font-size: clamp(1.0625rem, 4.2vw, var(--fv-text-xl));
+  white-space: nowrap;
+  /*
+   * Sized against the card, not the viewport, because nowrap on its own
+   * would turn that wrap into an overflow: at 1024px the rail takes a fixed
+   * 264px, leaving four 126px cards, and the figure needs 150px at the full
+   * 22px. The earlier rule used vw, which cannot see that the rail has
+   * already taken its share of the width, so it kept resolving to 22px for
+   * a card that could never hold it. cqi is a percentage of this card's own
+   * inline size, so the figure shrinks only when its own card is tight, and
+   * is capped at the type-scale step it belongs to.
+   */
+  font-size: clamp(1.0625rem, 13cqi, var(--fv-text-xl));
   font-weight: var(--fv-weight-semibold);
   line-height: 1.1;
   letter-spacing: -0.02em;
