@@ -308,6 +308,28 @@ const encryptUserInput = (input) => encryptRow('users', input);
  * file transports on import, which would make this module impossible to unit
  * test without I/O.
  */
+/**
+ * How many rows hold an encrypted value right now.
+ *
+ * Used only to make a canary failure actionable. "Restore the correct key" is
+ * the right advice when real data depends on it and catastrophic advice to
+ * follow blindly when none does — a fresh or rebuilt environment whose canary
+ * predates the current key just needs the stale row cleared. Counting is the
+ * difference between those two cases, and the code can check it far more
+ * reliably than a person reading a stack trace at the wrong end of a deploy.
+ *
+ * Table and column names come from the frozen REGISTRY above, never from input.
+ */
+async function countEncryptedValues(executeQuery) {
+  let total = 0;
+  for (const [table, columns] of Object.entries(REGISTRY)) {
+    const anyPresent = columns.map((c) => `${c} IS NOT NULL`).join(' OR ');
+    const rows = await executeQuery(`SELECT COUNT(*) AS n FROM ${table} WHERE ${anyPresent}`);
+    total += Number(rows[0].n);
+  }
+  return total;
+}
+
 async function verifyCanary() {
   const { executeQuery } = require('./db.service');
   const rows = await executeQuery('SELECT key_id, envelope FROM crypto_canary WHERE id = 1');
@@ -340,10 +362,25 @@ async function verifyCanary() {
   try {
     decrypted = decryptField('crypto_canary', 'envelope', rows[0].envelope);
   } catch (err) {
+    // Work out whether anything actually depends on the key we cannot read,
+    // because that decides the fix. Never let this diagnostic throw over the
+    // real error.
+    let stored = null;
+    try {
+      stored = await countEncryptedValues(executeQuery);
+    } catch { /* the count is a nicety; the key failure is the news */ }
+
+    const advice = stored === 0
+      ? 'Nothing is encrypted yet — 0 rows across the registry hold a value — so this canary is the ' +
+        'only thing the old key protects. If this environment was rebuilt, or the row was written by ' +
+        'a different deployment sharing this database, it is safe to clear it with ' +
+        '"DELETE FROM crypto_canary" and let the next boot write a fresh one under the current key.'
+      : `${stored} row(s) hold encrypted values that ONLY the original key can read. Restore that key. ` +
+        'Clearing the canary would let the app start and then fail on every one of those rows.';
+
     throw new Error(
       `Encryption key check FAILED: the stored canary (written with key "${rows[0].key_id}") ` +
-      `cannot be decrypted with the current DATA_ENCRYPTION_KEYS. ${err.message} ` +
-      'Restore the correct key rather than starting — every encrypted column is unreadable without it.'
+      `cannot be decrypted with the current DATA_ENCRYPTION_KEYS. ${err.message}. ${advice}`
     );
   }
   if (decrypted !== CANARY_PLAINTEXT) {

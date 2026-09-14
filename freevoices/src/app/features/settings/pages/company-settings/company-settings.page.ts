@@ -1,21 +1,11 @@
 import { Component, OnInit } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { ReactiveFormsModule, FormBuilder, FormGroup } from '@angular/forms';
-import { IonicModule, ToastController, ActionSheetController } from '@ionic/angular';
-// Side-effect import, deliberately absent from the imports array below.
-//
-// IonicModule alone doesn't register every Ionic web component in this app's
-// standalone bootstrap (see main.ts's provideIonicAngular()) — components only
-// upgrade once some page explicitly imports their standalone class. Nothing in
-// the app did that for ion-textarea, so it silently never became interactive.
-//
-// Importing the class defines the custom element, but listing it in the
-// imports array alongside IonicModule made two Angular components match
-// <ion-textarea> and threw NG0300, which blanked this page under
-// ng serve, though production builds compile the assertion out, so only
-// local development was affected.
-// Keep the import: removing it takes the element registration with it.
-import { IonTextarea } from '@ionic/angular/standalone';
+import {
+  ToastController, ActionSheetController,
+  IonButton, IonCard, IonCardContent, IonCardHeader, IonCardTitle, IonIcon, IonInput, IonItem,
+  IonLabel, IonSpinner, IonTextarea,
+} from '@ionic/angular/standalone';
 import { addIcons } from 'ionicons';
 import { businessOutline, imageOutline, trashOutline, cloudUploadOutline, cameraOutline, imagesOutline } from 'ionicons/icons';
 import { SettingsService } from '../../services/settings.service';
@@ -28,7 +18,11 @@ import { Capacitor } from '@capacitor/core';
   templateUrl: './company-settings.page.html',
   styleUrls: ['./company-settings.page.scss'],
   standalone: true,
-  imports: [CommonModule, ReactiveFormsModule, IonicModule]
+  imports: [
+    CommonModule, ReactiveFormsModule,
+    IonButton, IonCard, IonCardContent, IonCardHeader, IonCardTitle, IonIcon, IonInput,
+    IonItem, IonLabel, IonSpinner, IonTextarea,
+  ]
 })
 export class CompanySettingsPage implements OnInit {
   form!: FormGroup;

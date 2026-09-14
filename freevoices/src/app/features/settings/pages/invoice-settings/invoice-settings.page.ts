@@ -1,21 +1,11 @@
 import { Component, OnInit } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { ReactiveFormsModule, FormBuilder, FormGroup, Validators } from '@angular/forms';
-import { IonicModule, ToastController } from '@ionic/angular';
-// Side-effect import, deliberately absent from the imports array below.
-//
-// IonicModule alone doesn't register every Ionic web component in this app's
-// standalone bootstrap (see main.ts's provideIonicAngular()) — components only
-// upgrade once some page explicitly imports their standalone class. Nothing in
-// the app did that for ion-textarea, so it silently never became interactive.
-//
-// Importing the class defines the custom element, but listing it in the
-// imports array alongside IonicModule made two Angular components match
-// <ion-textarea> and threw NG0300, which blanked this page under
-// ng serve, though production builds compile the assertion out, so only
-// local development was affected.
-// Keep the import: removing it takes the element registration with it.
-import { IonTextarea } from '@ionic/angular/standalone';
+import {
+  ToastController,
+  IonButton, IonCard, IonCardContent, IonCardHeader, IonCardTitle, IonIcon, IonInput, IonItem,
+  IonLabel, IonNote, IonSelect, IonSelectOption, IonSpinner, IonTextarea,
+} from '@ionic/angular/standalone';
 import { addIcons } from 'ionicons';
 import { documentTextOutline } from 'ionicons/icons';
 import { forkJoin } from 'rxjs';
@@ -27,7 +17,11 @@ import { Currency } from '../../../../../models/database.models';
   templateUrl: './invoice-settings.page.html',
   styleUrls: ['./invoice-settings.page.scss'],
   standalone: true,
-  imports: [CommonModule, ReactiveFormsModule, IonicModule]
+  imports: [
+    CommonModule, ReactiveFormsModule,
+    IonButton, IonCard, IonCardContent, IonCardHeader, IonCardTitle, IonIcon, IonInput,
+    IonItem, IonLabel, IonNote, IonSelect, IonSelectOption, IonSpinner, IonTextarea,
+  ]
 })
 export class InvoiceSettingsPage implements OnInit {
   form!: FormGroup;
