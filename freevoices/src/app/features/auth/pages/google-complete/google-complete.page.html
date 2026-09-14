@@ -5,7 +5,10 @@
       <div class="auth-brand">
         <span class="auth-brand-name">FreeVoices</span>
       </div>
-      <div>
+      <!-- .auth-hero carries position:relative and z-index:1. Without it this
+           block painted underneath the panel's two absolutely positioned
+           backdrop circles, so the headline sat behind a blur. -->
+      <div class="auth-hero">
         <p class="auth-eyebrow">Almost there</p>
         <h1 class="auth-headline">Just your<br><span class="auth-headline-accent">business details.</span></h1>
         <p class="auth-hero-sub">These appear on the invoices and quotes you send, so we need them before your account goes live.</p>
@@ -15,6 +18,13 @@
 
     <div class="auth-right-panel">
       <div class="auth-form-card">
+
+        <!-- Below 768px the left panel is display:none, so without this there
+             was no FreeVoices mark anywhere on the page — on the one step of
+             the sign-up where a user most needs to know where they are. -->
+        <div class="auth-mobile-brand">
+          <span class="auth-brand-name-dark">FreeVoices</span>
+        </div>
 
         <h2 class="auth-form-title">Complete your account</h2>
         <p class="auth-form-sub" *ngIf="email">Signing up as <strong>{{ email }}</strong></p>
@@ -58,7 +68,7 @@
 
           <ion-button expand="block" type="submit" class="auth-submit-btn" [disabled]="isLoading">
             <ion-spinner *ngIf="isLoading" name="crescent" slot="start"></ion-spinner>
-            <span *ngIf="!isLoading">Create account →</span>
+            <span *ngIf="!isLoading">Create account</span>
             <span *ngIf="isLoading">Creating account...</span>
           </ion-button>
 

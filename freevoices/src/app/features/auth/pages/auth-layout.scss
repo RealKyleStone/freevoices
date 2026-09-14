@@ -1,0 +1,192 @@
+/*
+ * Shared authentication layout.
+ *
+ * The six authentication pages — sign in, register, forgot password, reset
+ * password, verify email and the Google details step — each carried their own
+ * copy of this stylesheet. They had drifted: the same rule appeared with
+ * different values in different files, and a fix applied to one did not reach
+ * the others. When upstream added the Google details page it arrived as a
+ * seventh copy, and the dark-mode input fix had to be pasted into five files
+ * separately.
+ *
+ * Only rules that were byte-identical (after whitespace normalisation) in all
+ * six files live here, so moving them cannot change how any page renders.
+ * Anything that genuinely differed per page — panel widths, the feature list,
+ * the theme toggle, the Google button, per-page banners — stays in that page's
+ * own stylesheet, which loads after this one and can still override it.
+ *
+ * Included with `@use`, matching features/settings/pages/settings-page.scss.
+ */
+
+:host {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+
+ion-content {
+  --background: #ffffff;
+  --padding-top: 0;
+  --padding-bottom: 0;
+  --padding-start: 0;
+  --padding-end: 0;
+}
+
+:host-context(.ion-palette-dark) ion-content {
+  --background: #111111;
+}
+
+.auth-layout {
+  display: flex;
+  width: 100%;
+  height: 100%;
+  /*
+   * 100vh ignores the mobile browser's chrome and the safe-area insets that
+   * viewport-fit=cover brings in, so the layout ran taller than the visible
+   * viewport and produced a second scrollbar inside ion-content. dvh tracks
+   * the actually-visible height; the vh line above it is the fallback.
+   */
+  min-height: 100vh;
+  min-height: 100dvh;
+}
+
+.auth-left-panel {
+  flex: 1;
+  padding: 3rem;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  position: relative;
+  overflow: hidden;
+
+  /*
+   * The panel used to carry two large blurred circles — a 400px one bleeding
+   * off the top-right and a 300px one off the bottom-left, each behind a
+   * blur(50-60px) filter. Two things were wrong with them: they are the most
+   * recognisable stock flourish in this kind of layout, and each forced its
+   * own compositing layer for no information.
+   *
+   * Replaced with a single same-hue gradient. It runs only darker than the
+   * base teal, never lighter, so every contrast ratio measured against the
+   * flat colour holds or improves — a stop toward #14b8a6 would have taken
+   * the hero text to about 2.2:1.
+   */
+  background: linear-gradient(168deg, #0f766e 0%, #0b5a54 100%);
+
+  /*
+   * Hairline between the panels. In dark mode the two sides are #0a0a0a and
+   * #111111, close enough that the blurred circles were the only thing
+   * separating them; the split needs to survive their removal.
+   */
+  border-right: 1px solid rgba(255, 255, 255, 0.08);
+
+  @media (max-width: 768px) { display: none; }
+}
+
+/* Same treatment in dark mode: a single darker-direction gradient, with a
+   faint teal cast at the top so the panel is not a flat black rectangle. */
+:host-context(.ion-palette-dark) .auth-left-panel {
+  background: linear-gradient(168deg, #0f1a19 0%, #0a0a0a 100%);
+}
+
+.auth-brand { display: flex; align-items: center; gap: 10px; position: relative; z-index: 1; }
+
+.auth-brand-name { font-size: 1.1rem; font-weight: 700; color: white; letter-spacing: -0.01em; }
+
+.auth-hero { position: relative; z-index: 1; }
+
+.auth-eyebrow {
+  font-size: 0.68rem;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  /*
+   * Was rgba(255,255,255,0.6), roughly 3.0:1 against the #0f766e panel at
+   * 11px — below the 4.5:1 required for text this size. #ccfbf1 is the tint
+   * already used for the headline accent and measures about 4.86:1, so the
+   * panel now separates primary from secondary text by hue rather than by
+   * fading it towards the background.
+   */
+  color: #ccfbf1;
+  margin: 0 0 0.75rem;
+}
+
+:host-context(.ion-palette-dark) .auth-eyebrow { color: #14b8a6; }
+
+.auth-headline {
+  font-size: 2.75rem;
+  /* Poppins is self-hosted at 300-700 only (see global.scss), so 800 was
+     either snapped to 700 or faked by the browser as a smeared synthetic
+     bold. Asking for the weight that actually ships. */
+  font-weight: 700;
+  line-height: 1.1;
+  letter-spacing: -0.025em;
+  color: white;
+  margin: 0 0 1rem;
+}
+
+.auth-headline-accent { color: #ccfbf1; }
+
+:host-context(.ion-palette-dark) .auth-headline-accent { color: #14b8a6; }
+
+.auth-hero-sub {
+  font-size: 0.875rem;
+  line-height: 1.65;
+  /* Was rgba(255,255,255,0.65) — about 3.3:1 on the teal panel. */
+  color: #ccfbf1;
+  max-width: 360px;
+  margin: 0;
+}
+
+:host-context(.ion-palette-dark) .auth-hero-sub { color: #94a3b8; }
+
+/* Was rgba(255,255,255,0.35): about 2.0:1 on the teal panel and 2.8:1 on
+   the dark one, failing in both themes. Kept quiet by size, not by fade. */
+.auth-copyright { font-size: 0.7rem; color: #ccfbf1; margin: 0; position: relative; z-index: 1; }
+
+:host-context(.ion-palette-dark) .auth-right-panel { background: #111111; }
+
+.auth-form-title { font-size: 1.4rem; font-weight: 700; color: var(--ion-text-color); margin: 0 0 4px; letter-spacing: -0.01em; }
+
+.auth-form-sub { font-size: 0.82rem; color: var(--ion-color-medium); margin: 0 0 1.75rem; }
+
+.auth-field-group { margin-bottom: 1rem; }
+
+.auth-field-label { display: block; font-size: 0.72rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.06em; color: var(--ion-color-medium); margin-bottom: 6px; }
+
+.auth-field-error { margin: 4px 0 0; font-size: 0.75rem; color: var(--fv-danger-text); }
+
+.auth-error-banner { background: var(--fv-danger-bg); color: var(--fv-danger-text); border-radius: 10px; padding: 10px 14px; font-size: 0.82rem; margin-bottom: 1rem; font-weight: 500; }
+
+.auth-submit-btn {
+  --background: #0f766e;
+  --background-activated: #0d6860;
+  --background-hover: #0d6860;
+  --border-radius: 10px;
+  --color: white;
+  --box-shadow: none;
+  font-weight: 700;
+  font-size: 0.9rem;
+  text-transform: none;
+  height: 46px;
+  margin-top: 0.25rem;
+}
+
+:host-context(.ion-palette-dark) .auth-submit-btn {
+  --background: #14b8a6;
+  --color: #042f2e;
+}
+
+.auth-links {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  margin-top: 1.25rem;
+  font-size: 0.78rem;
+
+  a { color: #0f766e; text-decoration: none; font-weight: 600; &:hover { text-decoration: underline; } }
+  .auth-link-divider { color: var(--ion-color-medium); opacity: 0.5; }
+}
+
+:host-context(.ion-palette-dark) .auth-links a { color: #14b8a6; }

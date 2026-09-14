@@ -1,64 +1,73 @@
 <ion-header class="ion-no-border">
   <ion-toolbar>
-    <ion-title>Quotes</ion-title>
+    <ion-buttons slot="start" class="ion-hide-md-up">
+      <ion-menu-button></ion-menu-button>
+    </ion-buttons>
   </ion-toolbar>
 </ion-header>
 
 <ion-content>
   <div class="list-container">
 
-    <div class="search-wrap">
+    <header class="page-head">
+      <div class="page-head-text">
+        <h1>Quotes</h1>
+        <p *ngIf="!isLoading">{{ total }} quote{{ total === 1 ? '' : 's' }}</p>
+      </div>
+      <div class="page-head-actions">
+        <ion-button color="primary" routerLink="/quotes/new">
+          <ion-icon name="add-outline" slot="start"></ion-icon>
+          New quote
+        </ion-button>
+      </div>
+    </header>
+
+    <div class="list-toolbar">
       <ion-searchbar
         [(ngModel)]="searchTerm"
         (ionInput)="onSearchChange()"
         placeholder="Search by number or customer"
-        debounce="0"
-        class="custom-searchbar">
+        debounce="0">
       </ion-searchbar>
+
+      <div class="list-filter">
+        <ion-segment [(ngModel)]="selectedStatus" (ionChange)="onStatusChange()">
+          <ion-segment-button value="">All</ion-segment-button>
+          <ion-segment-button value="DRAFT">Draft</ion-segment-button>
+          <ion-segment-button value="SENT">Sent</ion-segment-button>
+          <ion-segment-button value="OVERDUE">Expired</ion-segment-button>
+          <ion-segment-button value="CANCELLED">Cancelled</ion-segment-button>
+        </ion-segment>
+      </div>
     </div>
 
-    <div class="segment-wrap">
-      <ion-segment [(ngModel)]="selectedStatus" (ionChange)="onStatusChange()" class="custom-segment">
-        <ion-segment-button value="">All</ion-segment-button>
-        <ion-segment-button value="DRAFT">Draft</ion-segment-button>
-        <ion-segment-button value="SENT">Sent</ion-segment-button>
-        <ion-segment-button value="OVERDUE">Expired</ion-segment-button>
-        <ion-segment-button value="CANCELLED">Cancelled</ion-segment-button>
-      </ion-segment>
-    </div>
-
-    <p class="results-count" *ngIf="!isLoading && quotes.length > 0">
-      {{ total }} quote{{ total === 1 ? '' : 's' }}
-    </p>
-
-    <div class="invoice-list" *ngIf="!isLoading && quotes.length > 0">
+    <div class="list-rows" *ngIf="!isLoading && quotes.length > 0">
       <ion-item
         *ngFor="let quote of quotes"
         [routerLink]="['/quotes', quote.id]"
         button
         detail="false"
-        class="invoice-item">
-        <div slot="start" class="doc-icon-wrap">
-          <ion-icon name="document-outline"></ion-icon>
+        class="list-row">
+        <div slot="start" class="row-lead">
+          <ion-icon name="document-outline" aria-hidden="true"></ion-icon>
         </div>
         <ion-label>
-          <h2 class="doc-number">{{ quote.document_number }}</h2>
-          <p class="doc-customer">{{ quote.customer_name }}</p>
-          <p class="doc-date">
-            {{ quote.issue_date | date:'d MMM y' }}
-            <ng-container *ngIf="quote.valid_until"> — Valid until {{ quote.valid_until | date:'d MMM y' }}</ng-container>
+          <h2 class="row-title">{{ quote.document_number }}</h2>
+          <p class="row-meta">
+            {{ quote.customer_name }} · {{ quote.issue_date | date:'d MMM y' }}
+            <ng-container *ngIf="quote.valid_until"> · valid to {{ quote.valid_until | date:'d MMM' }}</ng-container>
           </p>
         </ion-label>
-        <div slot="end" class="invoice-end">
-          <span class="activity-badge" [ngClass]="'badge-' + getStatusColor(quote.status)">{{ quote.status }}</span>
-          <p class="doc-amount">R {{ quote.total | number:'1.2-2' }}</p>
+        <div slot="end" class="row-end">
+          <span class="row-status" [ngClass]="'badge-' + getStatusColor(quote.status)">{{ quote.status | titlecase }}</span>
+          <p class="row-amount">R {{ quote.total | number:'1.2-2' }}</p>
         </div>
       </ion-item>
     </div>
 
     <div class="empty-state" *ngIf="!isLoading && quotes.length === 0">
       <div class="empty-icon-wrap">
-        <ion-icon name="document-outline"></ion-icon>
+        <ion-icon name="document-outline" aria-hidden="true"></ion-icon>
       </div>
       <h3>{{ searchTerm || selectedStatus ? 'No results found' : 'No quotes yet' }}</h3>
       <p>{{ searchTerm || selectedStatus ? 'Try adjusting your search or filter.' : 'Create your first quote to get started.' }}</p>
@@ -68,23 +77,23 @@
       </ion-button>
     </div>
 
-    <div class="loading-list" *ngIf="isLoading">
-      <ion-item class="invoice-item" *ngFor="let _ of [1,2,3,4]">
-        <ion-skeleton-text animated slot="start" class="skeleton-icon"></ion-skeleton-text>
+    <div class="list-rows" *ngIf="isLoading">
+      <ion-item class="list-row" *ngFor="let _ of [1,2,3,4,5]">
+        <ion-skeleton-text animated slot="start" class="skeleton-lead"></ion-skeleton-text>
         <ion-label>
           <ion-skeleton-text animated class="skeleton-title"></ion-skeleton-text>
-          <ion-skeleton-text animated class="skeleton-sub"></ion-skeleton-text>
+          <ion-skeleton-text animated class="skeleton-meta"></ion-skeleton-text>
         </ion-label>
-        <ion-skeleton-text animated slot="end" class="skeleton-badge"></ion-skeleton-text>
+        <ion-skeleton-text animated slot="end" class="skeleton-end"></ion-skeleton-text>
       </ion-item>
     </div>
 
     <div class="pagination" *ngIf="!isLoading && totalPages > 1">
-      <ion-button fill="clear" [disabled]="page === 1" (click)="prevPage()">
+      <ion-button fill="clear" aria-label="Previous page" [disabled]="page === 1" (click)="prevPage()">
         <ion-icon slot="icon-only" name="chevron-back-outline"></ion-icon>
       </ion-button>
       <span class="page-label">{{ page }} of {{ totalPages }}</span>
-      <ion-button fill="clear" [disabled]="page === totalPages" (click)="nextPage()">
+      <ion-button fill="clear" aria-label="Next page" [disabled]="page === totalPages" (click)="nextPage()">
         <ion-icon slot="icon-only" name="chevron-forward-outline"></ion-icon>
       </ion-button>
     </div>
@@ -92,7 +101,7 @@
   </div>
 
   <ion-fab vertical="bottom" horizontal="end" slot="fixed">
-    <ion-fab-button routerLink="/quotes/new" color="primary">
+    <ion-fab-button routerLink="/quotes/new" color="primary" aria-label="New quote">
       <ion-icon name="add"></ion-icon>
     </ion-fab-button>
   </ion-fab>

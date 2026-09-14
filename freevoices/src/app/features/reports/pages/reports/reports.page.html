@@ -1,6 +1,8 @@
-<ion-header>
+<ion-header class="ion-no-border">
   <ion-toolbar>
-    <ion-title>Reports</ion-title>
+    <ion-buttons slot="start">
+      <ion-menu-button class="ion-hide-md-up"></ion-menu-button>
+    </ion-buttons>
   </ion-toolbar>
 </ion-header>
 
@@ -8,110 +10,133 @@
 
   <!-- Loading -->
   <div class="loading-state" *ngIf="isLoading">
-    <ion-spinner></ion-spinner>
+    <ion-spinner color="primary"></ion-spinner>
   </div>
 
   <!-- Error -->
   <div class="error-state" *ngIf="hasError && !isLoading">
-    <ion-icon name="alert-circle-outline" color="danger"></ion-icon>
-    <p>Failed to load reports. Please try again.</p>
+    <ion-icon name="alert-circle-outline" color="danger" aria-hidden="true"></ion-icon>
+    <p>Reports could not be loaded.</p>
   </div>
 
   <ng-container *ngIf="!isLoading && !hasError">
+    <div class="reports-container">
 
-    <!-- Summary chips -->
-    <div class="summary-row">
-      <div class="summary-chip">
-        <span class="chip-label">Paid Revenue (12 mo)</span>
-        <span class="chip-value">R {{ totalPaidRevenue | number:'1.2-2' }}</span>
+      <header class="page-head">
+        <div class="page-head-text">
+          <h1>Reports</h1>
+          <p>What the business has invoiced, been paid and owes in VAT.</p>
+        </div>
+      </header>
+
+      <!-- The two figures the rest of the page explains. -->
+      <div class="summary-row">
+        <div class="summary-chip">
+          <span class="chip-label">Paid revenue</span>
+          <span class="chip-value">R {{ totalPaidRevenue | number:'1.2-2' }}</span>
+          <span class="chip-note">Last 12 months</span>
+        </div>
+        <div class="summary-chip">
+          <span class="chip-label">VAT collected</span>
+          <span class="chip-value">R {{ totalVat | number:'1.2-2' }}</span>
+          <span class="chip-note">Year to date</span>
+        </div>
       </div>
-      <div class="summary-chip">
-        <span class="chip-label">VAT Collected (YTD)</span>
-        <span class="chip-value">R {{ totalVat | number:'1.2-2' }}</span>
+
+      <!--
+        Revenue and the VAT return are the two things this page is opened
+        for, so they get the full measure. Invoice status and top customers
+        are context, and pair up once there is room for them to.
+      -->
+      <div class="reports-grid">
+
+        <section class="report report-wide">
+          <div class="section-head">
+            <h2 class="fv-section-label">Revenue by month</h2>
+            <p class="section-note">Paid invoices, last 12 months</p>
+          </div>
+          <div class="panel panel-pad">
+            <div class="chart-wrap">
+              <canvas #revenueCanvas></canvas>
+            </div>
+          </div>
+        </section>
+
+        <section class="report">
+          <div class="section-head">
+            <h2 class="fv-section-label">Invoice status</h2>
+            <p class="section-note">Count by status, all time</p>
+          </div>
+          <div class="panel panel-pad">
+            <div class="chart-wrap">
+              <canvas #statusCanvas></canvas>
+            </div>
+          </div>
+        </section>
+
+        <section class="report">
+          <div class="section-head">
+            <h2 class="fv-section-label">Top customers</h2>
+            <p class="section-note">By paid revenue, all time</p>
+          </div>
+          <div class="panel panel-pad">
+            <p *ngIf="topCustomers.length === 0" class="empty-msg">
+              No paid invoices yet. Top customers will appear here once invoices are settled.
+            </p>
+            <div class="chart-wrap" *ngIf="topCustomers.length > 0">
+              <canvas #customersCanvas></canvas>
+            </div>
+          </div>
+        </section>
+
+        <section class="report report-wide">
+          <div class="section-head">
+            <h2 class="fv-section-label">VAT summary</h2>
+            <p class="section-note">Subtotal against VAT, current year, sent and paid</p>
+          </div>
+          <div class="panel panel-pad">
+            <p *ngIf="vatRows.length === 0" class="empty-msg">
+              No invoices issued this year.
+            </p>
+            <div class="chart-wrap" *ngIf="vatRows.length > 0">
+              <canvas #vatCanvas></canvas>
+            </div>
+
+            <!-- The figures behind the chart, in the shape a VAT return
+                 wants them. Scrolls on a narrow phone rather than
+                 overflowing the panel. -->
+            <div class="vat-table-scroll" *ngIf="vatRows.length > 0">
+              <table class="vat-table">
+                <thead>
+                  <tr>
+                    <th scope="col">Month</th>
+                    <th scope="col" class="num">Subtotal</th>
+                    <th scope="col" class="num">VAT</th>
+                    <th scope="col" class="num">Total</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr *ngFor="let row of vatRows">
+                    <td>{{ row.month }}</td>
+                    <td class="num">R {{ row.subtotal | number:'1.2-2' }}</td>
+                    <td class="num">R {{ row.vat_amount | number:'1.2-2' }}</td>
+                    <td class="num">R {{ row.total | number:'1.2-2' }}</td>
+                  </tr>
+                </tbody>
+                <tfoot>
+                  <tr>
+                    <td><strong>Total</strong></td>
+                    <td class="num"><strong>R {{ totalVatSubtotal | number:'1.2-2' }}</strong></td>
+                    <td class="num"><strong>R {{ totalVat | number:'1.2-2' }}</strong></td>
+                    <td class="num"><strong>R {{ totalVatTotal | number:'1.2-2' }}</strong></td>
+                  </tr>
+                </tfoot>
+              </table>
+            </div>
+          </div>
+        </section>
+
       </div>
     </div>
-
-    <!-- Revenue by month -->
-    <ion-card>
-      <ion-card-header>
-        <ion-card-title>Revenue by Month</ion-card-title>
-        <ion-card-subtitle>Paid invoices — last 12 months</ion-card-subtitle>
-      </ion-card-header>
-      <ion-card-content>
-        <div class="chart-wrap">
-          <canvas #revenueCanvas></canvas>
-        </div>
-      </ion-card-content>
-    </ion-card>
-
-    <!-- Invoice status breakdown -->
-    <ion-card>
-      <ion-card-header>
-        <ion-card-title>Invoice Status</ion-card-title>
-        <ion-card-subtitle>Count by status — all time</ion-card-subtitle>
-      </ion-card-header>
-      <ion-card-content>
-        <div class="chart-wrap chart-wrap--sm">
-          <canvas #statusCanvas></canvas>
-        </div>
-      </ion-card-content>
-    </ion-card>
-
-    <!-- Top customers -->
-    <ion-card>
-      <ion-card-header>
-        <ion-card-title>Top Customers</ion-card-title>
-        <ion-card-subtitle>By paid revenue — all time</ion-card-subtitle>
-      </ion-card-header>
-      <ion-card-content>
-        <div *ngIf="topCustomers.length === 0" class="empty-msg">No paid invoices yet.</div>
-        <div class="chart-wrap" *ngIf="topCustomers.length > 0">
-          <canvas #customersCanvas></canvas>
-        </div>
-      </ion-card-content>
-    </ion-card>
-
-    <!-- VAT summary -->
-    <ion-card>
-      <ion-card-header>
-        <ion-card-title>VAT Summary</ion-card-title>
-        <ion-card-subtitle>Subtotal vs VAT — current year (sent + paid)</ion-card-subtitle>
-      </ion-card-header>
-      <ion-card-content>
-        <div *ngIf="vatRows.length === 0" class="empty-msg">No invoices issued this year.</div>
-        <div class="chart-wrap" *ngIf="vatRows.length > 0">
-          <canvas #vatCanvas></canvas>
-        </div>
-
-        <!-- VAT table for tax filing -->
-        <table class="vat-table" *ngIf="vatRows.length > 0">
-          <thead>
-            <tr>
-              <th>Month</th>
-              <th class="num">Subtotal</th>
-              <th class="num">VAT</th>
-              <th class="num">Total</th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr *ngFor="let row of vatRows">
-              <td>{{ row.month }}</td>
-              <td class="num">R {{ row.subtotal | number:'1.2-2' }}</td>
-              <td class="num">R {{ row.vat_amount | number:'1.2-2' }}</td>
-              <td class="num">R {{ row.total | number:'1.2-2' }}</td>
-            </tr>
-          </tbody>
-          <tfoot>
-            <tr>
-              <td><strong>Total</strong></td>
-              <td class="num"><strong>R {{ totalVatSubtotal | number:'1.2-2' }}</strong></td>
-              <td class="num"><strong>R {{ totalVat | number:'1.2-2' }}</strong></td>
-              <td class="num"><strong>R {{ totalVatTotal | number:'1.2-2' }}</strong></td>
-            </tr>
-          </tfoot>
-        </table>
-      </ion-card-content>
-    </ion-card>
-
   </ng-container>
 </ion-content>

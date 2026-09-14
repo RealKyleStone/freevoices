@@ -1,7 +1,9 @@
 <ion-content class="auth-content">
 
   <!-- Theme toggle button — visible on login page -->
-  <button class="login-theme-btn" (click)="toggleTheme()">
+  <button class="login-theme-btn" type="button"
+          [attr.aria-label]="isDarkMode ? 'Switch to light mode' : 'Switch to dark mode'"
+          (click)="toggleTheme()">
     <ion-icon [name]="isDarkMode ? 'sunny-outline' : 'moon-outline'"></ion-icon>
   </button>
 
@@ -16,14 +18,13 @@
       <div class="auth-hero">
         <p class="auth-eyebrow">Invoicing for Africa</p>
         <h1 class="auth-headline">Professional Invoicing<br><span class="auth-headline-accent">Free</span></h1>
-        <p class="auth-hero-sub">Professional invoicing that makes you look good and gets you paid faster.</p>
+        <p class="auth-hero-sub">Create invoices and quotes, send them as PDFs, and keep track of what has been paid.</p>
       </div>
 
       <ul class="auth-feature-list">
         <li><span class="auth-feat-dot"></span>Invoices, quotes and receipts</li>
         <li><span class="auth-feat-dot"></span>PDF generation and email delivery</li>
         <li><span class="auth-feat-dot"></span>Customer payment portal</li>
-        <li><span class="auth-feat-dot"></span>Direct payment from the invoice coming soon!</li>
         <li><span class="auth-feat-dot"></span>PoPIA compliant</li>
       </ul>
 
@@ -61,11 +62,11 @@
 
           <ion-button expand="block" type="submit" class="auth-submit-btn" [disabled]="loginForm.invalid || isLoading">
             <ion-spinner *ngIf="isLoading" name="crescent" slot="start"></ion-spinner>
-            <span *ngIf="!isLoading">Sign in →</span>
+            <span *ngIf="!isLoading">Sign in</span>
             <span *ngIf="isLoading">Signing in...</span>
           </ion-button>
 
-          <ng-container *ngIf="showGoogleWebButton || showGoogleNativeButton">
+          <ng-container *ngIf="(showGoogleWebButton || showGoogleNativeButton) && !googleUnavailable">
             <div class="auth-divider"><span>or</span></div>
 
             <!-- Web: Google renders its own button in here. Their branding

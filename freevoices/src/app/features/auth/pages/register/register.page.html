@@ -34,7 +34,7 @@
         <h2 class="auth-form-title">Create your account</h2>
         <p class="auth-form-sub">Already have an account? <a class="inline-link" routerLink="/login">Sign in</a></p>
 
-        <ng-container *ngIf="showGoogleWebButton || showGoogleNativeButton">
+        <ng-container *ngIf="(showGoogleWebButton || showGoogleNativeButton) && !googleUnavailable">
           <!-- Above the form on purpose: it replaces most of what follows, so
                offering it after the user has already filled it all in would be
                a poor joke. -->
@@ -135,7 +135,7 @@
 
           <ion-button expand="block" type="submit" class="auth-submit-btn" [disabled]="registerForm.invalid || isLoading">
             <ion-spinner *ngIf="isLoading" name="crescent" slot="start"></ion-spinner>
-            <span *ngIf="!isLoading">Create account →</span>
+            <span *ngIf="!isLoading">Create account</span>
             <span *ngIf="isLoading">Creating account...</span>
           </ion-button>
 

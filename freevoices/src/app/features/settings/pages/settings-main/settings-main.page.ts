@@ -25,10 +25,10 @@ export class SettingsMainPage {
   navItems = [
     { label: 'Profile', path: 'profile', icon: 'person-outline' },
     { label: 'Company', path: 'company', icon: 'business-outline' },
-    { label: 'Invoice Defaults', path: 'invoice', icon: 'document-text-outline' },
-    { label: 'Payment Details', path: 'payment', icon: 'card-outline' },
+    { label: 'Invoice defaults', path: 'invoice', icon: 'document-text-outline' },
+    { label: 'Payment details', path: 'payment', icon: 'card-outline' },
     { label: 'Notifications', path: 'notifications', icon: 'notifications-outline' },
-    { label: 'Privacy & Data', path: 'privacy', icon: 'shield-checkmark-outline' },
+    { label: 'Privacy & data', path: 'privacy', icon: 'shield-checkmark-outline' },
     { label: 'Legal', path: 'legal', icon: 'reader-outline' }
   ];
 

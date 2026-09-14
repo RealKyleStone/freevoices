@@ -1,72 +1,81 @@
+@use '../../../shared/styles/form-page';
+
+/*
+ * Settings shares the field treatment used by the create and edit
+ * forms, so a settings form and an invoice form agree about label
+ * size, field spacing and input height.
+ */
+
 .settings-page {
-  padding: 16px;
-  max-width: 640px;
+  /* Same inset and measure discipline as the other pages, at the narrower
+     form width, so the settings pane lines up with the shell rather than
+     starting 16px in from wherever ion-content happened to end. */
+  box-sizing: border-box;
+  padding: var(--fv-gutter) var(--fv-gutter) var(--fv-page-tail);
+  max-width: calc(680px + var(--fv-gutter) * 2);
 
+  /* Same shape as .page-head on the other pages, on the same scales, so a
+     settings section is headed the way an invoice list is. */
   .settings-page-header {
-    margin-bottom: 16px;
+    margin-bottom: var(--fv-section-gap);
 
-    h2 {
-      font-size: 1.4rem;
-      font-weight: 600;
-      margin: 0 0 4px;
+    h1 {
+      margin: 0 0 var(--fv-tight-gap);
+      font-size: var(--fv-text-2xl);
+      font-weight: var(--fv-weight-semibold);
+      letter-spacing: -0.01em;
+      line-height: 1.2;
     }
 
     p {
-      color: var(--ion-color-medium);
       margin: 0;
-      font-size: 0.9rem;
+      font-size: var(--fv-text-base);
+      color: var(--ion-color-medium);
     }
   }
 
   .loading-container {
     display: flex;
     justify-content: center;
-    padding: 48px 0;
+    padding: var(--fv-space-7) 0;
   }
 
   ion-card {
-    margin: 0 0 16px;
-    border-radius: 12px;
-    box-shadow: 0 1px 6px rgba(0, 0, 0, 0.08);
+    margin: 0 0 var(--fv-block-gap);
+    /* Radius and elevation come from the shared ion-card rule in
+       global.scss. These pages used to declare a 12px radius and their own
+       drop shadow, which after that rule landed left them with a border and
+       a shadow at a different radius from every other card in the app. */
 
     ion-card-title {
       display: flex;
       align-items: center;
-      gap: 8px;
-      font-size: 1rem;
-      font-weight: 600;
+      gap: var(--fv-space-2);
+      font-size: var(--fv-text-md);
+      font-weight: var(--fv-weight-semibold);
 
       ion-icon {
-        font-size: 1.1rem;
+        font-size: 18px;
         color: var(--ion-color-primary);
       }
     }
   }
 
-  ion-item {
-    --padding-start: 0;
-    margin-bottom: 8px;
-
-    ion-label[position="stacked"] {
-      font-size: 0.8rem;
-      font-weight: 500;
-      color: var(--ion-color-medium-shade);
-      margin-bottom: 4px;
-    }
-  }
+  /* Field and label treatment comes from the shared form styles above; the
+     settings pages used to set their own smaller label at a different
+     weight and colour. */
 
   .required {
-    color: var(--ion-color-danger);
+    color: var(--fv-danger-text);
   }
 
   .hint {
-    font-size: 0.82rem;
+    margin: 0 0 var(--fv-space-3);
+    font-size: var(--fv-text-xs);
     color: var(--ion-color-medium);
-    margin: 0 0 12px;
   }
 
   .form-actions {
-    margin-top: 8px;
-    margin-bottom: 24px;
+    margin-top: var(--fv-space-2);
   }
 }

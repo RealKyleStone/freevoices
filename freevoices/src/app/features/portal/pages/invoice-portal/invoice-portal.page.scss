@@ -1,5 +1,22 @@
 ion-content.portal-content {
   --background: #f3f4f6;
+
+  /*
+   * The portal must not inherit the application's theme text colour.
+   *
+   * It is a fixed-palette facsimile of the PDF the customer is emailed,
+   * drawn on white paper, and it sets its background explicitly but never
+   * set a colour. So in dark mode the app's --ion-text-color (#f9fafb)
+   * cascaded from ion-app all the way down, and every element that did not
+   * declare its own colour — notably the line-item cells — rendered
+   * near-white on white paper at about a 1.05:1 contrast ratio.
+   *
+   * This matters because the page is public and unauthenticated: a customer
+   * opening an invoice link picks up whatever theme the shell defaults to,
+   * which with no stored preference is dark between 18:00 and 06:00.
+   */
+  --color: #374151;
+  color: #374151;
 }
 
 .portal-loading,
@@ -110,11 +127,97 @@ ion-content.portal-content {
     grid-template-columns: 1fr 60px 100px 60px 100px;
     padding: 10px 16px;
     font-size: 0.875rem;
+    /* Stated rather than inherited, for the reason given on
+       ion-content.portal-content above. */
+    color: #374151;
     border-bottom: 1px solid #e5e7eb;
 
     &.alt { background: #f9fafb; }
     span:not(:first-child) { text-align: right; }
   }
+}
+
+/*
+ * Line items on a phone.
+ *
+ * The five columns were a fixed 320px plus a flexible description column,
+ * inside a wrapper with 16px of padding either side — so on a 320px screen
+ * the fixed columns alone exceeded the space available and the table
+ * overflowed the page. This page had no media queries at all.
+ *
+ * Below 34rem each row becomes a block: the description on its own line,
+ * then quantity, unit price, VAT and total on a wrapping labelled line. The
+ * labels come from generated content because the header row is hidden here.
+ *
+ * Colours are deliberately unchanged: this page is a facsimile of the PDF
+ * the customer receives, and src/services/pdf.service.js uses the same
+ * navy, grey and divider values.
+ */
+@media (max-width: 34rem) {
+  .items-table {
+    .items-head { display: none; }
+
+    .item-row {
+      display: block;
+      padding: 12px 16px;
+
+      span:not(:first-child) { text-align: left; }
+
+      .col-desc {
+        display: block;
+        margin-bottom: 6px;
+        font-weight: 600;
+        color: #1a1a2e;
+      }
+
+      .col-qty, .col-price, .col-vat, .col-total {
+        display: inline-block;
+        margin-right: 14px;
+        font-size: 0.8125rem;
+        white-space: nowrap;
+        font-variant-numeric: tabular-nums;
+
+        &::before {
+          color: #6b7280;
+          font-size: 0.6875rem;
+          font-weight: 700;
+          letter-spacing: 0.4px;
+        }
+      }
+
+      .col-qty::before   { content: 'QTY '; }
+      .col-price::before { content: 'UNIT '; }
+      .col-vat::before   { content: 'VAT '; }
+      .col-total::before { content: 'TOTAL '; }
+
+      .col-total { margin-right: 0; font-weight: 700; color: #1a1a2e; }
+    }
+  }
+
+  /* The totals block is a right-aligned two-column list at 48px gap, which
+     is wider than a small phone once the amounts are realistic. */
+  .totals-section {
+    padding: 12px 16px;
+
+    .totals-row {
+      width: 100%;
+      gap: 16px;
+      justify-content: space-between;
+    }
+  }
+
+  .portal-header,
+  .portal-meta {
+    padding-left: 16px;
+    padding-right: 16px;
+  }
+
+  /* Company block and document badge stack rather than sitting side by side. */
+  .portal-header { flex-direction: column; }
+  .portal-header .doc-badge { align-items: flex-start; text-align: left; }
+
+  /* Billed-to and dates likewise. */
+  .portal-meta { flex-direction: column; gap: 16px; }
 }
 
 /* Totals */
@@ -136,7 +239,15 @@ ion-content.portal-content {
   }
 
   .total-row {
-    background: #4a90e2;
+    /*
+     * A darker step of the same accent blue. #4a90e2 with white on it
+     * measured 3.29:1, under the 4.5:1 minimum, and this is the one figure
+     * the customer opened the link to read. #2b6cb0 is the same hue family,
+     * so the document still matches the PDF and the emails, and measures
+     * 5.42:1. The shared palette itself -- #4a90e2 and #1a1a2e in
+     * pdf.service.js, email.service.js and server.js -- is untouched.
+     */
+    background: #2b6cb0;
     color: #fff;
     padding: 6px 12px;
     border-radius: 4px;
@@ -185,5 +296,13 @@ ion-content.portal-content {
   text-align: center;
   margin-top: 24px;
   font-size: 0.75rem;
-  color: #9ca3af;
+  /*
+   * The footer is the one part of this page outside the white paper --
+   * it sits on the page background, which does follow the theme. A fixed
+   * grey cannot serve both: #9ca3af measured 2.54:1 on the light page and
+   * #6b7280 measured 3.91:1 on the dark one. The medium text token is
+   * keyed per theme and clears both. The paper above keeps its own fixed
+   * colours, which match the PDF and the emails.
+   */
+  color: var(--fv-medium-text);
 }

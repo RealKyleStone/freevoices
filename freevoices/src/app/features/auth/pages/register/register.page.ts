@@ -200,9 +200,18 @@ export class RegisterPage implements OnInit {
       } catch (error) {
         // The long-form registration below still works without it.
         console.error('Google sign-in unavailable:', error);
+        this.googleUnavailable = true;
+        this.cdr.detectChanges();
       }
     }
   }
+
+  /**
+   * Set when Google's script cannot be reached, so the template can drop the
+   * button slot and the "or sign up with email" rule instead of leaving a
+   * divider above an empty space.
+   */
+  googleUnavailable = false;
 
   get showGoogleWebButton(): boolean {
     return this.googleAuth.isConfigured && !this.googleAuth.isNative;

@@ -1,224 +1,251 @@
+/*
+ * Dashboard.
+ *
+ * Was a row of quick-action buttons, then four chunky icon-and-figure cards
+ * laid out with ion-grid, then a titled card wrapping the activity list.
+ * That pushed the activity most of a screen down, and the ion-grid columns
+ * began 67px to the right of the card beneath them because ion-grid adds
+ * padding of its own.
+ *
+ * Now: a page head carrying both the greeting and the two actions, a
+ * compact figure row on a real CSS grid, and the activity list under a
+ * section label. Section spacing comes from the page grid in global.scss.
+ */
+
 ion-toolbar {
   --background: var(--ion-background-color);
   --border-width: 0;
-  padding: 0.5rem 1rem;
-}
-
-.toolbar-greeting {
-  padding-left: 0.5rem;
-
-  h2 {
-    margin: 0;
-    font-size: 1.3rem;
-    font-weight: 700;
-    color: var(--ion-text-color);
-    letter-spacing: -0.02em;
-  }
-
-  p {
-    margin: 2px 0 0;
-    font-size: 0.8rem;
-    color: var(--ion-color-medium);
-  }
+  --min-height: 52px;
 }
 
 .toolbar-icon-btn {
-  --border-radius: 8px;
-  --background: var(--ion-color-light);
+  --border-radius: var(--fv-radius-md);
+  --background: var(--fv-surface-subtle);
   --color: var(--ion-color-medium);
-  margin-left: 4px;
-  width: 36px;
-  height: 36px;
+  margin-left: var(--fv-space-1);
+  min-width: 44px;
+  min-height: 44px;
 }
 
-.dashboard-container {
-  padding: 1rem;
-  display: flex;
-  flex-direction: column;
-  gap: 1rem;
-}
+/* ── Figures ─────────────────────────────────────────────────────── */
 
-.quick-actions {
-  display: flex;
-  gap: 0.75rem;
-  flex-wrap: wrap;
+.stat-row {
+  display: grid;
+  /* Two up on phones, four across once there is room. */
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--fv-block-gap);
 
-  ion-button {
-    --border-radius: 10px;
-    font-size: 0.875rem;
-    font-weight: 500;
-    text-transform: none;
-    letter-spacing: 0;
+  @media (min-width: 768px) {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
   }
 }
 
-.stats-grid {
+.stat {
+  padding: var(--fv-space-4);
+  border: 1px solid var(--fv-border);
+  border-radius: var(--fv-radius-lg);
+  background: var(--ion-card-background);
+  /* Makes the card the reference for the cqi units on .stat-value below. */
+  container-type: inline-size;
+}
+
+/*
+ * Label and mark share the top line; the figure then has the full card
+ * width beneath them.
+ *
+ * The mark was absolutely positioned in the corner, which meant reserving
+ * 34px of right padding on every card. On a 155px card at 390px that was
+ * 22% of the width, and it broke "ZAR184,320.50" across two lines in the
+ * middle of the number.
+ */
+.stat-top {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--fv-space-2);
+  margin-bottom: var(--fv-space-2);
+  min-height: 28px;
+}
+
+.stat-label {
+  margin: 0;
+  font-size: var(--fv-text-2xs);
+  font-weight: var(--fv-weight-semibold);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--ion-color-medium);
+}
+
+.stat-value {
+  margin: 0;
+  /*
+   * A number is never broken across lines. At 1024px the browser was
+   * breaking at the comma, splitting "ZAR184,320.50" into "ZAR184,320." and
+   * "50" — which reads as a different figure entirely.
+   */
+  white-space: nowrap;
+  /*
+   * Sized against the card, not the viewport, because nowrap on its own
+   * would turn that wrap into an overflow: at 1024px the rail takes a fixed
+   * 264px, leaving four 126px cards, and the figure needs 150px at the full
+   * 22px. The earlier rule used vw, which cannot see that the rail has
+   * already taken its share of the width, so it kept resolving to 22px for
+   * a card that could never hold it. cqi is a percentage of this card's own
+   * inline size, so the figure shrinks only when its own card is tight, and
+   * is capped at the type-scale step it belongs to.
+   */
+  font-size: clamp(1.0625rem, 13cqi, var(--fv-text-xl));
+  font-weight: var(--fv-weight-semibold);
+  line-height: 1.1;
+  letter-spacing: -0.02em;
+  color: var(--ion-text-color);
+  font-variant-numeric: tabular-nums;
+  /* Allowed to wrap rather than be truncated: a revenue figure rendered as
+     "ZAR184,3…" is worse than one that runs to a second line. */
+  overflow-wrap: anywhere;
+}
+
+/*
+ * The mark identifies the figure; it is not the subject of the card. It was
+ * a 48px tinted tile beside the number, competing with it for attention.
+ */
+.stat-mark {
+  display: flex;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border-radius: var(--fv-radius-sm);
+
+  ion-icon { font-size: 15px; }
+
+  &.teal    { background: var(--fv-teal-tint);  ion-icon { color: var(--fv-teal-text); } }
+  &.success { background: var(--fv-success-bg); ion-icon { color: var(--fv-success-text); } }
+  &.warning { background: var(--fv-warning-bg); ion-icon { color: var(--fv-warning-text); } }
+  &.danger  { background: var(--fv-danger-bg);  ion-icon { color: var(--fv-danger-text); } }
+}
+
+/* Status colour earns its place only when something is actually overdue. */
+.stat-attention .stat-value { color: var(--fv-danger-text); }
+
+.skeleton-value {
+  width: 72px;
+  height: 22px;
+  border-radius: var(--fv-radius-sm);
+}
+
+/* ── Recent activity ─────────────────────────────────────────────── */
+
+.activity ion-list {
   padding: 0;
-
-  ion-col { padding: 4px 0; }
-}
-
-.stat-card {
-  margin: 0;
-  border-radius: 16px;
-  box-shadow: none;
-  border: 1px solid rgba(128, 128, 128, 0.15);
-  height: 100%;
-
-  ion-card-content {
-    display: flex;
-    align-items: center;
-    gap: 1rem;
-    padding: 1.25rem;
-    height: 100%;
-    box-sizing: border-box;
-  }
-
-  .stat-icon {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    width: 48px;
-    height: 48px;
-    border-radius: 12px;
-    flex-shrink: 0;
-    ion-icon { font-size: 22px; }
-
-    &.teal { background: var(--fv-teal-tint); ion-icon { color: var(--fv-teal-text); } }
-    &.success { background: var(--fv-success-bg); ion-icon { color: var(--fv-success-text); } }
-    &.warning { background: var(--fv-warning-bg); ion-icon { color: var(--fv-warning-text); } }
-    &.danger { background: var(--fv-danger-bg); ion-icon { color: var(--fv-danger-text); } }
-  }
-
-  .stat-info {
-    display: flex;
-    flex-direction: column;
-    gap: 2px;
-    min-width: 0;
-    flex: 1;
-  }
-
-  .stat-label {
-    margin: 0;
-    font-size: 0.72rem;
-    color: var(--ion-color-medium);
-    text-transform: uppercase;
-    letter-spacing: 0.04em;
-    font-weight: 500;
-  }
-
-  .stat-value {
-    margin: 0;
-    font-size: 1.1rem;
-    font-weight: 600;
-    color: var(--ion-text-color);
-    line-height: 1.2;
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-  }
-
-  .overdue-value { color: var(--fv-danger-text); }
-
-  .stat-sub {
-    margin: 0;
-    font-size: 0.72rem;
-    color: var(--ion-color-medium);
-  }
-
-  .skeleton-value {
-    width: 80px;
-    height: 24px;
-    border-radius: 4px;
-  }
-}
-
-ion-row {
-  align-items: stretch;
-}
-
-.activity-card {
-  margin: 0;
-  border-radius: 16px;
-  box-shadow: none;
-  border: 1px solid rgba(128, 128, 128, 0.15);
-
-  .activity-header {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-
-    ion-card-title {
-      font-size: 1rem;
-      font-weight: 600;
-    }
-
-    ion-button {
-      --color: var(--ion-color-primary);
-      font-size: 0.8rem;
-      text-transform: none;
-      letter-spacing: 0;
-    }
-  }
+  background: none;
 }
 
 .activity-item {
-  --padding-start: 1rem;
-  --padding-end: 1rem;
+  --background: transparent;
+  --padding-start: var(--fv-space-4);
+  --padding-end: var(--fv-space-4);
   --inner-padding-end: 0;
+  --min-height: 56px;
+
+  /* A hairline between rows rather than a border around each one. */
+  & + .activity-item {
+    border-top: 1px solid var(--fv-border);
+  }
 
   .activity-dot {
     display: flex;
     align-items: center;
     justify-content: center;
-    width: 34px;
-    height: 34px;
-    border-radius: 50%;
-    margin-right: 0.75rem;
+    width: 30px;
+    height: 30px;
+    border-radius: var(--fv-radius-pill);
+    margin-right: var(--fv-space-3);
     flex-shrink: 0;
-    ion-icon { font-size: 16px; }
+    ion-icon { font-size: 15px; }
 
     &.dot-success { background: var(--fv-success-bg); ion-icon { color: var(--fv-success-text); } }
-    &.dot-danger { background: var(--fv-danger-bg); ion-icon { color: var(--fv-danger-text); } }
-    &.dot-primary { background: var(--fv-info-bg); ion-icon { color: var(--fv-info-text); } }
-    &.dot-medium { background: var(--fv-medium-bg); ion-icon { color: var(--fv-medium-text); } }
+    &.dot-danger  { background: var(--fv-danger-bg);  ion-icon { color: var(--fv-danger-text); } }
+    &.dot-primary { background: var(--fv-teal-tint);  ion-icon { color: var(--fv-teal-text); } }
+    &.dot-medium  { background: var(--fv-medium-bg);  ion-icon { color: var(--fv-medium-text); } }
   }
 
   ion-label {
-    h3 { font-size: 0.875rem; font-weight: 500; color: var(--ion-text-color); margin: 0 0 2px; }
-    p { font-size: 0.75rem; color: var(--ion-color-medium); margin: 0; }
+    h3 {
+      margin: 0 0 2px;
+      font-size: var(--fv-text-base);
+      font-weight: var(--fv-weight-medium);
+      color: var(--ion-text-color);
+    }
+
+    p {
+      margin: 0;
+      font-size: var(--fv-text-xs);
+      color: var(--ion-color-medium);
+      /* One line. A long customer name previously wrapped and pushed the
+         row to two lines, crowding the status badge beside it. */
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
   }
 }
 
 .activity-badge {
   display: inline-block;
-  padding: 3px 10px;
-  border-radius: 20px;
-  font-size: 0.7rem;
-  font-weight: 600;
+  padding: 3px 9px;
+  border-radius: var(--fv-radius-pill);
+  font-size: var(--fv-text-2xs);
+  font-weight: var(--fv-weight-semibold);
   white-space: nowrap;
 
   &.badge-success { background: var(--fv-success-bg); color: var(--fv-success-text); }
-  &.badge-danger { background: var(--fv-danger-bg); color: var(--fv-danger-text); }
-  &.badge-info { background: var(--fv-teal-tint); color: var(--fv-teal-text); }
-  &.badge-medium { background: var(--fv-medium-bg); color: var(--fv-medium-text); }
+  &.badge-danger  { background: var(--fv-danger-bg);  color: var(--fv-danger-text); }
+  &.badge-info    { background: var(--fv-teal-tint);  color: var(--fv-teal-text); }
+  &.badge-medium  { background: var(--fv-medium-bg);  color: var(--fv-medium-text); }
 }
+
+/* ── Empty state ─────────────────────────────────────────────────── */
 
 .empty-state {
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  padding: 2.5rem 1rem;
+  gap: var(--fv-tight-gap);
+  padding: var(--fv-space-7) var(--fv-space-4);
   text-align: center;
-  gap: 0.5rem;
 
-  ion-icon { font-size: 2.5rem; color: var(--ion-color-medium); }
-  p { margin: 0; font-size: 0.9rem; font-weight: 500; color: var(--ion-text-color); }
-  span { font-size: 0.8rem; color: var(--ion-color-medium); }
+  .empty-icon-wrap {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 48px;
+    height: 48px;
+    margin-bottom: var(--fv-space-2);
+    border-radius: var(--fv-radius-lg);
+    background: var(--fv-teal-tint);
+    ion-icon { font-size: 22px; color: var(--fv-teal-text); }
+  }
+
+  h3 {
+    margin: 0;
+    font-size: var(--fv-text-md);
+    font-weight: var(--fv-weight-semibold);
+    color: var(--ion-text-color);
+  }
+
+  p {
+    margin: 0;
+    font-size: var(--fv-text-base);
+    color: var(--ion-color-medium);
+  }
 }
 
-.skeleton-dot { width: 34px; height: 34px; border-radius: 50%; }
-.skeleton-title { width: 160px; height: 14px; border-radius: 4px; }
-.skeleton-sub { width: 100px; height: 12px; border-radius: 4px; }
-.skeleton-badge { width: 52px; height: 22px; border-radius: 10px; }
+/* ── Loading ─────────────────────────────────────────────────────── */
+
+.skeleton-dot { width: 30px; height: 30px; border-radius: 50%; margin-right: var(--fv-space-3); }
+.skeleton-title { width: 120px; height: 13px; border-radius: 4px; margin-bottom: 6px; }
+.skeleton-sub { width: 180px; height: 11px; border-radius: 4px; }
+.skeleton-badge { width: 56px; height: 20px; border-radius: 10px; }

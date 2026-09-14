@@ -1,0 +1,443 @@
+/*
+ * Shared layout for the invoice and quote detail pages.
+ *
+ * Both were a single column of six or seven ion-cards of roughly equal
+ * weight — header, dates, line items, notes, actions, payments, history —
+ * so reading an invoice meant scrolling past a stack of boxes with no
+ * indication of which mattered. Each date also carried its own tinted icon
+ * tile, putting three decorative marks above the content.
+ *
+ * Now the page is composed:
+ *
+ *   .page-head     the number, the customer, the status
+ *   .detail-meta   dates and total as one compact strip
+ *   .detail-grid   the document on the left, what you do with it on the right
+ *
+ * On a phone the two columns stack, document first.
+ */
+
+.loading-state {
+  display: flex;
+  justify-content: center;
+  padding: var(--fv-space-7);
+}
+
+/* ── Identity ────────────────────────────────────────────────────── */
+
+.page-head { align-items: flex-start; }
+
+.doc-status {
+  display: inline-block;
+  padding: 5px 12px;
+  border-radius: var(--fv-radius-pill);
+  font-size: var(--fv-text-xs);
+  font-weight: var(--fv-weight-semibold);
+  white-space: nowrap;
+
+  &.badge-success { background: var(--fv-success-bg); color: var(--fv-success-text); }
+  &.badge-danger  { background: var(--fv-danger-bg);  color: var(--fv-danger-text); }
+  &.badge-warning { background: var(--fv-warning-bg); color: var(--fv-warning-text); }
+  &.badge-medium  { background: var(--fv-medium-bg);  color: var(--fv-medium-text); }
+  &.badge-primary { background: var(--fv-teal-tint);  color: var(--fv-teal-text); }
+}
+
+/* ── Key facts ───────────────────────────────────────────────────── */
+
+.detail-meta {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 1px;
+  margin: 0;
+  border: 1px solid var(--fv-border);
+  border-radius: var(--fv-radius-lg);
+  background: var(--fv-border);
+  overflow: hidden;
+
+  @media (min-width: 700px) {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+
+  .meta-cell {
+    padding: var(--fv-space-3) var(--fv-space-4);
+    background: var(--ion-card-background);
+  }
+
+  dt {
+    margin: 0 0 3px;
+    font-size: var(--fv-text-2xs);
+    font-weight: var(--fv-weight-semibold);
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--ion-color-medium);
+  }
+
+  dd {
+    margin: 0;
+    font-size: var(--fv-text-base);
+    font-weight: var(--fv-weight-medium);
+    color: var(--ion-text-color);
+    font-variant-numeric: tabular-nums;
+  }
+
+  /* The amount is the fact most often being looked for. */
+  .meta-cell-total dd {
+    font-weight: var(--fv-weight-semibold);
+    white-space: nowrap;
+  }
+}
+
+/* ── Two columns ─────────────────────────────────────────────────── */
+
+.detail-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: var(--fv-section-gap);
+
+  /*
+   * The document keeps the wider column; actions, payments and history sit
+   * in a rail beside it rather than below it, which is what turned this
+   * page into a column of equal boxes.
+   */
+  @media (min-width: 1024px) {
+    grid-template-columns: minmax(0, 1.7fr) minmax(300px, 1fr);
+    align-items: start;
+  }
+}
+
+.detail-main,
+.detail-rail {
+  display: flex;
+  flex-direction: column;
+  gap: var(--fv-section-gap);
+  min-width: 0;
+}
+
+/* .panel-pad lives in global.scss, beside .panel. */
+
+/* ── Line items ──────────────────────────────────────────────────── */
+
+.items-table {
+  font-size: var(--fv-text-base);
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+
+  .items-header {
+    display: grid;
+    grid-template-columns: minmax(6rem, 1fr) 2.5rem 5.5rem 5.5rem;
+    gap: var(--fv-space-2);
+    min-width: 22rem;
+    padding-bottom: var(--fv-space-2);
+    margin-bottom: var(--fv-space-2);
+    border-bottom: 1px solid var(--fv-border);
+    font-size: var(--fv-text-2xs);
+    font-weight: var(--fv-weight-semibold);
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--ion-color-medium);
+  }
+
+  .item-row {
+    display: grid;
+    grid-template-columns: minmax(6rem, 1fr) 2.5rem 5.5rem 5.5rem;
+    gap: var(--fv-space-2);
+    min-width: 22rem;
+    padding: var(--fv-space-2) 0;
+    border-bottom: 1px solid var(--fv-border);
+
+    &:last-child { border-bottom: 0; }
+
+    .desc { min-width: 0; overflow-wrap: anywhere; }
+    .qty, .price, .amount {
+      white-space: nowrap;
+      font-variant-numeric: tabular-nums;
+      text-align: right;
+    }
+    .vat-note {
+      display: block;
+      margin-top: 2px;
+      font-size: var(--fv-text-xs);
+      color: var(--ion-color-medium);
+    }
+  }
+
+  .qty, .price, .amount { text-align: right; }
+}
+
+/*
+ * Line items below 30rem: four money columns do not fit a phone, so each
+ * row becomes a block with the figures on a labelled line beneath the
+ * description. The labels come from generated content because the header
+ * row is hidden here.
+ */
+@media (max-width: 30rem) {
+  .items-table {
+    overflow-x: visible;
+
+    .items-header { display: none; }
+
+    .item-row {
+      display: block;
+      min-width: 0;
+      padding: var(--fv-space-3) 0;
+
+      .desc {
+        display: block;
+        margin-bottom: var(--fv-space-2);
+        font-weight: var(--fv-weight-medium);
+      }
+
+      .qty, .price, .amount {
+        display: inline-block;
+        text-align: left;
+        margin-right: var(--fv-space-3);
+        font-size: var(--fv-text-sm);
+
+        &::before {
+          color: var(--ion-color-medium);
+          font-size: var(--fv-text-2xs);
+          text-transform: uppercase;
+          letter-spacing: 0.04em;
+        }
+      }
+
+      .qty::before   { content: 'Qty '; }
+      .price::before { content: 'Unit '; }
+      .amount::before { content: 'Total '; }
+
+      .amount { margin-right: 0; font-weight: var(--fv-weight-semibold); }
+    }
+  }
+}
+
+/* ── Totals ──────────────────────────────────────────────────────── */
+
+.totals {
+  margin-top: var(--fv-space-4);
+  padding-top: var(--fv-space-3);
+  border-top: 1px solid var(--fv-border);
+  /* Kept to a readable measure and pushed right, so the figures sit under
+     the amount column instead of spanning the whole card. */
+  margin-left: auto;
+  max-width: 22rem;
+
+  .totals-row {
+    display: flex;
+    justify-content: space-between;
+    gap: var(--fv-space-4);
+    padding: 5px 0;
+    font-size: var(--fv-text-base);
+    color: var(--ion-color-medium);
+    font-variant-numeric: tabular-nums;
+  }
+
+  .total-row {
+    margin-top: var(--fv-space-2);
+    padding-top: var(--fv-space-3);
+    border-top: 1px solid var(--fv-border);
+    font-size: var(--fv-text-md);
+    color: var(--ion-text-color);
+    font-weight: var(--fv-weight-semibold);
+  }
+
+  .paid-row { color: var(--fv-success-text); font-weight: var(--fv-weight-medium); }
+}
+
+/* ── Notes ───────────────────────────────────────────────────────── */
+
+.notes-panel {
+  font-size: var(--fv-text-base);
+  color: var(--ion-text-color);
+
+  p { margin: 0; }
+  .mt { margin-top: var(--fv-space-4); }
+}
+
+.note-label {
+  margin: 0 0 var(--fv-tight-gap) !important;
+  font-size: var(--fv-text-2xs);
+  font-weight: var(--fv-weight-semibold);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--ion-color-medium);
+}
+
+/* ── Actions ─────────────────────────────────────────────────────── */
+
+.actions {
+  display: flex;
+  flex-direction: column;
+  gap: var(--fv-space-2);
+
+  ion-button {
+    --border-radius: var(--fv-radius-md);
+    margin: 0;
+    height: 42px;
+    text-transform: none;
+    font-weight: var(--fv-weight-medium);
+    letter-spacing: 0;
+    font-size: var(--fv-text-base);
+  }
+}
+
+.actions-secondary {
+  margin-top: var(--fv-space-2);
+
+  ion-button {
+    --border-color: var(--fv-border-strong);
+    --color: var(--ion-text-color);
+    font-weight: var(--fv-weight-regular);
+  }
+}
+
+.actions-utility {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--fv-space-1) var(--fv-space-3);
+  margin-top: var(--fv-space-3);
+  padding-top: var(--fv-space-3);
+  border-top: 1px solid var(--fv-border);
+
+  ion-button {
+    --padding-start: 0;
+    --padding-end: 0;
+    margin: 0;
+    height: 32px;
+    text-transform: none;
+    font-weight: var(--fv-weight-regular);
+    letter-spacing: 0;
+    font-size: var(--fv-text-sm);
+  }
+
+  /* The destructive action sits at the far end of the row. */
+  ion-button[color="danger"] { margin-left: auto; }
+}
+
+/* ── Share link ──────────────────────────────────────────────────── */
+
+.share-panel {
+  margin-top: var(--fv-space-3);
+  padding: var(--fv-space-3);
+  border-radius: var(--fv-radius-md);
+  background: var(--fv-surface-subtle);
+}
+
+.share-label {
+  margin: 0 0 var(--fv-tight-gap);
+  font-size: var(--fv-text-2xs);
+  font-weight: var(--fv-weight-semibold);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--ion-color-medium);
+}
+
+.share-link-row {
+  display: flex;
+  align-items: center;
+  gap: var(--fv-space-2);
+
+  .share-url {
+    flex: 1;
+    min-width: 0;
+    font-size: var(--fv-text-xs);
+    color: var(--ion-text-color);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  ion-button { --color: var(--ion-color-medium); margin: 0; width: 40px; height: 40px; }
+}
+
+/* ── Payment form ────────────────────────────────────────────────── */
+
+.payment-form {
+  margin-top: var(--fv-space-4);
+  padding-top: var(--fv-space-4);
+  border-top: 1px solid var(--fv-border);
+
+  ion-item {
+    --padding-start: 0;
+    --inner-padding-end: 0;
+    --background: transparent;
+    margin-bottom: var(--fv-space-3);
+  }
+
+  .payment-submit-btn {
+    --border-radius: var(--fv-radius-md);
+    margin-top: var(--fv-space-2);
+    height: 42px;
+    text-transform: none;
+    font-weight: var(--fv-weight-medium);
+  }
+}
+
+/* ── Payments ────────────────────────────────────────────────────── */
+
+.payment-list-item {
+  --background: transparent;
+  --padding-start: var(--fv-space-4);
+  --padding-end: var(--fv-space-4);
+  --inner-padding-end: 0;
+  --min-height: 56px;
+  /* Same as the list rows: the separator below is the item's own. */
+  --inner-border-width: 0;
+
+  & + .payment-list-item { border-top: 1px solid var(--fv-border); }
+
+  ion-label {
+    h3 {
+      margin: 0 0 2px;
+      font-size: var(--fv-text-base);
+      font-weight: var(--fv-weight-semibold);
+      color: var(--ion-text-color);
+      font-variant-numeric: tabular-nums;
+    }
+    p {
+      margin: 0;
+      font-size: var(--fv-text-xs);
+      color: var(--ion-color-medium);
+    }
+  }
+}
+
+/* ── History ─────────────────────────────────────────────────────── */
+
+.timeline {
+  display: flex;
+  flex-direction: column;
+  gap: var(--fv-space-3);
+}
+
+.timeline-item {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--fv-space-3);
+
+  .timeline-icon {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 26px;
+    height: 26px;
+    flex-shrink: 0;
+    border-radius: var(--fv-radius-pill);
+    background: var(--fv-surface-subtle);
+    ion-icon { font-size: 13px; color: var(--ion-color-medium); }
+  }
+
+  .timeline-content { min-width: 0; }
+
+  .event-type {
+    margin: 0;
+    font-size: var(--fv-text-base);
+    font-weight: var(--fv-weight-medium);
+    color: var(--ion-text-color);
+  }
+
+  .event-date {
+    margin: 1px 0 0;
+    font-size: var(--fv-text-xs);
+    color: var(--ion-color-medium);
+  }
+}

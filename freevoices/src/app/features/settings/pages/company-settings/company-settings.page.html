@@ -1,6 +1,6 @@
 <div class="settings-page">
   <div class="settings-page-header">
-    <h2>Company</h2>
+    <h1>Company</h1>
     <p>Your company details appear on invoices and quotes.</p>
   </div>
 
@@ -14,7 +14,7 @@
       <ion-card-header>
         <ion-card-title>
           <ion-icon name="image-outline"></ion-icon>
-          Company Logo
+          Company logo
         </ion-card-title>
       </ion-card-header>
       <ion-card-content>
@@ -42,11 +42,15 @@
         <!-- File picker -->
         <!-- On web: clicking the label opens the file input -->
         <!-- On native Android/iOS: onLogoTap() shows camera/gallery action sheet -->
-        <div class="logo-upload-area" *ngIf="!logoPreview" (click)="onLogoTap()">
-          <label class="upload-label">
-            <ion-icon name="cloud-upload-outline"></ion-icon>
-            <span>{{ logoUrl ? 'Replace Logo' : 'Choose Logo' }}</span>
-          </label>
+        <!-- A button, not a clickable div with a for-less <label>: the control
+             has to be focusable and operable from the keyboard, and the label
+             was not associated with the file input anyway. onLogoTap() still
+             triggers #logoFileInput by id on web. -->
+        <div class="logo-upload-area" *ngIf="!logoPreview">
+          <button type="button" class="upload-label" (click)="onLogoTap()">
+            <ion-icon name="cloud-upload-outline" aria-hidden="true"></ion-icon>
+            <span>{{ logoUrl ? 'Replace logo' : 'Choose logo' }}</span>
+          </button>
           <!-- Hidden file input used on web only — triggered programmatically by onLogoTap() -->
           <input
             id="logoFileInput"
@@ -65,28 +69,28 @@
         <ion-card-header>
           <ion-card-title>
             <ion-icon name="business-outline"></ion-icon>
-            Company Details
+            Company details
           </ion-card-title>
         </ion-card-header>
         <ion-card-content>
           <ion-item>
-            <ion-label position="stacked">Company Name</ion-label>
-            <ion-input formControlName="company_name" type="text" placeholder="Acme Pty Ltd"></ion-input>
+            <ion-label position="stacked">Company name</ion-label>
+            <ion-input aria-label="Company name" formControlName="company_name" type="text" placeholder="Acme Pty Ltd"></ion-input>
           </ion-item>
 
           <ion-item>
-            <ion-label position="stacked">Registration Number</ion-label>
-            <ion-input formControlName="company_registration" type="text" placeholder="2020/123456/07"></ion-input>
+            <ion-label position="stacked">Registration number</ion-label>
+            <ion-input aria-label="Registration number" formControlName="company_registration" type="text" placeholder="2020/123456/07"></ion-input>
           </ion-item>
 
           <ion-item>
-            <ion-label position="stacked">VAT Number</ion-label>
-            <ion-input formControlName="vat_number" type="text" placeholder="4123456789"></ion-input>
+            <ion-label position="stacked">VAT number</ion-label>
+            <ion-input aria-label="VAT number" formControlName="vat_number" type="text" placeholder="4123456789"></ion-input>
           </ion-item>
 
           <ion-item>
-            <ion-label position="stacked">Business Address</ion-label>
-            <ion-textarea
+            <ion-label position="stacked">Business address</ion-label>
+            <ion-textarea aria-label="Business address"
               formControlName="address"
               placeholder="123 Main Street&#10;Cape Town, 8001"
               rows="3"
@@ -99,7 +103,7 @@
       <div class="form-actions">
         <ion-button type="submit" [disabled]="isSaving" expand="block" color="primary">
           <ion-spinner *ngIf="isSaving" name="crescent" slot="start"></ion-spinner>
-          {{ isSaving ? 'Saving...' : 'Save Changes' }}
+          {{ isSaving ? 'Saving...' : 'Save changes' }}
         </ion-button>
       </div>
     </form>

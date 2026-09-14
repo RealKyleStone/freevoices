@@ -105,40 +105,21 @@
   unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF;
 }
 
+/*
+ * Colour tokens live in src/theme/variables.scss, which is loaded after this
+ * file. The palette used to be declared in both places with values that had
+ * drifted apart (--ion-color-secondary was #14b8a6 here and #0e9f6e there),
+ * so the effective value depended on stylesheet order rather than intent.
+ * Only the page-surface tokens below stay here; everything else is defined
+ * once, in variables.scss.
+ */
 :root {
-  --ion-color-primary: #0f766e;
-  --ion-color-primary-rgb: 15, 118, 110;
-  --ion-color-primary-contrast: #ffffff;
-  --ion-color-primary-contrast-rgb: 255, 255, 255;
-  --ion-color-primary-shade: #0d6860;
-  --ion-color-primary-tint: #27847d;
-
-  --ion-color-secondary: #14b8a6;
-  --ion-color-secondary-rgb: 20, 184, 166;
-  --ion-color-secondary-contrast: #ffffff;
-  --ion-color-secondary-contrast-rgb: 255, 255, 255;
-  --ion-color-secondary-shade: #0f9e8e;
-  --ion-color-secondary-tint: #2ec4b3;
-
   --ion-background-color: #ffffff;
   --ion-background-color-rgb: 255, 255, 255;
   --ion-text-color: #111827;
   --ion-text-color-rgb: 17, 24, 39;
   --ion-item-background: #ffffff;
   --ion-card-background: #ffffff;
-
-  --fv-teal-tint: #ccfbf1;
-  --fv-teal-text: #0f5e58;
-  --fv-success-bg: #dcfce7;
-  --fv-success-text: #166534;
-  --fv-warning-bg: #fef9c3;
-  --fv-warning-text: #854d0e;
-  --fv-danger-bg: #fee2e2;
-  --fv-danger-text: #991b1b;
-  --fv-info-bg: #dbeafe;
-  --fv-info-text: #1e40af;
-  --fv-medium-bg: #f3f4f6;
-  --fv-medium-text: #374151;
 }
 
 /* ── Dark mode ── */
@@ -172,103 +153,517 @@
 
   --ion-toolbar-background: #111111;
   --ion-tab-bar-background: #1a1a1a;
-
-  --fv-teal-tint: #042f2e;
-  --fv-teal-text: #5eead4;
-  --fv-success-bg: #052e16;
-  --fv-success-text: #4ade80;
-  --fv-warning-bg: #422006;
-  --fv-warning-text: #fbbf24;
-  --fv-danger-bg: #450a0a;
-  --fv-danger-text: #f87171;
-  --fv-info-bg: #1e3a5f;
-  --fv-info-text: #93c5fd;
-  --fv-medium-bg: #1f2937;
-  --fv-medium-text: #9ca3af;
 }
 
 /* Global styles */
-* { font-family: 'Poppins', sans-serif; }
 
-ion-split-pane { --border: none; }
+/*
+ * Poppins was applied with `* { font-family }`, which also overrode the
+ * monospace default on <code>/<pre>/<kbd> and reset the family on every
+ * Ionic internal element. Setting it once on :root and letting it inherit
+ * reaches the same elements without flattening those defaults.
+ */
+:root {
+  font-family: 'Poppins', sans-serif;
+}
+
+body {
+  font-family: inherit;
+}
+
+/*
+ * Navigation rail.
+ *
+ * ion-split-pane sizes the side panel with --side-width, which defaults to
+ * 28% and overrides ion-menu's own --width. At 1440px that handed seven
+ * navigation items a 403px column against 1037px of content, and the
+ * imbalance grew with the viewport. A fixed rail keeps the shell in
+ * proportion at every width.
+ */
+ion-split-pane {
+  --border: none;
+  --side-width: var(--fv-rail);
+  --side-max-width: var(--fv-rail);
+  --side-min-width: var(--fv-rail);
+}
 
 ion-menu {
   --width: 240px;
 
   ion-content { --background: var(--ion-background-color); }
 
+  /*
+   * The brand is a <button> (it navigates to the dashboard), so the UA
+   * button styling has to be reset back to the block it used to be.
+   */
   .menu-header {
-    padding: 1rem 0.5rem;
-    text-align: center;
+    display: block;
+    width: 100%;
+    /* Left-aligned to the same inset as the navigation items below it. The
+       wordmark was centred while every item under it was left-aligned. */
+    padding: var(--fv-space-5) 24px var(--fv-space-3);
+    border: 0;
+    background: none;
+    font: inherit;
+    text-align: left;
     cursor: pointer;
+    transition: opacity var(--fv-duration) var(--fv-ease);
+
     &:hover { opacity: 0.8; }
-    h1 {
+
+    .menu-header-name {
+      display: block;
       margin: 0;
-      font-size: 1rem;
-      font-weight: 700;
+      font-size: var(--fv-text-md);
+      font-weight: var(--fv-weight-bold);
+      letter-spacing: -0.01em;
+      /*
+       * Flat primary rather than a clipped gradient. The wordmark was
+       * painted with `background: linear-gradient(...)` plus
+       * `-webkit-text-fill-color: transparent`, which has no measurable
+       * contrast ratio and renders as invisible text wherever
+       * background-clip:text is unsupported.
+       */
       color: var(--ion-color-primary);
     }
   }
 
+  /*
+   * Navigation items.
+   *
+   * These never set lines="none", so every one drew ion-item's default
+   * bottom border and the rail read as a table of data rather than a set of
+   * destinations. They are now borderless pills, inset from the rail edge,
+   * at a tighter row height, with the hover and active tints derived from
+   * the primary token so they follow the theme — they were hard-coded to
+   * rgba(15, 118, 110, …), the light-mode teal, in both themes.
+   */
+  --fv-rail-inset: 12px;
+
   ion-list {
-    padding-top: 1rem;
+    padding: var(--fv-space-2) var(--fv-rail-inset);
     background: none;
 
     ion-item {
       --background: transparent;
-      --background-hover: rgba(15, 118, 110, 0.1);
-      --background-activated: rgba(15, 118, 110, 0.15);
-      --padding-start: 1rem;
-      --border-radius: 8px;
-      margin-bottom: 0.5rem;
-      transition: background 0.15s ease;
+      --background-hover: rgba(var(--ion-color-primary-rgb), 0.08);
+      --background-activated: rgba(var(--ion-color-primary-rgb), 0.14);
+      --border-width: 0;
+      /*
+       * --border-width alone did not do it. The row line is drawn on
+       * ion-item's inner element, which that property does not reach, so
+       * every navigation row was still drawing a 1px divider and the rail
+       * still read as a table of data rather than a set of destinations.
+       * The settings list gets away with --border-width because its
+       * template also sets lines="none"; the rail's does not.
+       */
+      --inner-border-width: 0;
+      --padding-start: 12px;
+      --inner-padding-end: 8px;
+      --min-height: 42px;
+      --border-radius: var(--fv-radius-md);
+      border-radius: var(--fv-radius-md);
+      margin-bottom: 2px;
+      font-size: var(--fv-text-base);
+      font-weight: var(--fv-weight-medium);
 
-      &:hover:not(.selected) {
-        --background: rgba(15, 118, 110, 0.08);
-        cursor: pointer;
-      }
+      &:hover:not(.selected) { cursor: pointer; }
 
       &.selected {
         --background: var(--ion-color-primary);
-        --color: #fff;
-        font-weight: 600;
-        border-radius: 10px;
-        ion-icon { color: #fff; }
+        --color: var(--ion-color-primary-contrast);
+        font-weight: var(--fv-weight-semibold);
+        ion-icon { color: var(--ion-color-primary-contrast); }
       }
 
       ion-icon {
-        font-size: 1.25rem;
-        margin-right: 0.75rem;
-        color: var(--ion-text-color);
+        font-size: 18px;
+        margin-right: 12px;
+        color: var(--ion-color-medium);
       }
-
-      font-size: 1rem;
-      font-weight: 500;
     }
   }
 
   ion-footer {
-    padding: 1rem 0.5rem;
-    border-top: 1px solid rgba(128, 128, 128, 0.15);
+    padding: var(--fv-space-2) var(--fv-rail-inset) var(--fv-space-3);
+    border-top: 1px solid var(--fv-border);
+    background: var(--ion-background-color);
+
+    ion-item {
+      --background: transparent;
+      --background-hover: rgba(var(--ion-color-primary-rgb), 0.08);
+      --border-width: 0;
+      --inner-border-width: 0;
+      --padding-start: 12px;
+      --min-height: 40px;
+      --border-radius: var(--fv-radius-md);
+      border-radius: var(--fv-radius-md);
+      font-size: var(--fv-text-sm);
+      font-weight: var(--fv-weight-medium);
+      cursor: pointer;
+
+      ion-icon { font-size: 17px; margin-right: 12px; color: var(--ion-color-medium); }
+    }
   }
 }
 
+/*
+ * One card language.
+ *
+ * Cards previously had three treatments: this rule (16px + drop shadow), the
+ * dashboard and detail pages (16px + hairline border, no shadow), and the
+ * settings pages (12px + a lighter shadow). A hairline border reads more
+ * cleanly than a shadow against the near-black dark surface, and it is the
+ * treatment the most-used screens had already converged on, so it becomes
+ * the default rather than something each page re-declares.
+ */
 ion-card {
-  border-radius: 16px;
+  border-radius: var(--fv-radius-lg);
   background: var(--ion-card-background);
-  box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+  border: 1px solid var(--fv-border);
+  box-shadow: none;
 }
 
 ion-button {
-  --border-radius: 10px;
-  font-weight: 500;
+  --border-radius: var(--fv-radius-md);
+  font-weight: var(--fv-weight-medium);
   text-transform: none;
 }
 
 ion-input, ion-textarea {
   --padding-start: 16px;
   --padding-end: 16px;
-  --border-radius: 10px;
+  --border-radius: var(--fv-radius-md);
+}
+
+/*
+ * Interactive list rows.
+ *
+ * A row is the main way into a customer, invoice, quote or product, and all
+ * four lists already set the same hover tint — but only the customer list
+ * transitioned it, and none of them gave any pressed feedback, so on touch a
+ * tap produced nothing until the next page arrived.
+ *
+ * One rule for all four, on the shared motion tokens. Background only: rows
+ * do not lift, scale or shift, which would be noise in a list you scan.
+ *
+ * The class names differ because the invoice, quote and product lists all
+ * reuse .invoice-item; left as-is rather than renamed, to keep this to a
+ * styling change.
+ */
+/*
+ * The rule that lived here targeted .customer-item and .invoice-item, which
+ * no longer appear in any template -- the four lists share .list-row now.
+ * Its --transition would not have done anything either: ion-item does not
+ * consume that property. See the note on .list-row in
+ * shared/styles/list-page.scss.
+ */
+
+/*
+ * The page grid.
+ *
+ * One inset, one measure, one bottom runway, for every routed page. Before
+ * this each page padded itself, so measured against the shell at 1440px the
+ * left content edge of pages in the same application landed at 403px, 419px,
+ * 427px, 436px and 486px depending on which screen you were looking at.
+ *
+ * Applied to the container classes the templates already use, so the grid
+ * arrives without touching markup. Forms keep a narrower measure than data
+ * views: a single column of fields gains nothing from the extra width.
+ */
+.dashboard-container,
+.list-container,
+.detail-container,
+.form-container,
+.reports-container {
+  box-sizing: border-box;
+  width: 100%;
+  padding-inline: var(--fv-gutter);
+  padding-block: var(--fv-gutter) var(--fv-page-tail);
+  margin-inline: auto;
+}
+
+.dashboard-container,
+.list-container,
+.detail-container,
+.reports-container {
+  max-width: calc(var(--fv-content-max) + var(--fv-gutter) * 2);
+}
+
+.form-container {
+  max-width: calc(760px + var(--fv-gutter) * 2);
+}
+
+/*
+ * Vertical rhythm inside a page.
+ *
+ * Sections are separated by one value everywhere rather than by whatever
+ * margin each component happened to carry. Pages that lay their children
+ * out with flex get the gap; the rest fall back to a margin on the section.
+ */
+.dashboard-container,
+.detail-container,
+.form-container {
+  display: flex;
+  flex-direction: column;
+  gap: var(--fv-section-gap);
+}
+
+/*
+ * Page heading.
+ *
+ * Titles lived in three different places — an ion-title in the toolbar on
+ * list and report pages, a hand-built greeting in the dashboard toolbar, an
+ * h1 inside the content on settings — at three sizes, none of them aligned
+ * to the content edge below. Toolbar titles now share the page gutter and
+ * the type scale, so the heading sits on the same vertical line as the
+ * content it introduces.
+ */
+ion-header ion-toolbar {
+  --padding-start: 0;
+  --padding-end: 0;
+  --min-height: 60px;
+
+  ion-title {
+    padding-inline: var(--fv-gutter);
+    font-size: var(--fv-text-xl);
+    font-weight: var(--fv-weight-semibold);
+    letter-spacing: -0.02em;
+  }
+
+  /* Toolbar buttons align to the same gutter as the title. */
+  ion-buttons[slot="start"] { margin-inline-start: calc(var(--fv-gutter) - 12px); }
+  ion-buttons[slot="end"] { margin-inline-end: calc(var(--fv-gutter) - 12px); }
+
+  /* A back button already indents the title, so it must not double up. */
+  ion-buttons[slot="start"] ~ ion-title { padding-inline-start: 0; }
+}
+
+/*
+ * Section label — a quiet heading for a group of content, used instead of
+ * wrapping every group in its own bordered card.
+ */
+.fv-section-label {
+  margin: 0;
+  font-size: var(--fv-text-2xs);
+  font-weight: var(--fv-weight-semibold);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--ion-color-medium);
+}
+
+/*
+ * ── Composition primitives ────────────────────────────────────────
+ *
+ * Three shapes cover most of this application's pages. Defining them once
+ * is what stops each screen from re-inventing its own header, its own
+ * surface and its own idea of how far apart two things should sit.
+ */
+
+/*
+ * .page-head — the title block. Identity on the left, the action for this
+ * page on the right, baseline-aligned, wrapping to stacked on narrow
+ * screens with the actions going full width so they stay easy to hit.
+ */
+.page-head {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: var(--fv-block-gap);
+  flex-wrap: wrap;
+
+  .page-head-text { min-width: 0; }
+
+  h1 {
+    margin: 0;
+    font-size: var(--fv-text-2xl);
+    font-weight: var(--fv-weight-semibold);
+    line-height: 1.2;
+    letter-spacing: -0.02em;
+    color: var(--ion-text-color);
+  }
+
+  p {
+    margin: var(--fv-tight-gap) 0 0;
+    font-size: var(--fv-text-base);
+    color: var(--ion-color-medium);
+  }
+
+  .page-head-actions {
+    display: flex;
+    gap: var(--fv-space-2);
+    flex-shrink: 0;
+
+    ion-button {
+      margin: 0;
+      height: 42px;
+      font-size: var(--fv-text-base);
+    }
+
+    /*
+     * The secondary action takes a neutral border but keeps body-text
+     * colour. color="medium" alone tinted the label grey, which read as
+     * disabled next to the solid primary rather than as the second choice.
+     */
+    ion-button[fill="outline"] {
+      --border-color: var(--fv-border-strong);
+      --color: var(--ion-text-color);
+      font-weight: var(--fv-weight-medium);
+    }
+  }
+
+  @media (max-width: 599px) {
+    align-items: stretch;
+
+    .page-head-actions {
+      width: 100%;
+      ion-button { flex: 1; }
+    }
+  }
+}
+
+/*
+ * .section-head — a label and, optionally, one quiet action for the group
+ * beneath it. Sits directly above its content at block distance.
+ */
+.section-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--fv-space-3);
+  min-height: 28px;
+  margin-bottom: var(--fv-block-gap);
+
+  ion-button {
+    margin: 0;
+    --padding-start: 0;
+    --padding-end: 0;
+    height: 24px;
+    font-size: var(--fv-text-sm);
+    text-transform: none;
+    letter-spacing: 0;
+  }
+}
+
+/*
+ * .panel — one containing surface, matching ion-card's treatment, for
+ * content that genuinely benefits from being bounded. Used in place of an
+ * ion-card whose only job was to hold a title the section label now
+ * carries, which is how pages ended up as a column of titled boxes.
+ */
+.panel {
+  border: 1px solid var(--fv-border);
+  border-radius: var(--fv-radius-lg);
+  background: var(--ion-card-background);
+  overflow: hidden;
+}
+
+/* A panel whose content is not itself edge-to-edge, such as a chart or a
+   block of text, as opposed to a list of rows that supply their own
+   padding. Global rather than in the detail partial because the reports
+   page composes from the same two primitives. */
+.panel-pad { padding: var(--fv-space-4); }
+
+/*
+ * Visible keyboard focus.
+ *
+ * Ionic styles focus for its own components, but the app also uses bare
+ * <button> and <a> elements which had none — there was no :focus rule
+ * anywhere in the codebase. :focus-visible keeps pointer users from seeing
+ * a ring on click.
+ */
+:focus-visible {
+  outline: 2px solid var(--ion-color-primary);
+  outline-offset: 2px;
+  border-radius: var(--fv-radius-sm);
+}
+
+/* Ionic components manage their own inner ring; don't double up. */
+ion-button:focus-visible,
+ion-item:focus-visible,
+ion-fab-button:focus-visible,
+ion-searchbar:focus-visible {
+  outline: none;
+}
+
+/* Ionic sets .ion-focused on keyboard focus for these. */
+ion-button.ion-focused,
+ion-fab-button.ion-focused,
+ion-item.ion-focused {
+  position: relative;
+  z-index: 1;
+  outline: 2px solid var(--ion-color-primary);
+  outline-offset: 2px;
+}
+
+/*
+ * Form fields focus on the field, not on the row.
+ *
+ * A form field is an ion-item holding a stacked label and a control, so the
+ * ring above enclosed the label as well as the input — it marked the pair
+ * rather than the thing being typed into. The ring is drawn on the field
+ * surface instead, which is the filled box the user sees.
+ *
+ * These rules are global rather than in shared/styles/form-page.scss because
+ * .input-wrapper and .textarea-wrapper are created by Ionic at runtime and
+ * carry no Angular scoping attribute, so a component-scoped selector cannot
+ * reach them. item-label-stacked is Ionic's own class and appears only on
+ * this composition, never on a list row.
+ */
+ion-item.item-label-stacked.ion-focused {
+  outline: none;
+}
+
+ion-item ion-input:focus-within .input-wrapper,
+ion-item ion-textarea:focus-within .textarea-wrapper {
+  outline: 2px solid var(--ion-color-primary);
+  outline-offset: 0;
+}
+
+/*
+ * ion-select cannot take focus on its host — it delegates inward, and Ionic
+ * marks the surrounding ion-item instead. So the select is rung from the
+ * item's focused state rather than from its own, which also means the rule
+ * above cannot be relied on to cover it.
+ */
+ion-item.ion-focused ion-select,
+ion-item ion-select.ion-focused,
+ion-item ion-select.select-expanded {
+  outline: 2px solid var(--ion-color-primary);
+  outline-offset: 0;
+  border-radius: var(--fv-radius-md);
+}
+
+/*
+ * Minimum touch target.
+ *
+ * The row edit/delete actions and the dashboard toolbar buttons were 36px,
+ * below the 44px recommended minimum, and the row pair sat flush against
+ * each other. Ionic's own default for a bare ion-button already clears 44px;
+ * this only raises the ones the app had shrunk.
+ */
+ion-button.action-btn,
+ion-button.toolbar-icon-btn {
+  min-width: 44px;
+  min-height: 44px;
+}
+
+/*
+ * Reduced motion.
+ *
+ * Covers the app's own transitions and Ionic's animated skeletons. Ionic's
+ * page transitions are driven in JavaScript and are not affected by this, so
+ * it is a floor rather than a complete guarantee.
+ */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
 }
 
 /* Core CSS */
@@ -285,9 +680,14 @@ ion-input, ion-textarea {
 
 /* ── Dark mode input fix ── */
 /* Only set text color, never background — labels stay visible */
+/* ion-searchbar is included because it was previously omitted: the list
+   pages set its --background to a fixed light value and its --color to
+   --ion-text-color, which in dark mode resolved to the same #f9fafb as the
+   background, leaving typed search text invisible. */
 .ion-palette-dark ion-input,
 .ion-palette-dark ion-textarea,
-.ion-palette-dark ion-select {
+.ion-palette-dark ion-select,
+.ion-palette-dark ion-searchbar {
   --color: #ffffff;
   --placeholder-color: #6b7280;
 }

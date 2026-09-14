@@ -65,8 +65,13 @@ export class GoogleCompletePage implements OnInit {
     // Reached directly, or refreshed. There is no token to register with, so
     // there is nothing this page can do.
     if (!this.idToken) {
+      // A query parameter rather than router state. Ionic's router outlet keeps
+      // page components alive, so the sign-in page's constructor does not run
+      // again on return and anything read there is missed; the router also does
+      // not persist navigation state into history.state, so a reload loses it
+      // too. A reason code survives both, and carries no personal data.
       this.router.navigate(['/login'], {
-        state: { message: 'Your Google sign-in expired. Please try again.' },
+        queryParams: { reason: 'google-expired' },
       });
     }
   }

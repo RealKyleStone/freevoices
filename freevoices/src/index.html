@@ -8,7 +8,11 @@
   <base href="/" />
 
   <meta name="color-scheme" content="light dark" />
-  <meta name="viewport" content="viewport-fit=cover, width=device-width, initial-scale=1.0, minimum-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <!-- maximum-scale=1.0 and user-scalable=no were removed: together they block
+       pinch-to-zoom, which fails WCAG 2.1 SC 1.4.4 (Resize Text) and stops
+       anyone who needs magnification from reading an invoice. viewport-fit=cover
+       is kept, so the Android edge-to-edge safe-area handling is unaffected. -->
+  <meta name="viewport" content="viewport-fit=cover, width=device-width, initial-scale=1.0" />
   <meta name="format-detection" content="telephone=no" />
   <meta name="msapplication-tap-highlight" content="no" />
 

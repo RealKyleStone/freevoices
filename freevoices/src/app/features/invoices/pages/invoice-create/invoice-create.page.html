@@ -3,52 +3,52 @@
     <ion-buttons slot="start">
       <ion-back-button defaultHref="/invoices"></ion-back-button>
     </ion-buttons>
-    <ion-title>New Invoice</ion-title>
+    <ion-title>New invoice</ion-title>
   </ion-toolbar>
 </ion-header>
 
-<ion-content class="ion-padding">
+<ion-content>
   <div class="loading-state" *ngIf="isLoadingData">
     <ion-spinner></ion-spinner>
   </div>
 
-  <form [formGroup]="form" (ngSubmit)="onSubmit()" *ngIf="!isLoadingData">
+  <form class="form-container" [formGroup]="form" (ngSubmit)="onSubmit()" *ngIf="!isLoadingData">
 
     <!-- Header details -->
     <ion-card>
-      <ion-card-header><ion-card-title>Invoice Details</ion-card-title></ion-card-header>
+      <ion-card-header><ion-card-title>Invoice details</ion-card-title></ion-card-header>
       <ion-card-content>
 
-        <ion-item [class.ion-invalid]="isInvalid('customer_id')" [class.ion-touched]="isInvalid('customer_id')" fill="outline">
-          <ion-label position="floating">Customer <ion-text color="danger">*</ion-text></ion-label>
-          <ion-select formControlName="customer_id" interface="popover" placeholder="Select customer">
+        <ion-item [class.ion-invalid]="isInvalid('customer_id')" [class.ion-touched]="isInvalid('customer_id')">
+          <ion-label position="stacked">Customer <ion-text color="danger">*</ion-text></ion-label>
+          <ion-select aria-label="Customer" formControlName="customer_id" interface="popover" placeholder="Select customer">
             <ion-select-option *ngFor="let c of customers" [value]="c.id">{{ c.name }}</ion-select-option>
           </ion-select>
           <ion-note slot="error">Customer is required</ion-note>
         </ion-item>
 
-        <ion-item [class.ion-invalid]="isInvalid('currency_id')" [class.ion-touched]="isInvalid('currency_id')" fill="outline">
-          <ion-label position="floating">Currency <ion-text color="danger">*</ion-text></ion-label>
-          <ion-select formControlName="currency_id" interface="popover" placeholder="Select currency">
+        <ion-item [class.ion-invalid]="isInvalid('currency_id')" [class.ion-touched]="isInvalid('currency_id')">
+          <ion-label position="stacked">Currency <ion-text color="danger">*</ion-text></ion-label>
+          <ion-select aria-label="Currency" formControlName="currency_id" interface="popover" placeholder="Select currency">
             <ion-select-option *ngFor="let c of currencies" [value]="c.id">{{ c.code }} — {{ c.name }} ({{ c.symbol }})</ion-select-option>
           </ion-select>
           <ion-note slot="error">Currency is required</ion-note>
         </ion-item>
 
-        <ion-item [class.ion-invalid]="isInvalid('issue_date')" [class.ion-touched]="isInvalid('issue_date')" fill="outline">
-          <ion-label position="floating">Issue Date <ion-text color="danger">*</ion-text></ion-label>
-          <ion-input formControlName="issue_date" type="date"></ion-input>
+        <ion-item [class.ion-invalid]="isInvalid('issue_date')" [class.ion-touched]="isInvalid('issue_date')">
+          <ion-label position="stacked">Issue Date <ion-text color="danger">*</ion-text></ion-label>
+          <ion-input aria-label="Issue Date" formControlName="issue_date" type="date"></ion-input>
           <ion-note slot="error">Issue date is required</ion-note>
         </ion-item>
 
-        <ion-item fill="outline">
-          <ion-label position="floating">Due Date</ion-label>
-          <ion-input formControlName="due_date" type="date"></ion-input>
+        <ion-item>
+          <ion-label position="stacked">Due date</ion-label>
+          <ion-input aria-label="Due date" formControlName="due_date" type="date"></ion-input>
         </ion-item>
 
-        <ion-item fill="outline">
-          <ion-label position="floating">Payment Terms (days)</ion-label>
-          <ion-input formControlName="payment_terms" type="number" min="0"></ion-input>
+        <ion-item>
+          <ion-label position="stacked">Payment terms (days)</ion-label>
+          <ion-input aria-label="Payment terms (days)" formControlName="payment_terms" type="number" min="0"></ion-input>
         </ion-item>
 
       </ion-card-content>
@@ -57,49 +57,49 @@
     <!-- Line items -->
     <ion-card>
       <ion-card-header>
-        <ion-card-title>Line Items</ion-card-title>
+        <ion-card-title>Line items</ion-card-title>
       </ion-card-header>
       <ion-card-content formArrayName="items">
 
         <div *ngFor="let item of items.controls; let i = index" [formGroupName]="i" class="line-item">
           <div class="line-item-header">
             <span class="line-item-num">Item {{ i + 1 }}</span>
-            <ion-button fill="clear" color="danger" size="small" (click)="removeItem(i)" type="button">
+            <ion-button fill="clear" color="danger" size="small" [attr.aria-label]="'Remove line item ' + (i + 1)" (click)="removeItem(i)" type="button">
               <ion-icon slot="icon-only" name="trash-outline"></ion-icon>
             </ion-button>
           </div>
 
-          <ion-item fill="outline" *ngIf="products.length > 0">
-            <ion-label position="floating">Product (optional)</ion-label>
-            <ion-select formControlName="product_id" interface="popover" placeholder="Custom / ad-hoc"
+          <ion-item *ngIf="products.length > 0">
+            <ion-label position="stacked">Product (optional)</ion-label>
+            <ion-select aria-label="Product (optional)" formControlName="product_id" interface="popover" placeholder="Custom / ad-hoc"
                         (ionChange)="onProductChange(i)">
               <ion-select-option [value]="null">Custom / ad-hoc</ion-select-option>
               <ion-select-option *ngFor="let p of products" [value]="p.id">{{ p.name }}</ion-select-option>
             </ion-select>
           </ion-item>
 
-          <ion-item [class.ion-invalid]="isItemInvalid(i, 'description')" [class.ion-touched]="isItemInvalid(i, 'description')" fill="outline">
-            <ion-label position="floating">Description <ion-text color="danger">*</ion-text></ion-label>
-            <ion-input formControlName="description" type="text"></ion-input>
+          <ion-item [class.ion-invalid]="isItemInvalid(i, 'description')" [class.ion-touched]="isItemInvalid(i, 'description')">
+            <ion-label position="stacked">Description <ion-text color="danger">*</ion-text></ion-label>
+            <ion-input aria-label="Description" formControlName="description" type="text"></ion-input>
             <ion-note slot="error">Description is required</ion-note>
           </ion-item>
 
           <div class="item-row">
-            <ion-item [class.ion-invalid]="isItemInvalid(i, 'quantity')" [class.ion-touched]="isItemInvalid(i, 'quantity')" fill="outline" class="flex-1">
-              <ion-label position="floating">Qty <ion-text color="danger">*</ion-text></ion-label>
-              <ion-input formControlName="quantity" type="number" min="0.01" step="0.01"></ion-input>
+            <ion-item [class.ion-invalid]="isItemInvalid(i, 'quantity')" [class.ion-touched]="isItemInvalid(i, 'quantity')" class="flex-1">
+              <ion-label position="stacked">Qty <ion-text color="danger">*</ion-text></ion-label>
+              <ion-input aria-label="Qty" formControlName="quantity" type="number" min="0.01" step="0.01"></ion-input>
               <ion-note slot="error">Min 0.01</ion-note>
             </ion-item>
 
-            <ion-item [class.ion-invalid]="isItemInvalid(i, 'unit_price')" [class.ion-touched]="isItemInvalid(i, 'unit_price')" fill="outline" class="flex-2">
-              <ion-label position="floating">Unit Price <ion-text color="danger">*</ion-text></ion-label>
-              <ion-input formControlName="unit_price" type="number" min="0" step="0.01"></ion-input>
+            <ion-item [class.ion-invalid]="isItemInvalid(i, 'unit_price')" [class.ion-touched]="isItemInvalid(i, 'unit_price')" class="flex-2">
+              <ion-label position="stacked">Unit price <ion-text color="danger">*</ion-text></ion-label>
+              <ion-input aria-label="Unit price" formControlName="unit_price" type="number" min="0" step="0.01"></ion-input>
               <ion-note slot="error">Required</ion-note>
             </ion-item>
 
-            <ion-item fill="outline" class="flex-1">
-              <ion-label position="floating">VAT %</ion-label>
-              <ion-input formControlName="vat_rate" type="number" min="0" step="0.5"></ion-input>
+            <ion-item class="flex-1">
+              <ion-label position="stacked">VAT %</ion-label>
+              <ion-input aria-label="VAT %" formControlName="vat_rate" type="number" min="0" step="0.5"></ion-input>
             </ion-item>
           </div>
 
@@ -131,7 +131,7 @@
 
     <!-- Recurring -->
     <ion-card>
-      <ion-card-header><ion-card-title>Recurring Schedule</ion-card-title></ion-card-header>
+      <ion-card-header><ion-card-title>Recurring schedule</ion-card-title></ion-card-header>
       <ion-card-content>
 
         <ion-item>
@@ -140,9 +140,9 @@
         </ion-item>
 
         <ng-container *ngIf="isRecurring">
-          <ion-item fill="outline">
-            <ion-label position="floating">Interval <ion-text color="danger">*</ion-text></ion-label>
-            <ion-select formControlName="recurrence_interval" interface="popover" placeholder="Select interval">
+          <ion-item>
+            <ion-label position="stacked">Interval <ion-text color="danger">*</ion-text></ion-label>
+            <ion-select aria-label="Interval" formControlName="recurrence_interval" interface="popover" placeholder="Select interval">
               <ion-select-option value="WEEKLY">Weekly</ion-select-option>
               <ion-select-option value="MONTHLY">Monthly</ion-select-option>
               <ion-select-option value="QUARTERLY">Quarterly</ion-select-option>
@@ -150,9 +150,9 @@
             </ion-select>
           </ion-item>
 
-          <ion-item fill="outline">
-            <ion-label position="floating">End Date (optional)</ion-label>
-            <ion-input formControlName="recurrence_end_date" type="date"></ion-input>
+          <ion-item>
+            <ion-label position="stacked">End date (optional)</ion-label>
+            <ion-input aria-label="End date (optional)" formControlName="recurrence_end_date" type="date"></ion-input>
           </ion-item>
 
           <ion-item>
@@ -166,17 +166,17 @@
 
     <!-- Notes -->
     <ion-card>
-      <ion-card-header><ion-card-title>Additional Info</ion-card-title></ion-card-header>
+      <ion-card-header><ion-card-title>Additional info</ion-card-title></ion-card-header>
       <ion-card-content>
 
-        <ion-item fill="outline">
-          <ion-label position="floating">Notes</ion-label>
-          <ion-textarea formControlName="notes" rows="3"></ion-textarea>
+        <ion-item>
+          <ion-label position="stacked">Notes</ion-label>
+          <ion-textarea aria-label="Notes" formControlName="notes" rows="3"></ion-textarea>
         </ion-item>
 
-        <ion-item fill="outline">
-          <ion-label position="floating">Terms & Conditions</ion-label>
-          <ion-textarea formControlName="terms_conditions" rows="3"></ion-textarea>
+        <ion-item>
+          <ion-label position="stacked">Terms & Conditions</ion-label>
+          <ion-textarea aria-label="Terms &amp; Conditions" formControlName="terms_conditions" rows="3"></ion-textarea>
         </ion-item>
 
       </ion-card-content>

@@ -1,61 +1,142 @@
+/*
+ * Reports.
+ *
+ * This page was four full-width ion-cards of equal weight stacked down the
+ * window, with no container and no maximum measure, so at 1440px a bar
+ * chart was stretched across 1300px of card while the two figures the page
+ * exists to report sat above it in chips of the same weight as everything
+ * else. It also carried its own raw spacing and type values, and was the
+ * one routed page with no menu button, so on a phone there was no way to
+ * reach the navigation from it.
+ *
+ * Now: the two figures first, then revenue and the VAT return on the full
+ * measure, with status and top customers paired beside each other as
+ * context.
+ */
+
 .loading-state,
 .error-state {
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  padding: 4rem 1rem;
-  gap: 1rem;
+  gap: var(--fv-space-4);
+  padding: var(--fv-space-8) var(--fv-space-4);
 
-  ion-icon {
-    font-size: 3rem;
-  }
+  ion-icon { font-size: 2.5rem; }
 
   p {
-    color: var(--ion-color-medium);
     margin: 0;
+    font-size: var(--fv-text-base);
+    color: var(--ion-color-medium);
   }
 }
 
+ion-toolbar {
+  --background: var(--ion-background-color);
+  --border-width: 0;
+}
+
+/* ── Headline figures ────────────────────────────────────────────── */
+
 .summary-row {
-  display: flex;
-  gap: 1rem;
-  padding: 1rem 1rem 0;
-  flex-wrap: wrap;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: var(--fv-block-gap);
+  margin-bottom: var(--fv-section-gap);
+
+  @media (min-width: 560px) {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
 }
 
 .summary-chip {
-  flex: 1;
-  min-width: 140px;
-  background: var(--ion-color-light);
-  border-radius: 12px;
-  padding: 0.875rem 1rem;
-  display: flex;
-  flex-direction: column;
-  gap: 0.25rem;
+  padding: var(--fv-space-4);
+  border: 1px solid var(--fv-border);
+  border-radius: var(--fv-radius-lg);
+  background: var(--ion-card-background);
 
   .chip-label {
-    font-size: 0.75rem;
-    color: var(--ion-color-medium);
-    font-weight: 600;
+    display: block;
+    font-size: var(--fv-text-2xs);
+    font-weight: var(--fv-weight-semibold);
+    letter-spacing: 0.06em;
     text-transform: uppercase;
-    letter-spacing: 0.04em;
+    color: var(--ion-color-medium);
   }
 
+  /*
+   * This was --ion-color-dark, which is #111827 in both themes because the
+   * dark palette does not re-key it — so the two headline figures on the
+   * page were near-black on a dark surface and measured 1.24:1. The text
+   * colour follows the theme.
+   */
   .chip-value {
-    font-size: 1.25rem;
-    font-weight: 700;
-    color: var(--ion-color-dark);
+    display: block;
+    margin-top: 3px;
+    font-size: var(--fv-text-xl);
+    font-weight: var(--fv-weight-semibold);
+    color: var(--ion-text-color);
+    font-variant-numeric: tabular-nums;
+    /* A twelve-month rand figure runs long; it wraps as a whole or not at
+       all, never mid-number. */
+    white-space: nowrap;
+  }
+
+  .chip-note {
+    display: block;
+    margin-top: 2px;
+    font-size: var(--fv-text-xs);
+    color: var(--ion-color-medium);
   }
 }
 
+/* ── Layout ──────────────────────────────────────────────────────── */
+
+.reports-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: var(--fv-section-gap);
+
+  /* Status and top customers are both small, categorical charts; they read
+     better beside each other than stacked, once there is room. */
+  @media (min-width: 900px) {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+
+    .report-wide { grid-column: 1 / -1; }
+  }
+}
+
+.report { min-width: 0; }
+
+/*
+ * .section-head is a row with its ends pushed apart, which is right when
+ * the far end holds an action. Here the far end holds the label's own
+ * subtitle, so pushing it away put "Paid invoices, last 12 months" against
+ * the opposite edge of the page from the heading it belongs to. Stacked
+ * instead, so each note stays with its label.
+ */
+.report .section-head {
+  display: block;
+  min-height: 0;
+}
+
+.section-note {
+  margin: 2px 0 0;
+  font-size: var(--fv-text-xs);
+  color: var(--ion-color-medium);
+}
+
+/* ── Charts ──────────────────────────────────────────────────────── */
+
+/*
+ * One height for every chart, so the four panels line up rather than each
+ * settling wherever its own content left it. Chart.js sizes the canvas to
+ * its container, so the container is what has to be fixed.
+ */
 .chart-wrap {
   position: relative;
   height: 260px;
-
-  &--sm {
-    height: 220px;
-  }
 
   canvas {
     width: 100% !important;
@@ -64,34 +145,48 @@
 }
 
 .empty-msg {
-  color: var(--ion-color-medium);
+  margin: 0;
+  padding: var(--fv-space-6) 0;
   text-align: center;
-  padding: 2rem 0;
-  font-size: 0.9rem;
+  font-size: var(--fv-text-sm);
+  color: var(--ion-color-medium);
+}
+
+/* ── VAT table ───────────────────────────────────────────────────── */
+
+.vat-table-scroll {
+  margin-top: var(--fv-space-5);
+  padding-top: var(--fv-space-5);
+  border-top: 1px solid var(--fv-border);
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
 }
 
 .vat-table {
   width: 100%;
+  min-width: 26rem;
   border-collapse: collapse;
-  margin-top: 1.25rem;
-  font-size: 0.875rem;
+  font-size: var(--fv-text-sm);
 
-  th, td {
-    padding: 0.5rem 0.75rem;
+  th,
+  td {
+    padding: var(--fv-space-2) var(--fv-space-3);
     text-align: left;
-    border-bottom: 1px solid var(--ion-color-light);
+    border-bottom: 1px solid var(--fv-border);
   }
 
   th {
-    font-weight: 600;
-    color: var(--ion-color-medium);
-    font-size: 0.75rem;
+    font-size: var(--fv-text-2xs);
+    font-weight: var(--fv-weight-semibold);
+    letter-spacing: 0.06em;
     text-transform: uppercase;
-    letter-spacing: 0.04em;
+    color: var(--ion-color-medium);
   }
 
+  td { color: var(--ion-text-color); }
+
   tfoot td {
-    border-top: 2px solid var(--ion-color-light);
+    border-top: 1px solid var(--fv-border-strong);
     border-bottom: none;
   }
 

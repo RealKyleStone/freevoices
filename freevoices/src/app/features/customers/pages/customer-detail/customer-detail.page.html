@@ -5,10 +5,10 @@
     </ion-buttons>
     <ion-title>{{ customer?.name || 'Customer' }}</ion-title>
     <ion-buttons slot="end">
-      <ion-button [routerLink]="['/customers', customerId, 'edit']">
+      <ion-button aria-label="Edit customer" [routerLink]="['/customers', customerId, 'edit']">
         <ion-icon slot="icon-only" name="create-outline"></ion-icon>
       </ion-button>
-      <ion-button (click)="confirmDelete()" color="danger">
+      <ion-button aria-label="Delete customer" (click)="confirmDelete()" color="danger">
         <ion-icon slot="icon-only" name="trash-outline"></ion-icon>
       </ion-button>
     </ion-buttons>
@@ -110,7 +110,7 @@
                 <p>{{ doc.issue_date | date:'mediumDate' }} — Due {{ doc.due_date | date:'mediumDate' }}</p>
               </ion-label>
               <div slot="end" class="doc-end">
-                <span class="activity-badge" [ngClass]="'badge-' + getStatusColor(doc.status)">{{ doc.status }}</span>
+                <span class="activity-badge" [ngClass]="'badge-' + getStatusColor(doc.status)">{{ doc.status | titlecase }}</span>
                 <p class="doc-amount">R {{ doc.total | number:'1.2-2' }}</p>
               </div>
             </ion-item>

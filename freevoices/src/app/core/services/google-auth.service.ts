@@ -92,14 +92,39 @@ export class GoogleAuthService {
       cancel_on_tap_outside: true,
     });
 
+    this.mountButton(element);
+  }
+
+  /**
+   * Draw (or redraw) Google's widget into `element`.
+   *
+   * Split out from renderButton so the caller can redraw it after the user
+   * changes theme or resizes, without re-running initialize().
+   */
+  mountButton(element: HTMLElement): void {
+    if (!window.google?.accounts?.id) return;
+
+    // GIS renders its own button and only offers a fixed set of themes.
+    // 'outline' is white with dark text, which is a bright slab against the
+    // app's #111111 dark panel; 'filled_black' is Google's dark-UI variant.
+    const dark = document.documentElement.classList.contains('ion-palette-dark')
+      || document.body.classList.contains('ion-palette-dark');
+
+    // The widget is a fixed-width iframe measured once at render time, and
+    // GIS caps it at 400px. Clamp to that so a wide form column does not ask
+    // for a width Google silently ignores, leaving the button narrower than
+    // the buttons around it.
+    const width = Math.min(Math.max(element.offsetWidth || 320, 200), 400);
+
+    element.replaceChildren();
     window.google.accounts.id.renderButton(element, {
       type: 'standard',
-      theme: 'outline',
+      theme: dark ? 'filled_black' : 'outline',
       size: 'large',
       text: 'continue_with',
       shape: 'rectangular',
       logo_alignment: 'left',
-      width: element.offsetWidth || 320,
+      width,
     });
   }
 

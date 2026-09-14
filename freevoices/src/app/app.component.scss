@@ -1,46 +1,10 @@
-/* app.component.scss */
-ion-menu {
-    --width: 240px;
-    
-    .menu-header {
-        padding: 1rem 0.5rem;
-        text-align: center;
-        cursor: pointer;
-
-        &:hover {
-          opacity: 0.8;
-        }
-
-        h1 {
-          margin: 0;
-          font-size: 1rem;
-          font-weight: 600;
-          background: linear-gradient(45deg, var(--ion-color-primary), var(--ion-color-secondary));
-          -webkit-background-clip: text;
-          background-clip: text;
-          -webkit-text-fill-color: transparent;
-        }
-      }
-  
-    ion-list {
-      padding-top: 1rem;
-      background: none;
-      
-      ion-item {
-        --padding-start: 1rem;
-        margin-bottom: 0.5rem;
-        
-        // Removed selected item override to allow global.scss to control selected state
-        
-        ion-icon {
-          margin-right: 0.75rem;
-          font-size: 1.25rem;
-        }
-      }
-    }
-  }
-  
-
-ion-split-pane {
-  --border: none;
-}
+/* app.component.scss
+ *
+ * The side-menu rules that used to live here duplicated the ones in
+ * global.scss, with values that had drifted apart — the brand mark was
+ * font-weight 600 and a clipped gradient here, 700 and flat primary there,
+ * and the component-scoped copy silently won. The menu is styled in one
+ * place now (global.scss), continuing the migration the previous
+ * "Removed selected item override to allow global.scss to control selected
+ * state" comment had started.
+ */
