@@ -403,6 +403,124 @@ const MIGRATIONS = [
       return done.length ? `applied: ${done.join(', ')}` : 'already present';
     },
   },
+
+  {
+    id: '010_crypto_canary',
+    description: 'crypto_canary: one known-plaintext row so the app refuses to boot on the wrong encryption key',
+    async up(q) {
+      if (await tableExists(q, 'crypto_canary')) return 'already present';
+
+      // The failure this exists to catch: deploy to a fresh machine, generate a
+      // fresh DATA_ENCRYPTION_KEYS because none was carried across, and every
+      // check passes — the key is present, well-formed, the right length. The
+      // app boots, serves errors on every encrypted read, and starts writing
+      // new rows under a key that cannot read the old ones. Two key
+      // generations get mixed into one table with no clean way back.
+      //
+      // The row is written on first boot and verified on every boot after.
+      // `id` is pinned to 1 so there can only ever be one.
+      await q(`CREATE TABLE crypto_canary (
+        id tinyint(1) NOT NULL DEFAULT 1,
+        key_id varchar(32) NOT NULL,
+        envelope varchar(512) NOT NULL,
+        created_at timestamp NOT NULL DEFAULT current_timestamp(),
+        PRIMARY KEY (id)
+      )`);
+      return 'table created';
+    },
+  },
+
+  {
+    id: '011_payfast',
+    description: 'PayFast: per-user merchant credentials, invoice pay tokens, and gateway columns on payments',
+    async up(q) {
+      const done = [];
+
+      // ── users: the seller's own PayFast account ───────────────────────────
+      //
+      // Per-user, not global: every FreeVoices user is a separate South African
+      // business collecting into their own PayFast account.
+      //
+      // varchar(512) because these three are stored encrypted (see
+      // encrypted-fields.js) and an AES-GCM envelope of a short secret is
+      // roughly 130 characters of base64url plus the `fv1.<keyId>$` prefix.
+      // They stay *character* columns on purpose: the envelope is pure ASCII,
+      // so it is byte-identical in latin1 and utf8mb4, and VARBINARY would make
+      // mysql2 hand back a Buffer — turning a missed decrypt into
+      // `{"type":"Buffer",...}` instead of a recognisable `fv1.1$...`.
+      const userColumns = [
+        ['payfast_merchant_id', 'varchar(512) DEFAULT NULL'],
+        ['payfast_merchant_key', 'varchar(512) DEFAULT NULL'],
+        ['payfast_passphrase', 'varchar(512) DEFAULT NULL'],
+        ['payfast_enabled', 'tinyint(1) NOT NULL DEFAULT 0'],
+        // Added now because it is free now and an ALTER later; v1 drives
+        // sandbox/live from the server-wide PAYFAST_MODE env var and leaves
+        // this unexposed. PayFast's sandbox only accepts its own shared
+        // credentials, so a per-user test mode proves nothing about a user's
+        // real account.
+        ['payfast_mode', "varchar(10) NOT NULL DEFAULT 'LIVE'"],
+      ];
+      for (const [name, definition] of userColumns) {
+        if (await columnExists(q, 'users', name)) continue;
+        await q(`ALTER TABLE users ADD COLUMN ${name} ${definition}`);
+        done.push(`users.${name}`);
+      }
+
+      // ── documents: the payment link token ─────────────────────────────────
+      //
+      // Deliberately NOT share_token. POST /api/invoices/:id/share *rotates*
+      // that token on every call, so reusing it would kill every pay link
+      // already sitting in a customer's inbox the moment the seller clicks
+      // "Share" again.
+      //
+      // No expiry column either: the gate is invoice status, not time. An
+      // unpaid invoice should stay payable, and a link that expires mid
+      // collection is a support ticket.
+      if (!(await columnExists(q, 'documents', 'pay_token'))) {
+        await q('ALTER TABLE documents ADD COLUMN pay_token varchar(64) DEFAULT NULL');
+        done.push('documents.pay_token');
+      }
+      if (!(await indexExists(q, 'documents', 'uniq_documents_pay_token'))) {
+        await q('ALTER TABLE documents ADD UNIQUE KEY uniq_documents_pay_token (pay_token)');
+        done.push('uniq_documents_pay_token');
+      }
+
+      // ── payments: gateway provenance ──────────────────────────────────────
+      //
+      // payment_method already has 'PAYFAST' in its enum, so no enum ALTER.
+      //
+      // provider_payment_id holds PayFast's pf_payment_id and is PLAINTEXT on
+      // purpose. transaction_reference is slated for encryption by the POPIA
+      // work, and encryption uses a random IV — the same pf_payment_id would
+      // encrypt differently every time and a unique index on it would never
+      // fire. Since PayFast re-sends notifications until it gets a 200, losing
+      // de-duplication means double-recording real payments.
+      const paymentColumns = [
+        ['provider', "varchar(20) DEFAULT NULL"],
+        ['provider_payment_id', 'varchar(64) DEFAULT NULL'],
+        ['status', 'varchar(20) DEFAULT NULL'],
+        ['fee_amount', 'decimal(15,2) DEFAULT NULL'],
+        ['net_amount', 'decimal(15,2) DEFAULT NULL'],
+        ['raw_payload', 'text DEFAULT NULL'],
+      ];
+      for (const [name, definition] of paymentColumns) {
+        if (await columnExists(q, 'payments', name)) continue;
+        await q(`ALTER TABLE payments ADD COLUMN ${name} ${definition}`);
+        done.push(`payments.${name}`);
+      }
+
+      // MySQL exempts NULLs from UNIQUE, so every existing manually-recorded
+      // payment (provider IS NULL) stays valid and manual payments can never
+      // collide with each other — only two notifications for the same PayFast
+      // transaction can.
+      if (!(await indexExists(q, 'payments', 'uniq_payments_provider_ref'))) {
+        await q('ALTER TABLE payments ADD UNIQUE KEY uniq_payments_provider_ref (provider, provider_payment_id)');
+        done.push('uniq_payments_provider_ref');
+      }
+
+      return done.length ? `applied: ${done.join(', ')}` : 'already present';
+    },
+  },
 ];
 
 // ─── Runner ───────────────────────────────────────────────────────────────────

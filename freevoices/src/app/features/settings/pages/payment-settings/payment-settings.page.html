@@ -48,4 +48,62 @@
       </ion-button>
     </div>
   </form>
+
+  <form *ngIf="!isLoading" [formGroup]="payfastForm" (ngSubmit)="onSubmitPayfast()">
+    <ion-card>
+      <ion-card-header>
+        <ion-card-title>
+          <ion-icon name="lock-closed-outline"></ion-icon>
+          Online card payments
+        </ion-card-title>
+      </ion-card-header>
+      <ion-card-content>
+        <p class="hint">
+          Add a "Pay now" button to your invoice emails and PDFs, so clients can pay by card or
+          instant EFT. Payments are collected into your own PayFast account and invoices are
+          marked as paid automatically. Rand invoices of R5.00 or more only.
+        </p>
+
+        <ion-item>
+          <ion-label position="stacked">Merchant ID</ion-label>
+          <ion-input aria-label="PayFast merchant ID" formControlName="payfast_merchant_id" type="text"
+                     inputmode="numeric" placeholder="10000100"></ion-input>
+        </ion-item>
+
+        <ion-item>
+          <ion-label position="stacked">Merchant key</ion-label>
+          <ion-input aria-label="PayFast merchant key" formControlName="payfast_merchant_key" type="password"
+                     autocomplete="off"
+                     [placeholder]="payfastKeySet ? '••••••••  (stored — type to replace)' : 'From your PayFast dashboard'"></ion-input>
+        </ion-item>
+
+        <ion-item>
+          <ion-label position="stacked">Security passphrase</ion-label>
+          <ion-input aria-label="PayFast security passphrase" formControlName="payfast_passphrase" type="password"
+                     autocomplete="off"
+                     [placeholder]="payfastPassphraseSet ? '••••••••  (stored — type to replace)' : 'Must match your PayFast dashboard exactly'"></ion-input>
+        </ion-item>
+
+        <ion-item>
+          <ion-label>Accept online payments</ion-label>
+          <ion-toggle aria-label="Accept online payments" formControlName="payfast_enabled" slot="end"></ion-toggle>
+        </ion-item>
+
+        <p class="hint">
+          <strong>Two things to set up in your PayFast dashboard first.</strong>
+          Under Settings, set a <em>Security passphrase</em> and enter exactly the same value here —
+          a mismatch, even a trailing space, means payments cannot be verified. Then switch on
+          <em>Instant Transaction Notification</em>, or payments will arrive without your invoices
+          ever being marked as paid.
+        </p>
+      </ion-card-content>
+    </ion-card>
+
+    <div class="form-actions">
+      <ion-button type="submit" [disabled]="isSavingPayfast" expand="block" color="primary">
+        <ion-spinner *ngIf="isSavingPayfast" name="crescent" slot="start"></ion-spinner>
+        {{ isSavingPayfast ? 'Saving...' : 'Save online payment settings' }}
+      </ion-button>
+    </div>
+  </form>
 </div>

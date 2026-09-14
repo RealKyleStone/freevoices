@@ -27,6 +27,15 @@ export interface UserSettings {
   bank_account_number: string;
   bank_branch_code: string;
   bank_account_type: string;
+  // PayFast (online card payments)
+  //
+  // The merchant key and passphrase are never sent to the client — the server
+  // returns only whether each one is stored, so the form can show a masked
+  // placeholder without ever holding the secret.
+  payfast_enabled: boolean;
+  payfast_merchant_id: string | null;
+  payfast_merchant_key_set: boolean;
+  payfast_passphrase_set: boolean;
   // Notifications
   notify_invoice_sent: string;
   notify_payment_received: string;
@@ -126,6 +135,38 @@ export class SettingsService {
     return this.http.put<{ message: string }>(`${this.apiUrl}/settings/payment`, data, {
       headers: this.getHeaders()
     });
+  }
+
+  /**
+   * Save PayFast credentials.
+   *
+   * The sentinel contract the server implements, and which this must respect:
+   *   field omitted  -> leave the stored value unchanged
+   *   empty string   -> clear it
+   *   a value        -> set it
+   *
+   * So a secret field must only be included when the user actually edited it.
+   * Sending '' for an untouched field would silently wipe their credentials.
+   */
+  updatePayfast(data: {
+    payfast_enabled?: boolean;
+    payfast_merchant_id?: string;
+    payfast_merchant_key?: string;
+    payfast_passphrase?: string;
+  }): Observable<{
+    message: string;
+    payfast_enabled: boolean;
+    payfast_merchant_id: string | null;
+    payfast_merchant_key_set: boolean;
+    payfast_passphrase_set: boolean;
+  }> {
+    return this.http.put<{
+      message: string;
+      payfast_enabled: boolean;
+      payfast_merchant_id: string | null;
+      payfast_merchant_key_set: boolean;
+      payfast_passphrase_set: boolean;
+    }>(`${this.apiUrl}/settings/payfast`, data, { headers: this.getHeaders() });
   }
 
   updateNotifications(data: {

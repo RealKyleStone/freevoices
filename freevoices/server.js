@@ -9,6 +9,13 @@ const { buildInvoicePdf, buildReceiptPdf } = require('./src/services/pdf.service
 const { logger, executeQuery, getConnection, withTransaction, closePool } = require('./src/services/db.service');
 const { runMigrations, tableExists } = require('./src/services/migrations.service');
 const { anonymiseExpiredAccounts } = require('./src/services/retention.service');
+const {
+  decryptUserRow, encryptField, isEncryptionConfigured, verifyCanary,
+} = require('./src/services/encrypted-fields');
+const {
+  buildPaymentForm, isPayfastEligible, payfastUrls, PAYFAST_MIN_AMOUNT, PAYFAST_CURRENCY,
+  isPayfastIp, verifyItnSignature, itnParamStringFromRaw, validateItnWithPayfast,
+} = require('./src/services/payfast.service');
 const express = require('express');
 const path = require('path');
 const fs = require('fs');
@@ -178,12 +185,23 @@ const emailService = new EmailService({
   SMTP_PASS: process.env.SMTP_PASS,
 });
 
-function validate(validators) {
+function validate(validators, options = {}) {
+  // express-validator includes the REJECTED VALUE in every field error. For an
+  // ordinary field that is helpful; for a secret it means the passphrase a user
+  // just typed comes straight back in the 422 body, into the browser console,
+  // and into any client-side error reporting. Name those fields in
+  // `options.redact` and they are replaced before the response is built.
+  const redact = new Set(options.redact || []);
   return async (req, res, next) => {
     for (const v of validators) await v.run(req);
     const errors = validationResult(req);
     if (!errors.isEmpty()) {
-      return res.status(422).json({ message: errors.array()[0].msg, errors: errors.array() });
+      const safe = errors.array().map((e) =>
+        // `path` is express-validator 7; `param` is 6. Check both so a version
+        // bump cannot silently turn redaction off.
+        (redact.has(e.path) || redact.has(e.param)) ? { ...e, value: '[redacted]' } : e
+      );
+      return res.status(422).json({ message: safe[0].msg, errors: safe });
     }
     next();
   };
@@ -964,8 +982,12 @@ app.get('/api/invoices/:id/pdf', authenticateToken, async (req, res) => {
     ]);
     if (invoices.length === 0) return res.status(404).json({ message: 'Invoice not found' });
     const logoRelPath = logoRows[0]?.setting_value || null;
-    const user = { ...users[0], logo_path: logoRelPath ? path.join(__dirname, logoRelPath) : null };
-    const pdfBuffer = await buildInvoicePdf(invoices[0], items, user);
+    const user = { ...decryptUserRow(users[0]), logo_path: logoRelPath ? path.join(__dirname, logoRelPath) : null };
+    // markSent is about to promote a DRAFT, so judge eligibility on the status
+    // this invoice will have by the time a customer reads the PDF.
+    const effectiveStatus = markSent && invoices[0].status === 'DRAFT' ? 'SENT' : invoices[0].status;
+    const pay_url = await resolvePayUrl({ ...invoices[0], status: effectiveStatus }, user);
+    const pdfBuffer = await buildInvoicePdf({ ...invoices[0], pay_url }, items, user);
     await executeQuery(`INSERT INTO document_tracking (document_id, event_type) VALUES (?, 'DOWNLOADED')`, [id]);
     if (markSent && invoices[0].status === 'DRAFT') {
       await executeQuery(`UPDATE documents SET status = 'SENT', updated_at = NOW() WHERE id = ? AND user_id = ?`, [id, req.user.id]);
@@ -989,7 +1011,7 @@ app.get('/api/invoices/:id/receipt', authenticateToken, async (req, res) => {
     if (invoices.length === 0) return res.status(404).json({ message: 'Invoice not found' });
     if (invoices[0].status !== 'PAID') return res.status(400).json({ message: 'Receipt is only available for paid invoices' });
     const logoRelPath = logoRows[0]?.setting_value || null;
-    const user = { ...users[0], logo_path: logoRelPath ? path.join(__dirname, logoRelPath) : null };
+    const user = { ...decryptUserRow(users[0]), logo_path: logoRelPath ? path.join(__dirname, logoRelPath) : null };
     const pdfBuffer = await buildReceiptPdf(invoices[0], items, user, payments);
     res.set({ 'Content-Type': 'application/pdf', 'Content-Disposition': `attachment; filename="RECEIPT-${invoices[0].document_number}.pdf"`, 'Content-Length': pdfBuffer.length });
     res.send(pdfBuffer);
@@ -1011,7 +1033,7 @@ app.post('/api/invoices/:id/send-receipt', authenticateToken, async (req, res) =
     if (invoice.status !== 'PAID') return res.status(400).json({ message: 'Receipt can only be sent for paid invoices' });
     if (!invoice.customer_email) return res.status(400).json({ message: 'This customer has no email address on file' });
     const logoRelPath = logoRows[0]?.setting_value || null;
-    const user = { ...users[0], logo_path: logoRelPath ? path.join(__dirname, logoRelPath) : null };
+    const user = { ...decryptUserRow(users[0]), logo_path: logoRelPath ? path.join(__dirname, logoRelPath) : null };
     const pdfBuffer = await buildReceiptPdf(invoice, items, user, payments);
     let emailWarning = null;
     try { await emailService.sendReceiptEmail(invoice.customer_email, { ...invoice, company_name: user.company_name }, pdfBuffer); }
@@ -1084,12 +1106,15 @@ app.post('/api/invoices/:id/send', authenticateToken, async (req, res) => {
     if (invoices.length === 0) return res.status(404).json({ message: 'Invoice not found' });
     const invoice = invoices[0];
     const logoRelPath = logoRows[0]?.setting_value || null;
-    const user = { ...users[0], logo_path: logoRelPath ? path.join(__dirname, logoRelPath) : null };
+    const user = { ...decryptUserRow(users[0]), logo_path: logoRelPath ? path.join(__dirname, logoRelPath) : null };
     if (!['DRAFT', 'SENT'].includes(invoice.status)) return res.status(400).json({ message: `Cannot send an invoice with status ${invoice.status}` });
     if (!invoice.customer_email) return res.status(400).json({ message: 'This customer has no email address on file' });
-    const pdfBuffer = await buildInvoicePdf(invoice, items, user);
+    // The invoice is SENT by the end of this request, so eligibility is judged
+    // on that rather than on the DRAFT it may still be right now.
+    const pay_url = await resolvePayUrl({ ...invoice, status: 'SENT' }, user);
+    const pdfBuffer = await buildInvoicePdf({ ...invoice, pay_url }, items, user);
     let emailWarning = null;
-    try { await emailService.sendInvoiceEmail(invoice.customer_email, { ...invoice, company_name: user.company_name, bank_name: user.bank_name, bank_account_number: user.bank_account_number, bank_branch_code: user.bank_branch_code }, pdfBuffer); }
+    try { await emailService.sendInvoiceEmail(invoice.customer_email, { ...invoice, pay_url, company_name: user.company_name, bank_name: user.bank_name, bank_account_number: user.bank_account_number, bank_branch_code: user.bank_branch_code }, pdfBuffer); }
     catch (emailError) { logger.error('Email delivery failed:', emailError); emailWarning = `Invoice marked as sent, but the email could not be delivered: ${emailError.message}`; }
     await executeQuery(`UPDATE documents SET status = 'SENT', updated_at = NOW() WHERE id = ? AND user_id = ?`, [id, req.user.id]);
     await executeQuery(`INSERT INTO document_tracking (document_id, event_type) VALUES (?, 'SENT')`, [id]);
@@ -1112,9 +1137,17 @@ app.post('/api/invoices/:id/mark-paid', authenticateToken, validate([
     const invoices = await executeQuery(`SELECT id, total, status FROM documents WHERE id = ? AND user_id = ? AND type = 'INVOICE'`, [id, req.user.id]);
     if (invoices.length === 0) return res.status(404).json({ message: 'Invoice not found' });
     if (invoices[0].status === 'CANCELLED') return res.status(400).json({ message: 'Cannot record payment on a cancelled invoice' });
-    await executeQuery('INSERT INTO payments (document_id, amount, payment_date, payment_method, transaction_reference, notes) VALUES (?, ?, ?, ?, ?, ?)', [id, amount, payment_date, payment_method, transaction_reference || null, notes || null]);
-    await executeQuery(`UPDATE documents SET status = 'PAID', updated_at = NOW() WHERE id = ? AND user_id = ?`, [id, req.user.id]);
-    await executeQuery(`INSERT INTO document_tracking (document_id, event_type) VALUES (?, 'PAID')`, [id]);
+    // Ownership was established by the SELECT above, so the shared helper does
+    // not re-check user_id. It runs all three writes in one transaction, which
+    // this route previously did not.
+    await recordInvoicePayment({
+      invoiceId: id,
+      amount,
+      paymentDate: payment_date,
+      method: payment_method,
+      reference: transaction_reference || null,
+      notes: notes || null,
+    });
     res.status(201).json({ message: 'Payment recorded successfully' });
   } catch (error) { logger.error('Error recording payment:', error); res.status(500).json({ message: 'Failed to record payment' }); }
 });
@@ -1429,13 +1462,30 @@ app.get('/api/settings', authenticateToken, async (req, res) => {
   try {
     const userId = req.user.id;
     const [userRows, settingRows] = await Promise.all([
-      executeQuery('SELECT email, company_name, company_registration, vat_number, contact_person, phone, address, bank_name, bank_account_number, bank_branch_code, bank_account_type FROM users WHERE id = ?', [userId]),
+      // The merchant key and passphrase are deliberately NOT selected. Asking
+      // the database for a boolean instead of fetching-then-deleting means the
+      // ciphertext never enters this process at all, so it cannot be leaked by
+      // a later refactor, an error handler, or a stray log line.
+      executeQuery(`SELECT email, company_name, company_registration, vat_number, contact_person, phone, address,
+                           bank_name, bank_account_number, bank_branch_code, bank_account_type,
+                           payfast_enabled, payfast_merchant_id,
+                           (payfast_merchant_key IS NOT NULL) AS payfast_merchant_key_set,
+                           (payfast_passphrase IS NOT NULL) AS payfast_passphrase_set
+                      FROM users WHERE id = ?`, [userId]),
       executeQuery('SELECT setting_key, setting_value FROM settings WHERE user_id = ?', [userId])
     ]);
     if (userRows.length === 0) return res.status(404).json({ message: 'User not found' });
     const kvSettings = {};
     for (const row of settingRows) kvSettings[row.setting_key] = row.setting_value;
-    res.json({ ...userRows[0], ...kvSettings });
+    const user = decryptUserRow(userRows[0]);
+    res.json({
+      ...user,
+      ...kvSettings,
+      // MySQL hands back 1/0 for both the tinyint and the IS NOT NULL tests.
+      payfast_enabled: !!user.payfast_enabled,
+      payfast_merchant_key_set: !!user.payfast_merchant_key_set,
+      payfast_passphrase_set: !!user.payfast_passphrase_set,
+    });
   } catch (error) { logger.error('Error fetching settings:', error); res.status(500).json({ message: 'Failed to fetch settings' }); }
 });
 
@@ -1531,6 +1581,112 @@ app.put('/api/settings/payment', authenticateToken, async (req, res) => {
   } catch (error) { logger.error('Error updating payment settings:', error); res.status(500).json({ message: 'Failed to update payment details' }); }
 });
 
+/**
+ * The seller's own PayFast credentials.
+ *
+ * Kept separate from /api/settings/payment, which is a plain four-column
+ * overwrite of the banking details and should stay that way. This one needs
+ * write-only secret handling, conditional required-ness, and a 503 when
+ * encryption is unavailable.
+ *
+ * -- The sentinel contract --
+ *
+ * The client is never given the stored secrets, so it cannot round-trip them
+ * and "send everything back" is not an option. Therefore, per field:
+ *
+ *   absent or null  leave whatever is stored unchanged
+ *   ""              clear it
+ *   a value         set it
+ *
+ * The Angular form relies on this: it shows a masked placeholder when the
+ * matching *_set flag is true, and only sends a field the user actually edited.
+ */
+app.put('/api/settings/payfast', authenticateToken, validate([
+  body('payfast_merchant_id').optional({ nullable: true }).trim()
+    .custom((v) => v === '' || /^[0-9]{5,15}$/.test(v))
+    .withMessage('PayFast merchant ID must be 5 to 15 digits'),
+  // Deliberately loose bounds: PayFast issues 13-character keys today, and a
+  // tighter rule would lock out every user the day they change that.
+  body('payfast_merchant_key').optional({ nullable: true }).trim()
+    .custom((v) => v === '' || /^[A-Za-z0-9]{10,64}$/.test(v))
+    .withMessage('PayFast merchant key must be 10 to 64 letters and digits'),
+  body('payfast_passphrase').optional({ nullable: true }).trim()
+    .custom((v) => v === '' || (v.length >= 8 && v.length <= 100))
+    .withMessage('PayFast passphrase must be 8 to 100 characters'),
+  body('payfast_enabled').optional().isBoolean().withMessage('payfast_enabled must be true or false'),
+], { redact: ['payfast_merchant_key', 'payfast_passphrase'] }), async (req, res) => {
+  try {
+    const userId = req.user.id;
+    const { payfast_merchant_id, payfast_merchant_key, payfast_passphrase, payfast_enabled } = req.body;
+
+    const rows = await executeQuery(
+      'SELECT payfast_merchant_id, payfast_merchant_key, payfast_passphrase, payfast_enabled FROM users WHERE id = ?',
+      [userId]
+    );
+    if (rows.length === 0) return res.status(404).json({ message: 'User not found' });
+    const current = decryptUserRow(rows[0]);
+
+    // absent/null -> keep, '' -> clear, value -> set.
+    const resolve = (incoming, stored) => {
+      if (incoming === undefined || incoming === null) return stored || null;
+      return incoming === '' ? null : incoming;
+    };
+    const nextMerchantId = resolve(payfast_merchant_id, current.payfast_merchant_id);
+    const nextMerchantKey = resolve(payfast_merchant_key, current.payfast_merchant_key);
+    const nextPassphrase = resolve(payfast_passphrase, current.payfast_passphrase);
+    const nextEnabled = payfast_enabled === undefined ? !!current.payfast_enabled : !!payfast_enabled;
+
+    // Storing a signing key in plaintext is not an option, so refuse rather
+    // than silently degrade. An unset keyring is a deployment problem, not a
+    // user error - hence 503 and a code the UI can branch on.
+    if ((nextMerchantId || nextMerchantKey || nextPassphrase) && !isEncryptionConfigured()) {
+      return res.status(503).json({
+        message: 'Online payments cannot be configured because encryption is not set up on this server.',
+        code: 'ENCRYPTION_UNAVAILABLE',
+      });
+    }
+
+    // The passphrase is not optional polish. It is the shared secret that
+    // proves a payment notification genuinely came from PayFast for THIS
+    // seller. Without it, anyone with their own PayFast account could post a
+    // notification that passes PayFast's own validation and mark this seller's
+    // invoices paid. See verifyItnSignature in payfast.service.js.
+    if (nextEnabled && !(nextMerchantId && nextMerchantKey && nextPassphrase)) {
+      return res.status(422).json({
+        message: 'A merchant ID, merchant key and security passphrase are all required before online payments can be switched on. Set the passphrase in your PayFast dashboard under Settings, then enter the same value here.',
+        code: 'PAYFAST_INCOMPLETE',
+      });
+    }
+
+    await executeQuery(
+      `UPDATE users SET payfast_merchant_id = ?, payfast_merchant_key = ?, payfast_passphrase = ?,
+                        payfast_enabled = ?, updated_at = NOW()
+        WHERE id = ?`,
+      [
+        encryptField('users', 'payfast_merchant_id', nextMerchantId),
+        encryptField('users', 'payfast_merchant_key', nextMerchantKey),
+        encryptField('users', 'payfast_passphrase', nextPassphrase),
+        nextEnabled ? 1 : 0,
+        userId,
+      ]
+    );
+
+    // Echo the same write-only shape GET /api/settings returns, so the client
+    // can update its state without a refetch and without ever holding a secret.
+    res.json({
+      message: nextEnabled ? 'Online payments are switched on' : 'PayFast settings saved',
+      payfast_enabled: nextEnabled,
+      payfast_merchant_id: nextMerchantId,
+      payfast_merchant_key_set: !!nextMerchantKey,
+      payfast_passphrase_set: !!nextPassphrase,
+    });
+  } catch (error) {
+    // Never log the body - it carries the merchant key and the passphrase.
+    logger.error('Error updating PayFast settings:', { message: error.message, code: error.code });
+    res.status(500).json({ message: 'Failed to update PayFast settings' });
+  }
+});
+
 app.put('/api/settings/notifications', authenticateToken, async (req, res) => {
   try {
     const userId = req.user.id;
@@ -1568,12 +1724,19 @@ app.get('/api/reports/vat-summary', authenticateToken, async (req, res) => {
 app.get('/api/public/invoice/:token', portalLimiter, async (req, res) => {
   try {
     const { token } = req.params;
-    const docs = await executeQuery(`SELECT d.id, d.document_number, d.type, d.status, d.issue_date, d.due_date, d.payment_terms, d.subtotal, d.vat_amount, d.total, d.notes, d.terms_conditions, c.name AS customer_name, c.email AS customer_email, c.billing_address AS customer_billing_address, c.vat_number AS customer_vat_number, cur.symbol AS currency_symbol, cur.code AS currency_code, u.company_name, u.vat_number AS company_vat_number, u.address AS company_address, u.email AS company_email, u.bank_name, u.bank_account_number, u.bank_branch_code, u.bank_account_type FROM documents d JOIN customers c ON c.id = d.customer_id LEFT JOIN currencies cur ON cur.id = d.currency_id JOIN users u ON u.id = d.user_id WHERE d.share_token = ? AND d.type = 'INVOICE' AND (d.share_token_expires_at IS NULL OR d.share_token_expires_at > NOW())`, [token]);
+    const docs = await executeQuery(`SELECT d.id, d.document_number, d.type, d.status, d.issue_date, d.due_date, d.payment_terms, d.subtotal, d.vat_amount, d.total, d.notes, d.terms_conditions, c.name AS customer_name, c.email AS customer_email, c.billing_address AS customer_billing_address, c.vat_number AS customer_vat_number, cur.symbol AS currency_symbol, cur.code AS currency_code, u.company_name, u.vat_number AS company_vat_number, u.address AS company_address, u.email AS company_email, u.bank_name, u.bank_account_number, u.bank_branch_code, u.bank_account_type, u.payfast_enabled, u.payfast_merchant_id, u.payfast_merchant_key, u.payfast_passphrase FROM documents d JOIN customers c ON c.id = d.customer_id LEFT JOIN currencies cur ON cur.id = d.currency_id JOIN users u ON u.id = d.user_id WHERE d.share_token = ? AND d.type = 'INVOICE' AND (d.share_token_expires_at IS NULL OR d.share_token_expires_at > NOW())`, [token]);
     if (docs.length === 0) return res.status(404).json({ message: 'Invoice not found or link has expired' });
     const items = await executeQuery('SELECT description, quantity, unit_price, vat_rate, vat_amount, subtotal, total FROM document_items WHERE document_id = ? ORDER BY id ASC', [docs[0].id]);
     const logoRows = await executeQuery("SELECT setting_value FROM settings WHERE user_id = (SELECT user_id FROM documents WHERE id = ?) AND setting_key = 'company_logo'", [docs[0].id]);
     await executeQuery(`INSERT INTO document_tracking (document_id, event_type, ip_address, user_agent) VALUES (?, 'VIEWED', ?, ?)`, [docs[0].id, req.ip || null, req.get('user-agent') || null]);
-    res.json({ ...docs[0], company_logo: logoRows[0]?.setting_value || null, items });
+    // The seller's PayFast credentials are only ever used to decide whether a
+    // button can be shown; they are stripped before the row leaves the server.
+    const seller = decryptUserRow(docs[0]);
+    const pay_url = await resolvePayUrl(seller, seller);
+    const {
+      payfast_enabled, payfast_merchant_id, payfast_merchant_key, payfast_passphrase, ...publicFields
+    } = seller;
+    res.json({ ...publicFields, pay_url, company_logo: logoRows[0]?.setting_value || null, items });
   } catch (error) { logger.error('Error fetching public invoice:', error); res.status(500).json({ message: 'Failed to fetch invoice' }); }
 });
 
@@ -1589,8 +1752,9 @@ app.get('/api/public/invoice/:token/pdf', portalLimiter, async (req, res) => {
       executeQuery("SELECT setting_value FROM settings WHERE user_id = ? AND setting_key = 'company_logo'", [invoice.user_id])
     ]);
     const logoRelPath = logoRows[0]?.setting_value || null;
-    const user = { ...users[0], logo_path: logoRelPath ? path.join(__dirname, logoRelPath) : null };
-    const pdfBuffer = await buildInvoicePdf(invoice, items, user);
+    const user = { ...decryptUserRow(users[0]), logo_path: logoRelPath ? path.join(__dirname, logoRelPath) : null };
+    const pay_url = await resolvePayUrl(invoice, user);
+    const pdfBuffer = await buildInvoicePdf({ ...invoice, pay_url }, items, user);
     await executeQuery(`INSERT INTO document_tracking (document_id, event_type, ip_address, user_agent) VALUES (?, 'DOWNLOADED', ?, ?)`, [invoice.id, req.ip || null, req.get('user-agent') || null]);
     res.set({ 'Content-Type': 'application/pdf', 'Content-Disposition': `attachment; filename="${invoice.document_number}.pdf"`, 'Content-Length': pdfBuffer.length });
     res.send(pdfBuffer);
@@ -1642,9 +1806,10 @@ async function processRecurringInvoices() {
             if (!invoice.customer_email) { logger.warn(`Recurring invoice ${document_number}: auto-send skipped - customer has no email`); }
             else {
               const logoRelPath = logoRows[0]?.setting_value || null;
-              const user = { ...users[0], logo_path: logoRelPath ? path.join(__dirname, logoRelPath) : null };
-              const pdfBuffer = await buildInvoicePdf(invoice, newItems, user);
-              await emailService.sendInvoiceEmail(invoice.customer_email, { ...invoice, company_name: user.company_name, bank_name: user.bank_name, bank_account_number: user.bank_account_number, bank_branch_code: user.bank_branch_code }, pdfBuffer);
+              const user = { ...decryptUserRow(users[0]), logo_path: logoRelPath ? path.join(__dirname, logoRelPath) : null };
+              const pay_url = await resolvePayUrl({ ...invoice, status: 'SENT' }, user);
+              const pdfBuffer = await buildInvoicePdf({ ...invoice, pay_url }, newItems, user);
+              await emailService.sendInvoiceEmail(invoice.customer_email, { ...invoice, pay_url, company_name: user.company_name, bank_name: user.bank_name, bank_account_number: user.bank_account_number, bank_branch_code: user.bank_branch_code }, pdfBuffer);
               await executeQuery(`UPDATE documents SET status = 'SENT', updated_at = NOW() WHERE id = ?`, [newDocId]);
               await executeQuery(`INSERT INTO document_tracking (document_id, event_type) VALUES (?, 'SENT')`, [newDocId]);
               await executeQuery(`INSERT INTO email_log (document_id, recipient_email, subject, email_type, status, sent_at) VALUES (?, ?, ?, 'INVOICE', 'SENT', NOW())`, [newDocId, invoice.customer_email, `Invoice ${invoice.document_number}`]);
@@ -2083,6 +2248,649 @@ app.get(['/privacy', '/privacy-policy'], (req, res) => res.redirect(301, '/legal
 app.get(['/terms', '/terms-of-service'], (req, res) => res.redirect(301, '/legal/terms'));
 app.get('/delete-account', (req, res) => res.redirect(301, '/legal/delete-account'));
 
+// ─── Customer payment page ────────────────────────────────────────────────────
+//
+// Reached from a link in the invoice email and the invoice PDF. Neither of
+// those can carry an HTML form, and PayFast's custom integration requires a
+// signed POST — so this page is the bridge. It is server-rendered rather than
+// an Angular route for three reasons: the SPA cannot produce a signature
+// without another authenticated round trip, it would collide with the catch-all
+// below, and a server route is what makes the tight per-route CSP possible.
+
+const payLimiter = limiter(15, 60, 'Too many requests. Please try again shortly.');
+
+/**
+ * Where links that outlive their request should point.
+ *
+ * Always APP_URL, never derived from the request. buildInvoicePdf also runs
+ * from the recurring-invoice cron where there is no request at all, and
+ * req.get('host') is attacker-controlled — which would turn an emailed payment
+ * link into a host-header injection.
+ */
+function appBaseUrl() {
+  return (process.env.APP_URL || 'https://freevoices.co.za').replace(/\/+$/, '');
+}
+
+const payUrlFor = (token) => `${appBaseUrl()}/pay/${token}`;
+
+/**
+ * Give an invoice a payment token, once.
+ *
+ * Deliberately not share_token: POST /api/invoices/:id/share rotates that on
+ * every call, so reusing it would break every pay link already sitting in a
+ * customer's inbox the moment the seller pressed "Share" again.
+ *
+ * The row is re-read instead of trusting affectedRows, because a concurrent
+ * send could have won the race — and both callers have to end up quoting the
+ * same token.
+ */
+async function ensurePayToken(invoiceId) {
+  const before = await executeQuery('SELECT pay_token FROM documents WHERE id = ?', [invoiceId]);
+  if (before.length === 0) return null;
+  if (before[0].pay_token) return before[0].pay_token;
+
+  await executeQuery(
+    'UPDATE documents SET pay_token = ? WHERE id = ? AND pay_token IS NULL',
+    [randomUUID().replace(/-/g, ''), invoiceId]
+  );
+  const after = await executeQuery('SELECT pay_token FROM documents WHERE id = ?', [invoiceId]);
+  return after.length ? after[0].pay_token : null;
+}
+
+/**
+ * The pay URL for an invoice, or null when online payment is not available.
+ *
+ * Mints the token on first use, so an invoice never reaches a customer with a
+ * button that has nowhere to point. isPayfastEligible is the single source of
+ * truth here: if this returns null the pay page would refuse the invoice too,
+ * and a button in a PDF outlives every chance to correct it.
+ */
+async function resolvePayUrl(invoice, seller) {
+  if (!isPayfastEligible({ invoice, user: seller })) return null;
+  const token = await ensurePayToken(invoice.id);
+  return token ? payUrlFor(token) : null;
+}
+
+/**
+ * A CSP for this route only.
+ *
+ * The global directives at the top of this file set form-action 'self', which
+ * blocks a POST to payfast.co.za. Widening it globally would let every page in
+ * the SPA post to PayFast, so instead this replaces the header for the pay page
+ * alone — helmet writes with res.setHeader, so the later call wins.
+ *
+ * The page carries no JavaScript at all, which is what lets script-src be
+ * 'none'. The stylesheet is nonced rather than 'unsafe-inline'; note that a
+ * nonce does not cover style-src-attr, so the markup uses classes and never a
+ * style="..." attribute.
+ */
+const PAYFAST_FORM_ORIGINS = [
+  'https://www.payfast.co.za',
+  'https://payfast.co.za',
+  'https://sandbox.payfast.co.za',
+];
+
+const payPageCsp = (allowPayfastForm) => (req, res, next) => {
+  res.locals.cspNonce = randomUUID().replace(/-/g, '');
+  if (process.env.CSP_ENABLED === 'false') return next();
+  return helmet.contentSecurityPolicy({
+    useDefaults: false,
+    directives: {
+      defaultSrc: ["'none'"],
+      scriptSrc: ["'none'"],
+      styleSrc: ["'self'", `'nonce-${res.locals.cspNonce}'`],
+      imgSrc: ["'self'", 'data:'],
+      formAction: allowPayfastForm ? PAYFAST_FORM_ORIGINS : ["'none'"],
+      baseUri: ["'none'"],
+      frameAncestors: ["'none'"],
+      ...(IS_PRODUCTION ? { upgradeInsecureRequests: [] } : {}),
+    },
+  })(req, res, next);
+};
+
+const escapeHtml = (value) => String(value ?? '').replace(
+  /[<>&"']/g,
+  (c) => ({ '<': '&lt;', '>': '&gt;', '&': '&amp;', '"': '&quot;', "'": '&#39;' }[c])
+);
+
+function formatMoney(symbol, amount) {
+  const n = Number(amount || 0).toFixed(2);
+  // Thin space as a thousands separator, the South African convention.
+  const [whole, cents] = n.split('.');
+  return `${symbol || 'R'} ${whole.replace(/\B(?=(\d{3})+(?!\d))/g, ' ')}.${cents}`;
+}
+
+function renderPayShell({ title, nonce, body }) {
+  return `<!DOCTYPE html><html lang="en-ZA"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="robots" content="noindex,nofollow">
+<title>${escapeHtml(title)} · FreeVoices</title>
+<style nonce="${nonce}">
+:root{color-scheme:light dark;--bg:#f3f4f6;--card:#fff;--fg:#1a1a2e;--muted:#6b7280;--line:#e5e7eb;--accent:#4a90e2}
+@media(prefers-color-scheme:dark){:root{--bg:#0e0e16;--card:#12121c;--fg:#e5e7eb;--muted:#9ca3af;--line:#374151}}
+*{box-sizing:border-box}
+body{margin:0;font:16px/1.6 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;color:var(--fg);background:var(--bg)}
+header{background:#1a1a2e;padding:18px 20px;color:#fff;font-weight:600}
+main{max-width:520px;margin:0 auto;padding:28px 20px 80px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:24px;margin-bottom:18px}
+h1{font-size:1.3rem;margin:0 0 6px}
+.sub{color:var(--muted);font-size:.92rem;margin:0 0 20px}
+dl{display:grid;grid-template-columns:auto 1fr;gap:8px 16px;margin:0 0 20px;font-size:.95rem}
+dt{color:var(--muted)}
+dd{margin:0;text-align:right;font-variant-numeric:tabular-nums}
+.total{border-top:1px solid var(--line);margin-top:4px;padding-top:14px;display:flex;justify-content:space-between;align-items:baseline}
+.total .label{color:var(--muted);font-size:.95rem}
+.total .amount{font-size:1.5rem;font-weight:700;font-variant-numeric:tabular-nums}
+button{width:100%;padding:15px 20px;font-size:1.02rem;font-weight:600;color:#fff;background:var(--accent);border:0;border-radius:8px;cursor:pointer;font-family:inherit}
+button:hover{filter:brightness(1.07)}
+.note{color:var(--muted);font-size:.85rem;margin:14px 0 0;text-align:center}
+.bank{font-size:.92rem}
+.bank h2{font-size:.95rem;margin:0 0 10px}
+.bank div{display:flex;justify-content:space-between;gap:16px;padding:5px 0;border-bottom:1px solid var(--line)}
+.bank div:last-child{border-bottom:0}
+.bank span:first-child{color:var(--muted)}
+footer{max-width:520px;margin:0 auto;padding:0 20px 50px;color:var(--muted);font-size:.82rem;text-align:center}
+</style></head><body>
+<header>FreeVoices</header>
+<main>${body}</main>
+<footer><p>Invoice delivered by FreeVoices. Payments are processed by Payfast (Pty) Ltd.</p></footer>
+</body></html>`;
+}
+
+/** The seller's banking details, as a fallback whenever card payment is off. */
+function renderBankBlock(seller) {
+  const rows = [
+    ['Bank', seller.bank_name],
+    ['Account', seller.bank_account_number],
+    ['Branch code', seller.bank_branch_code],
+    ['Account type', seller.bank_account_type],
+  ].filter(([, v]) => v);
+  if (rows.length === 0) return '';
+  return `<div class="card bank"><h2>Pay by bank transfer</h2>${
+    rows.map(([k, v]) => `<div><span>${escapeHtml(k)}</span><span>${escapeHtml(v)}</span></div>`).join('')
+  }</div>`;
+}
+
+/**
+ * Every non-payable outcome. Wording avoids confirming whether a token exists
+ * for an invoice that was not found.
+ */
+function renderPayNotice({ nonce, title, heading, message, seller }) {
+  return renderPayShell({
+    title, nonce,
+    body: `<div class="card"><h1>${escapeHtml(heading)}</h1><p class="sub">${escapeHtml(message)}</p></div>`
+      + (seller ? renderBankBlock(seller) : ''),
+  });
+}
+
+app.get('/pay/:token', payLimiter, payPageCsp(true), async (req, res) => {
+  // A payment page must never be cached: it shows live status and an amount.
+  res.set({ 'Cache-Control': 'no-store', 'Referrer-Policy': 'no-referrer' });
+  const nonce = res.locals.cspNonce;
+
+  try {
+    const { token } = req.params;
+    const rows = await executeQuery(
+      `SELECT d.id, d.user_id, d.document_number, d.status, d.total, d.due_date,
+              c.name AS customer_name, c.email AS customer_email,
+              cur.code AS currency_code, cur.symbol AS currency_symbol,
+              u.company_name, u.email AS company_email,
+              u.bank_name, u.bank_account_number, u.bank_branch_code, u.bank_account_type,
+              u.payfast_enabled, u.payfast_merchant_id, u.payfast_merchant_key, u.payfast_passphrase
+         FROM documents d
+         JOIN customers c ON c.id = d.customer_id
+         LEFT JOIN currencies cur ON cur.id = d.currency_id
+         JOIN users u ON u.id = d.user_id
+        WHERE d.pay_token = ? AND d.type = 'INVOICE'`,
+      [token]
+    );
+
+    if (rows.length === 0) {
+      return res.status(404).type('html').send(renderPayNotice({
+        nonce, title: 'Payment link not valid', heading: 'This payment link is not valid',
+        message: 'The link may have been mistyped. Please check the invoice you were sent, or contact the sender.',
+      }));
+    }
+
+    // The joined row carries the three encrypted users columns under their own
+    // names, and nothing in documents or customers collides with them.
+    const row = decryptUserRow(rows[0]);
+    const symbol = row.currency_symbol || 'R';
+    const seller = row;
+
+    if (row.status === 'CANCELLED') {
+      return res.status(410).type('html').send(renderPayNotice({
+        nonce, title: 'Invoice cancelled', heading: 'This invoice was cancelled',
+        message: `Invoice ${row.document_number} is no longer payable. Please contact ${row.company_name || 'the sender'} if you believe this is a mistake.`,
+      }));
+    }
+    if (row.status === 'DRAFT') {
+      return res.status(410).type('html').send(renderPayNotice({
+        nonce, title: 'Invoice not issued', heading: 'This invoice has not been issued yet',
+        message: 'Please wait for the sender to finalise and send it.',
+      }));
+    }
+
+    // A PDF is a frozen artifact: its link will keep pointing here for years,
+    // long after the invoice is settled. "Already paid" is a normal outcome,
+    // not an error.
+    const settled = await executeQuery(
+      'SELECT COALESCE(SUM(amount), 0) AS paid FROM payments WHERE document_id = ?', [row.id]
+    );
+    const alreadyPaid = row.status === 'PAID'
+      || Number(settled[0].paid) >= Number(row.total) - 0.005;
+
+    if (alreadyPaid) {
+      return res.type('html').send(renderPayNotice({
+        nonce, title: 'Already paid', heading: 'This invoice has already been paid',
+        message: `Invoice ${row.document_number} is settled. Nothing further is due — there is no need to pay again.`,
+      }));
+    }
+
+    const currency = row.currency_code || PAYFAST_CURRENCY;
+    if (currency !== PAYFAST_CURRENCY) {
+      return res.type('html').send(renderPayNotice({
+        nonce, title: 'Card payment unavailable', heading: 'Card payment is not available for this invoice',
+        message: `Online card payment supports South African rand only, and this invoice is in ${currency}. You can still pay by bank transfer.`,
+        seller,
+      }));
+    }
+    if (Number(row.total) < PAYFAST_MIN_AMOUNT) {
+      return res.type('html').send(renderPayNotice({
+        nonce, title: 'Amount below minimum', heading: 'This amount is below the online payment minimum',
+        message: `PayFast cannot process payments under ${formatMoney('R', PAYFAST_MIN_AMOUNT)}. You can still pay by bank transfer.`,
+        seller,
+      }));
+    }
+    if (!isPayfastEligible({ invoice: { ...row, currency_code: currency }, user: row })) {
+      return res.type('html').send(renderPayNotice({
+        nonce, title: 'Online payment unavailable', heading: 'Online payment is not available for this invoice',
+        message: `${row.company_name || 'The sender'} has not switched on online card payments. You can pay by bank transfer instead.`,
+        seller,
+      }));
+    }
+
+    const urls = {
+      returnUrl: `${appBaseUrl()}/pay/${token}/return`,
+      cancelUrl: `${appBaseUrl()}/pay/${token}/cancelled`,
+      notifyUrl: `${appBaseUrl()}/payfast/itn`,
+    };
+    const { action, fields } = buildPaymentForm({
+      invoice: row,
+      user: row,
+      customer: { name: row.customer_name, email: row.customer_email },
+      urls,
+      mode: process.env.PAYFAST_MODE,
+    });
+
+    // Rendered as a one-click interstitial rather than an auto-submitting form.
+    // That keeps the page JavaScript-free (so script-src can be 'none'), stops
+    // link prefetchers and corporate mail scanners from opening PayFast
+    // sessions on the buyer's behalf, and lets the buyer see what they are
+    // paying before they leave this domain.
+    const dueRow = row.due_date
+      ? `<dt>Due</dt><dd>${escapeHtml(new Date(row.due_date).toLocaleDateString('en-ZA', { day: '2-digit', month: 'long', year: 'numeric' }))}</dd>`
+      : '';
+
+    const body = `<div class="card">
+<h1>Pay invoice ${escapeHtml(row.document_number)}</h1>
+<p class="sub">${escapeHtml(row.company_name || 'Invoice')}</p>
+<dl>
+<dt>Billed to</dt><dd>${escapeHtml(row.customer_name)}</dd>
+${dueRow}
+</dl>
+<div class="total"><span class="label">Amount due</span><span class="amount">${escapeHtml(formatMoney(symbol, row.total))}</span></div>
+<form action="${escapeHtml(action)}" method="post">
+${fields.map((f) => `<input type="hidden" name="${escapeHtml(f.name)}" value="${escapeHtml(f.value)}">`).join('\n')}
+<p class="note">You will be taken to PayFast to complete the payment securely.</p>
+<button type="submit">Pay ${escapeHtml(formatMoney(symbol, row.total))} with PayFast</button>
+</form>
+</div>${renderBankBlock(seller)}`;
+
+    res.type('html').send(renderPayShell({ title: `Pay invoice ${row.document_number}`, nonce, body }));
+  } catch (error) {
+    logger.error('Pay page error:', { message: error.message });
+    res.status(500).type('html').send(renderPayNotice({
+      nonce, title: 'Something went wrong', heading: 'Something went wrong',
+      message: 'We could not load this payment page. Please try again shortly.',
+    }));
+  }
+});
+
+/**
+ * Where PayFast returns the buyer.
+ *
+ * This page must NEVER mark anything paid. PayFast posts no transaction data to
+ * return_url — everything of record arrives on the ITN endpoint, server to
+ * server, and usually lands BEFORE the buyer gets back here. Treating a visit
+ * to this URL as proof of payment would let anyone settle an invoice by typing
+ * the address.
+ */
+app.get('/pay/:token/return', payLimiter, payPageCsp(false), async (req, res) => {
+  res.set({ 'Cache-Control': 'no-store', 'Referrer-Policy': 'no-referrer' });
+  const nonce = res.locals.cspNonce;
+  try {
+    const rows = await executeQuery(
+      "SELECT document_number, status FROM documents WHERE pay_token = ? AND type = 'INVOICE'",
+      [req.params.token]
+    );
+    const invoice = rows[0];
+    const confirmed = invoice && invoice.status === 'PAID';
+    res.type('html').send(renderPayNotice({
+      nonce,
+      title: confirmed ? 'Payment received' : 'Payment submitted',
+      heading: confirmed ? 'Payment received — thank you' : 'Thank you — your payment is being confirmed',
+      message: confirmed
+        ? `Invoice ${invoice.document_number} is now marked as paid. A receipt will follow by email.`
+        : 'PayFast is confirming your payment with us. This usually takes a few seconds. You can close this page — the invoice will update automatically, and you will receive a receipt by email.',
+    }));
+  } catch (error) {
+    logger.error('Pay return page error:', { message: error.message });
+    res.type('html').send(renderPayNotice({
+      nonce, title: 'Payment submitted', heading: 'Thank you — your payment is being confirmed',
+      message: 'You can close this page. The invoice will update automatically once PayFast confirms the payment.',
+    }));
+  }
+});
+
+app.get('/pay/:token/cancelled', payLimiter, payPageCsp(false), (req, res) => {
+  res.set({ 'Cache-Control': 'no-store', 'Referrer-Policy': 'no-referrer' });
+  res.type('html').send(renderPayNotice({
+    nonce: res.locals.cspNonce,
+    title: 'Payment cancelled',
+    heading: 'Payment cancelled',
+    message: 'No payment was taken and nothing has been charged. You can reopen the payment link from your invoice whenever you are ready.',
+  }));
+});
+
+// ─── PayFast instant transaction notification ─────────────────────────────────
+//
+// PayFast posts here server-to-server as soon as a payment resolves, BEFORE the
+// buyer is returned to the pay page. Nothing is posted to return_url, so this
+// endpoint is the only record of a payment — if it stops working, money arrives
+// and invoices silently stay unpaid.
+//
+// Mounted outside /api on purpose: the /api limiter allows 1000 requests per 15
+// minutes keyed by IP, and PayFast posts from about five addresses. A 429 here
+// makes PayFast give up retrying.
+
+const itnLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  limit: 120,
+  standardHeaders: 'draft-7',
+  legacyHeaders: false,
+  message: { message: 'Too many notifications.' },
+  // Never throttle a genuine PayFast address. The signature and the postback
+  // are the real gate; this limiter exists only to stop someone else flooding
+  // the endpoint.
+  skip: (req) => process.env.RATE_LIMIT_DISABLED === 'true' || isPayfastIp(req.ip),
+});
+
+/**
+ * Record a payment against an invoice and settle it, atomically.
+ *
+ * Shared by the PayFast notification and the manual "mark as paid" action so
+ * the two cannot drift. The three writes used to run outside a transaction,
+ * which meant a failure between them left a payment with no status change, or
+ * a status change with no audit row.
+ */
+async function recordInvoicePayment({
+  invoiceId, amount, paymentDate, method, reference = null, notes = null,
+  provider = null, providerPaymentId = null, status = null,
+  feeAmount = null, netAmount = null, rawPayload = null,
+  ip = null, userAgent = null,
+}) {
+  return withTransaction(async (q) => {
+    try {
+      await q(
+        `INSERT INTO payments (document_id, amount, payment_date, payment_method, transaction_reference,
+                               notes, provider, provider_payment_id, status, fee_amount, net_amount, raw_payload)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        [invoiceId, amount, paymentDate, method, reference, notes,
+         provider, providerPaymentId, status, feeAmount, netAmount, rawPayload]
+      );
+    } catch (err) {
+      // PayFast re-sends a notification until it gets a 200, so the same
+      // pf_payment_id legitimately arrives more than once. Caught explicitly
+      // rather than using INSERT IGNORE, which would also swallow truncation
+      // and foreign-key errors — that is how a payment goes missing unnoticed.
+      if (err.code === 'ER_DUP_ENTRY') return { duplicate: true, statusChanged: false };
+      throw err;
+    }
+
+    // A payment against a cancelled invoice must not resurrect it. The money
+    // is still recorded — see the caller, which alerts the seller.
+    const update = await q(
+      `UPDATE documents SET status = 'PAID', updated_at = NOW()
+        WHERE id = ? AND status <> 'CANCELLED'`,
+      [invoiceId]
+    );
+    await q(
+      `INSERT INTO document_tracking (document_id, event_type, ip_address, user_agent)
+       VALUES (?, 'PAID', ?, ?)`,
+      [invoiceId, ip, userAgent]
+    );
+    return { duplicate: false, statusChanged: update.affectedRows > 0 };
+  });
+}
+
+/**
+ * Receipt to the buyer, and a warning to the seller when something needs a
+ * human. Runs after the transaction has committed and never throws into the
+ * request: a dead SMTP server must not turn into a non-200 and an endless
+ * PayFast retry loop.
+ */
+async function sendPayfastFollowUps(invoice, posted, outcome) {
+  const [items, users, logoRows, payments] = await Promise.all([
+    executeQuery('SELECT * FROM document_items WHERE document_id = ? ORDER BY id ASC', [invoice.id]),
+    executeQuery('SELECT * FROM users WHERE id = ?', [invoice.user_id]),
+    executeQuery("SELECT setting_value FROM settings WHERE user_id = ? AND setting_key = 'company_logo'", [invoice.user_id]),
+    executeQuery('SELECT * FROM payments WHERE document_id = ? ORDER BY payment_date DESC', [invoice.id]),
+  ]);
+
+  const logoRelPath = logoRows[0] ? logoRows[0].setting_value : null;
+  const user = { ...decryptUserRow(users[0]), logo_path: logoRelPath ? path.join(__dirname, logoRelPath) : null };
+  const full = await executeQuery(
+    `SELECT d.*, c.name AS customer_name, c.email AS customer_email,
+            c.billing_address AS customer_billing_address, c.vat_number AS customer_vat_number,
+            cur.symbol AS currency_symbol, cur.code AS currency_code
+       FROM documents d
+       JOIN customers c ON c.id = d.customer_id
+       LEFT JOIN currencies cur ON cur.id = d.currency_id
+      WHERE d.id = ?`,
+    [invoice.id]
+  );
+
+  if (full.length && full[0].customer_email) {
+    const pdf = await buildReceiptPdf(full[0], items, user, payments);
+    await emailService.sendReceiptEmail(
+      full[0].customer_email,
+      { ...full[0], company_name: user.company_name },
+      pdf
+    );
+  }
+
+  // The two cases a seller genuinely has to act on. Rejecting either payment
+  // would be worse: the money is in their PayFast account either way, and an
+  // unrecorded payment is far harder to reconcile than a flagged one.
+  const alert = !outcome.statusChanged
+    ? `a payment was received for invoice ${invoice.document_number}, but the invoice is CANCELLED`
+    : (invoice.status === 'PAID'
+      ? `a second payment was received for invoice ${invoice.document_number}, which was already marked paid`
+      : null);
+
+  if (alert && user.email) {
+    await emailService.sendPaymentAlertEmail(user.email, {
+      contact_person: user.contact_person,
+      document_number: invoice.document_number,
+      amount: Number(posted.amount_gross).toFixed(2),
+      reference: posted.pf_payment_id,
+      reason: alert,
+    });
+  }
+}
+
+app.post('/payfast/itn',
+  itnLimiter,
+  // The global parser is JSON-only; this body is form-urlencoded. The raw text
+  // is kept because the signature must be rebuilt from the parameters exactly
+  // as PayFast sent them — re-encoding a parsed object reintroduces every
+  // escaping difference the signature helper exists to handle.
+  express.urlencoded({
+    extended: false,
+    limit: '64kb',
+    verify: (req, _res, buf) => { req.rawBody = buf.toString('latin1'); },
+  }),
+  async (req, res) => {
+    const posted = req.body || {};
+    const { sandbox } = payfastUrls(process.env.PAYFAST_MODE);
+
+    // Logged three ways because a proxy misconfiguration is the most common
+    // cause of a rejected notification, and TRUST_PROXY_HOPS cannot be tuned
+    // without seeing what actually arrived.
+    const source = {
+      ip: req.ip,
+      remoteAddress: req.socket.remoteAddress,
+      forwardedFor: req.get('x-forwarded-for') || null,
+    };
+
+    // The raw body carries the buyer's name and email address, so it is only
+    // kept verbatim in sandbox — where replaying it is how you iterate without
+    // burning test transactions. Production logs the non-personal fields only.
+    if (sandbox) {
+      logger.info('PayFast ITN received (sandbox)', { source, rawBody: req.rawBody });
+    } else {
+      logger.info('PayFast ITN received', {
+        source,
+        m_payment_id: posted.m_payment_id,
+        pf_payment_id: posted.pf_payment_id,
+        payment_status: posted.payment_status,
+        amount_gross: posted.amount_gross,
+      });
+    }
+
+    // 200 means "received, and a final decision has been made"; a non-2xx asks
+    // PayFast to try again. A forged or malformed notification can never become
+    // valid, so it gets a 200 and the retries stop.
+    const done = (reason, level = 'warn') => {
+      logger[level]('PayFast ITN not actioned', {
+        reason, m_payment_id: posted.m_payment_id, pf_payment_id: posted.pf_payment_id,
+      });
+      return res.sendStatus(200);
+    };
+
+    try {
+      // 1. Shape.
+      for (const field of ['m_payment_id', 'pf_payment_id', 'payment_status', 'amount_gross', 'merchant_id', 'signature']) {
+        if (!posted[field]) return done(`missing field: ${field}`);
+      }
+
+      // 2. Source address. Free, no I/O, so it goes before anything expensive.
+      if (!isPayfastIp(req.ip)) return done('source address is not in PayFast\'s published ranges');
+
+      // 3. Resolve the invoice and the seller who owns it.
+      const rows = await executeQuery(
+        `SELECT d.id, d.user_id, d.document_number, d.status, d.total,
+                u.payfast_merchant_id, u.payfast_passphrase
+           FROM documents d
+           JOIN users u ON u.id = d.user_id
+          WHERE d.id = ? AND d.type = 'INVOICE'`,
+        [posted.m_payment_id]
+      );
+      if (rows.length === 0) return done(`no invoice matches m_payment_id ${posted.m_payment_id}`);
+      const invoice = decryptUserRow(rows[0]);
+
+      // 4. Is this the seller's own merchant account?
+      if (String(posted.merchant_id) !== String(invoice.payfast_merchant_id || '')) {
+        return done('merchant_id does not match the invoice owner', 'error');
+      }
+
+      // 5. Signature, under THIS seller's passphrase.
+      //
+      //    Checks 4 and 5 together are what stop another PayFast merchant from
+      //    forging a COMPLETE against someone else's invoice: the postback in
+      //    check 7 would happily answer VALID, because for *their* account the
+      //    transaction is genuine. This is why a seller cannot switch PayFast
+      //    on without setting a passphrase.
+      const sig = verifyItnSignature(req.rawBody, posted, invoice.payfast_passphrase);
+      if (!sig.valid) return done(`signature check failed (${sig.source})`, 'error');
+      if (sig.source !== 'raw') {
+        // Worth knowing about: it means PayFast changed how they serialise the
+        // body and the raw slice no longer matches. Still valid, but the
+        // fallback is doing the work.
+        logger.warn('PayFast ITN: signature matched only via the parsed fallback', { pf_payment_id: posted.pf_payment_id });
+      }
+
+      // 6. Amount. mysql2 hands decimal columns back as strings, so both sides
+      //    are coerced and compared with a tolerance rather than ===.
+      const expected = Number(invoice.total);
+      const received = Number(posted.amount_gross);
+      if (!(Math.abs(expected - received) <= 0.01)) {
+        return done(`amount mismatch: expected ${expected.toFixed(2)}, received ${posted.amount_gross}`, 'error');
+      }
+
+      // 7. Ask PayFast whether they actually sent this. The only network call,
+      //    and the only failure that justifies asking for a retry.
+      let confirmed;
+      try {
+        confirmed = await validateItnWithPayfast(itnParamStringFromRaw(req.rawBody), process.env.PAYFAST_MODE);
+      } catch (err) {
+        logger.error('PayFast ITN: validation postback failed — asking PayFast to retry', { message: err.message });
+        return res.sendStatus(500);
+      }
+      if (!confirmed) return done('PayFast did not confirm this notification', 'error');
+
+      if (posted.payment_status !== 'COMPLETE') {
+        // CANCELLED, and anything PayFast adds later. Deliberately no
+        // document_tracking row: that enum's CANCELLED means the INVOICE was
+        // cancelled, and writing it here would corrupt the audit trail.
+        return done(`payment_status is ${posted.payment_status} — nothing recorded`, 'info');
+      }
+
+      const outcome = await recordInvoicePayment({
+        invoiceId: invoice.id,
+        amount: Number(posted.amount_gross).toFixed(2),
+        // The notification carries no date, and payments.payment_date is NOT NULL.
+        paymentDate: new Date().toISOString().slice(0, 10),
+        method: 'PAYFAST',
+        reference: String(posted.pf_payment_id),
+        provider: 'PAYFAST',
+        providerPaymentId: String(posted.pf_payment_id),
+        status: 'COMPLETE',
+        feeAmount: posted.amount_fee !== undefined ? Number(posted.amount_fee).toFixed(2) : null,
+        netAmount: posted.amount_net !== undefined ? Number(posted.amount_net).toFixed(2) : null,
+        // Signature stripped: it is a shared-secret digest and has no value once verified.
+        rawPayload: JSON.stringify({ ...posted, signature: undefined }),
+        ip: req.ip,
+        userAgent: 'PayFast ITN',
+      });
+
+      if (outcome.duplicate) {
+        logger.info('PayFast ITN: already recorded, ignoring the repeat', { pf_payment_id: posted.pf_payment_id });
+        return res.sendStatus(200);
+      }
+
+      logger.info('PayFast payment recorded', {
+        invoice: invoice.document_number,
+        pf_payment_id: posted.pf_payment_id,
+        amount: posted.amount_gross,
+        statusChanged: outcome.statusChanged,
+      });
+
+      // Best effort, and deliberately not awaited into the response.
+      sendPayfastFollowUps(invoice, posted, outcome).catch((err) =>
+        logger.error('PayFast follow-up email failed', { message: err.message })
+      );
+
+      return res.sendStatus(200);
+    } catch (error) {
+      // A database failure is genuinely undecided, so let PayFast retry.
+      logger.error('PayFast ITN handler error', { message: error.message, stack: error.stack });
+      return res.sendStatus(500);
+    }
+  }
+);
+
 // Must sit above the SPA catch-all, or it returns the Angular shell.
 // /portal/ carries invoice share tokens — a crawled link would expose a full
 // invoice, including the seller's banking details, to anyone.
@@ -2090,6 +2898,7 @@ app.get('/robots.txt', (req, res) => {
   res.type('text/plain').send([
     'User-agent: *',
     'Disallow: /portal/',
+    'Disallow: /pay/',
     'Disallow: /api/',
     'Disallow: /uploads/',
     'Allow: /legal/',
@@ -2133,6 +2942,11 @@ function startListening() {
 async function bootstrap(attempt = 1) {
   try {
     await runMigrations();
+    // Must run after migrations (it needs crypto_canary) and before listening:
+    // serving traffic on the wrong key means every encrypted read fails while
+    // new rows are written under a key that cannot read the old ones.
+    const canary = await verifyCanary();
+    logger.info('Field encryption check', canary);
     startListening();
   } catch (err) {
     const transient = TRANSIENT_DB_ERRORS.has(err.code);
@@ -2151,7 +2965,7 @@ async function bootstrap(attempt = 1) {
     // Still fatal for a real migration failure: serving traffic against a
     // half-migrated schema is how you get silently truncated columns and
     // unrecoverable data loss.
-    logger.error('Migrations failed — refusing to start', {
+    logger.error('Startup checks failed — refusing to start', {
       attempts: attempt, code: err.code, message: err.message, stack: err.stack,
     });
     process.exitCode = 1;

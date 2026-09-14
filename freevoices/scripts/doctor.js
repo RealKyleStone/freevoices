@@ -67,6 +67,7 @@ const REQUIRED_ENV = ['DB_HOST', 'DB_USER', 'DB_PASSWORD', 'DB_NAME', 'APP_URL']
 const RECOMMENDED_ENV = [
   'NODE_ENV', 'SMTP_HOST', 'SMTP_PORT', 'SMTP_USER', 'SMTP_PASS', 'SMTP_FROM',
   'RECAPTCHA_SECRET_KEY', 'TRUST_PROXY_HOPS', 'CORS_ALLOWED_ORIGINS',
+  'DATA_ENCRYPTION_KEYS', 'PAYFAST_MODE',
 ];
 
 let failures = 0;
@@ -127,6 +128,32 @@ const section = (t) => console.log(`\n${t}`);
   }
   for (const leaky of ['SMTP_DEBUG', 'RATE_LIMIT_DISABLED', 'CAPTCHA_DISABLED', 'SMTP_TLS_INSECURE']) {
     if (process.env[leaky] === 'true') warn(`${leaky}=true — not appropriate for production`);
+  }
+  // Silent money loss: the app looks healthy, buttons render, buyers pay into
+  // PayFast's sandbox, and nothing is ever actually collected.
+  if ((process.env.PAYFAST_MODE || '').toLowerCase() === 'sandbox') {
+    warn('PAYFAST_MODE=sandbox — no real payments will be collected');
+  }
+
+  // Presence proves nothing for a key: it has to parse, name a real active key,
+  // and decode to exactly 32 bytes. A malformed keyring stops the server at
+  // boot, so catching it here is the difference between a failed deploy and a
+  // failed startup nobody is watching.
+  section('Field encryption');
+  if (!process.env.DATA_ENCRYPTION_KEYS) {
+    warn('DATA_ENCRYPTION_KEYS is not set — online payments cannot be configured');
+  } else {
+    try {
+      const ef = require('../src/services/encrypted-fields');
+      const probe = ef.encryptField('users', 'payfast_passphrase', 'doctor-probe');
+      if (ef.decryptField('users', 'payfast_passphrase', probe) !== 'doctor-probe') {
+        fail('encryption round-trip produced the wrong value');
+      } else {
+        pass(`keyring loads and round-trips (active key ${probe.slice(4, probe.indexOf('$'))})`);
+      }
+    } catch (err) {
+      fail(`DATA_ENCRYPTION_KEYS is unusable: ${err.message}`);
+    }
   }
 
   // 4. Static build

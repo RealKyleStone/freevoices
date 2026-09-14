@@ -190,6 +190,30 @@ function buildInvoicePdf(invoice, items, user) {
       rowY = doc.y + 12;
     }
 
+    // ── PAY ONLINE ────────────────────────────────────────────────────────────
+    // A link annotation drawn over a button. The URL is printed alongside it as
+    // text because link annotations do not survive printing, every PDF viewer,
+    // or a screenshot forwarded to whoever actually settles the invoice.
+    //
+    // Skipped low on the page: the footer is absolutely positioned at
+    // page.height - 36, and this layout positions everything by hand, so there
+    // is no reflow to save us — the button would simply print over the footer.
+    if (invoice.pay_url && rowY < doc.page.height - 120) {
+      const btnW = 175;
+      const btnH = 26;
+      doc.roundedRect(col.left, rowY, btnW, btnH, 4).fill(PRIMARY);
+      doc.fillColor('#ffffff').fontSize(10).font('Helvetica-Bold')
+         .text('Pay this invoice online', col.left, rowY + 8.5, { width: btnW, align: 'center' });
+      doc.link(col.left, rowY, btnW, btnH, invoice.pay_url);
+
+      doc.fillColor(MEDIUM).fontSize(7.5).font('Helvetica')
+         .text(invoice.pay_url, col.left + btnW + 12, rowY + 9.5, {
+           width: pageWidth - btnW - 12,
+           link: invoice.pay_url,
+         });
+      rowY += btnH + 14;
+    }
+
     // ── BANKING DETAILS ───────────────────────────────────────────────────────
     if (user.bank_name || user.bank_account_number) {
       rowY += 4;

@@ -4,7 +4,7 @@ import { ActivatedRoute } from '@angular/router';
 import { HttpClient } from '@angular/common/http';
 import { IonicModule } from '@ionic/angular';
 import { addIcons } from 'ionicons';
-import { downloadOutline, warningOutline } from 'ionicons/icons';
+import { cardOutline, downloadOutline, warningOutline } from 'ionicons/icons';
 import { environment } from '../../../../../environments/environment';
 
 interface PortalInvoice {
@@ -34,6 +34,13 @@ interface PortalInvoice {
   bank_account_number: string;
   bank_branch_code: string;
   bank_account_type: string;
+  /**
+   * Absolute URL of the hosted payment page, or null when online payment is
+   * not available for this invoice — the seller has not configured PayFast,
+   * the invoice is not in rand, it is below PayFast's R5.00 minimum, or it is
+   * already paid. The server decides; the page only renders what it is given.
+   */
+  pay_url: string | null;
   items: {
     description: string;
     quantity: number;
@@ -65,7 +72,7 @@ export class InvoicePortalPage implements OnInit {
     private route: ActivatedRoute,
     private http: HttpClient
   ) {
-    addIcons({ downloadOutline, warningOutline });
+    addIcons({ cardOutline, downloadOutline, warningOutline });
   }
 
   ngOnInit() {
@@ -91,6 +98,18 @@ export class InvoicePortalPage implements OnInit {
       DRAFT: 'medium', SENT: 'primary', PAID: 'success', OVERDUE: 'warning', CANCELLED: 'danger'
     };
     return map[status] ?? 'medium';
+  }
+
+  /**
+   * Leave the app entirely rather than routing.
+   *
+   * The Capacitor build serves the app from https://localhost, where /pay/...
+   * does not exist — a routerLink would 404 on Android. pay_url is always
+   * absolute and belongs to the API host, so it has to be opened as an external
+   * navigation.
+   */
+  payNow() {
+    if (this.invoice?.pay_url) window.open(this.invoice.pay_url, '_system');
   }
 
   async downloadPdf() {

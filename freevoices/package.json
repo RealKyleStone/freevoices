@@ -12,6 +12,8 @@
     "bundle": "node scripts/build-deploy-bundle.js",
     "deploy:build": "ng build --configuration production && node scripts/build-deploy-bundle.js",
     "doctor": "node scripts/doctor.js",
+    "test:server": "node --test",
+    "check:payfast": "node scripts/payfast-check.js",
     "seed:legal": "node scripts/seed-legal.js",
     "seed:legal:check": "node scripts/seed-legal.js --check",
     "migrate": "node scripts/migrate.js",

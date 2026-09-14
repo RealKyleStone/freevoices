@@ -132,7 +132,7 @@ class EmailService {
               </tr>
               <tr>
                 <td style="padding: 8px 12px; font-weight: bold; color: #374151;">Amount Due</td>
-                <td style="padding: 8px 12px; color: #374151; font-size: 18px; font-weight: bold;">R ${parseFloat(invoice.total).toFixed(2)}</td>
+                <td style="padding: 8px 12px; color: #374151; font-size: 18px; font-weight: bold;">${invoice.currency_symbol || 'R'} ${parseFloat(invoice.total).toFixed(2)}</td>
               </tr>
               ${invoice.due_date ? `
               <tr style="background: #e5e7eb;">
@@ -140,6 +140,17 @@ class EmailService {
                 <td style="padding: 8px 12px; color: #374151;">${new Date(invoice.due_date).toLocaleDateString('en-ZA', { day: '2-digit', month: 'long', year: 'numeric' })}</td>
               </tr>` : ''}
             </table>
+            ${invoice.pay_url ? `
+            <table role="presentation" cellpadding="0" cellspacing="0" border="0" style="margin: 20px 0;">
+              <tr>
+                <td align="center" bgcolor="#4a90e2" style="border-radius: 6px;">
+                  <a href="${invoice.pay_url}" style="display: inline-block; padding: 14px 28px; font-family: Arial, sans-serif; font-size: 16px; font-weight: bold; color: #ffffff; text-decoration: none; border-radius: 6px;">Pay this invoice online</a>
+                </td>
+              </tr>
+            </table>
+            <p style="color: #6b7280; font-size: 12px; margin: -8px 0 16px; word-break: break-all;">
+              Or copy this link into your browser:<br>${invoice.pay_url}
+            </p>` : ''}
             ${invoice.bank_name ? `
             <div style="background: #eff6ff; border-left: 4px solid #4a90e2; padding: 12px 16px; margin: 16px 0; border-radius: 0 4px 4px 0;">
               <p style="margin: 0 0 4px; font-weight: bold; color: #1e40af;">Banking Details</p>
@@ -286,6 +297,55 @@ class EmailService {
             <p style="color: #b91c1c; font-size: 13px; margin-top: 24px;">
               <strong>If you did not close this account</strong>, reactivate it now and change your
               password, then contact us at admin@madeoc.co.za immediately.
+            </p>
+          </div>
+        </div>
+      `
+    };
+
+    return this.transporter.sendMail(mailOptions);
+  }
+
+  /**
+   * Tell a seller that an online payment arrived that needs a human decision.
+   *
+   * Sent when PayFast confirms money against an invoice that was already paid,
+   * or one that had been cancelled. We record the payment either way — the cash
+   * is in their PayFast account whether we like it or not, and an unrecorded
+   * payment is far harder to reconcile than a flagged one — but the seller has
+   * to know, because the likely answer is a refund.
+   */
+  async sendPaymentAlertEmail(email, details) {
+    const mailOptions = {
+      from: {
+        name: process.env.SMTP_FROM_NAME || 'FreeVoices',
+        address: process.env.SMTP_FROM_ADDRESS || process.env.SMTP_FROM || this.transporter.options.auth.user
+      },
+      to: email,
+      subject: `Action needed: payment received for ${details.document_number}`,
+      html: `
+        <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+          <div style="background: #1a1a2e; padding: 24px; border-radius: 8px 8px 0 0;">
+            <h1 style="color: #ffffff; margin: 0; font-size: 20px;">A payment needs your attention</h1>
+          </div>
+          <div style="background: #f9fafb; padding: 24px; border-radius: 0 0 8px 8px; border: 1px solid #e5e7eb;">
+            <p style="color: #374151;">Hi${details.contact_person ? ` ${details.contact_person}` : ''},</p>
+            <p style="color: #374151;">
+              PayFast confirmed a payment of <strong>R ${details.amount}</strong>, but ${details.reason}.
+            </p>
+            <table style="width: 100%; border-collapse: collapse; margin: 16px 0;">
+              <tr style="background: #e5e7eb;">
+                <td style="padding: 8px 12px; font-weight: bold; color: #374151;">Invoice</td>
+                <td style="padding: 8px 12px; color: #374151;">${details.document_number}</td>
+              </tr>
+              <tr>
+                <td style="padding: 8px 12px; font-weight: bold; color: #374151;">PayFast reference</td>
+                <td style="padding: 8px 12px; color: #374151;">${details.reference}</td>
+              </tr>
+            </table>
+            <p style="color: #374151; font-size: 14px;">
+              The payment has been recorded against the invoice so your records stay complete.
+              You will most likely need to refund it from your PayFast dashboard.
             </p>
           </div>
         </div>

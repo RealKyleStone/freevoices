@@ -46,6 +46,7 @@ const INCLUDE = [
   'scripts/seed-legal.js',
   'scripts/backup-db.js',
   'scripts/doctor.js',
+  'scripts/payfast-check.js',
   'legal',
   'www',
   '.env.example',
@@ -162,6 +163,7 @@ const serverPkg = {
     'seed:legal': 'node scripts/seed-legal.js',
     'seed:legal:check': 'node scripts/seed-legal.js --check',
     backup: 'node scripts/backup-db.js',
+    'check:payfast': 'node scripts/payfast-check.js',
   },
   dependencies: Object.fromEntries(
     RUNTIME_DEPS.sort().map((d) => [d, appPkg.dependencies[d]])

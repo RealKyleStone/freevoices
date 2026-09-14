@@ -104,9 +104,13 @@
       </div>
     </div>
 
-    <!-- Download action -->
+    <!-- Actions -->
     <div class="portal-actions">
-      <ion-button expand="block" (click)="downloadPdf()" [disabled]="isDownloading">
+      <ion-button *ngIf="invoice.pay_url" expand="block" color="primary" (click)="payNow()">
+        <ion-icon slot="start" name="card-outline"></ion-icon>
+        Pay {{ currencySymbol }} {{ invoice.total | number:'1.2-2' }} online
+      </ion-button>
+      <ion-button expand="block" [fill]="invoice.pay_url ? 'outline' : 'solid'" (click)="downloadPdf()" [disabled]="isDownloading">
         <ion-spinner *ngIf="isDownloading" slot="start" name="crescent"></ion-spinner>
         <ion-icon *ngIf="!isDownloading" slot="start" name="download-outline"></ion-icon>
         {{ isDownloading ? 'Preparing PDF...' : 'Download PDF' }}

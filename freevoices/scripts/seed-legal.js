@@ -30,14 +30,16 @@ const ASSET_DIR = path.join(__dirname, '..', 'src', 'assets', 'legal');
 const DOCUMENTS = [
   {
     slug: 'privacy',
-    // 1.1.0 — discloses Google Sign-In as an optional third party and a
-    // section 72 cross-border transfer. Set the effective date to 14 days after
-    // you publish, per the notice period the policy commits to in section 14.
-    version: '1.1.0',
+    // 1.2.0 — Google Sign-In (carried over from the unpublished 1.1.0) plus
+    // Payfast as a new recipient for online card payments. Both are material
+    // changes under section 14, which commits us to 14 days' notice, so the
+    // effective date must stay at least 14 days ahead of the day you publish.
+    // 1.1.0 was never published, so the two ship together.
+    version: '1.2.0',
     title: 'Privacy Policy',
-    effective_date: '2026-09-16',
+    effective_date: '2026-09-28',
     file: 'privacy-policy.html',
-    summary_html: '<p>Adds Google Sign-In. If you choose to sign in with your Google account, Google receives your IP address and confirms your email address and name to us. Signing in with a password is unchanged and sends Google nothing.</p>',
+    summary_html: '<p>Two additions. If you choose to sign in with your Google account, Google receives your IP address and confirms your email address and name to us &mdash; signing in with a password is unchanged and sends Google nothing. And if you switch on online card payments, Payfast receives the invoice number, the amount and your customer\'s name and email address so it can process the payment; card details are entered on Payfast\'s pages and never reach us.</p>',
   },
   {
     slug: 'terms',

@@ -298,10 +298,19 @@ NgRx is installed but unused. As the app grows, wire it up for:
 
 Enable in-app payment collection. This is a significant undertaking and should come after Phase 3.
 
-- **[Stripe](https://stripe.com/)** or **[PayFast](https://www.payfast.co.za/)** (South African businesses) integration
-- Payment link embedded in customer-facing invoice view
-- Webhook handler to auto-mark invoices as paid when payment clears
-- Payment history page
+- [x] **[PayFast](https://www.payfast.co.za/)** integration, per-user merchant credentials
+- [x] Payment link embedded in the invoice email, the invoice PDF and the customer portal
+- [x] ITN webhook handler to auto-mark invoices as paid when payment clears
+- [ ] Payment history page
+
+Built as PayFast's **custom integration**, not their "Pay Now button": the Pay Now
+button sends no ITN and carries no `m_payment_id`, so money would arrive with
+nothing tying it to an invoice. Email and PDF carry a link to a hosted pay page
+(`/pay/:token`) which posts a signed form to PayFast.
+
+Not covered: partial payments, subscriptions, refund handling, and reconciling a
+payment whose ITN never arrived (a seller who has not switched on ITN in their
+PayFast dashboard gets paid, but the invoice will not update).
 
 ---
 
