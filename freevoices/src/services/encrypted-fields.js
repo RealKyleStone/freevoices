@@ -7,14 +7,19 @@
  * different risk class from a bank account number, which is printed on every
  * invoice anyway.
  *
- * ── This is deliberately the POPIA plan's design, built early and small ──────
+ * ── Scope ───────────────────────────────────────────────────────────────────
  *
- * The full compliance programme encrypts roughly a dozen columns across five
- * tables. Everything structural for that is here already — the keyring, the
- * envelope format, the derivation, the AAD binding, the canary — and the
- * REGISTRY below is seeded with only the three PayFast columns. Extending it
- * later is an additive change: add table/column entries, widen the columns in a
- * migration, run the backfill. Nothing here should need to be rewritten.
+ * Built first for those PayFast credentials, then extended to the full POPIA
+ * phase 6 scope: banking details, VAT and company registration numbers, phone
+ * numbers and addresses on both `users` and `customers`, customer notes,
+ * tracking IP addresses and payment references. See REGISTRY.
+ *
+ * Extending it further is additive: add the entry, widen the column in a
+ * migration, wire the call sites, run scripts/encrypt-backfill.js. Nothing in
+ * this file should need rewriting for that.
+ *
+ * This module also owns hashToken(), which is a different mechanism for a
+ * different job — see the comment above it.
  *
  * ── The rules, and why ──────────────────────────────────────────────────────
  *
@@ -77,8 +82,27 @@ const HKDF_INFO = 'aes-256-gcm/field/v1';
  * existing rows need the backfill. See the header before extending this.
  */
 const REGISTRY = Object.freeze({
-  users: Object.freeze(['payfast_merchant_id', 'payfast_merchant_key', 'payfast_passphrase']),
+  users: Object.freeze([
+    'payfast_merchant_id', 'payfast_merchant_key', 'payfast_passphrase',
+    'bank_account_number', 'bank_branch_code', 'bank_account_type',
+    'vat_number', 'company_registration', 'phone', 'address',
+  ]),
+  customers: Object.freeze(['phone', 'vat_number', 'billing_address', 'shipping_address', 'notes']),
+  document_tracking: Object.freeze(['ip_address', 'user_agent']),
+  payments: Object.freeze(['transaction_reference']),
 });
+
+/**
+ * Deliberately NOT encrypted, and this list is as load-bearing as the one
+ * above: `users.email`, `customers.name` and `customers.email`.
+ *
+ * Random IVs make ciphertext unique per row, so encrypting these would silently
+ * break customer search (`name LIKE ?`), `ORDER BY name`, pagination and the
+ * four report endpoints — returning wrong results rather than erroring. They
+ * are identifying data we accept the exposure on, in exchange for the app
+ * continuing to work. Revisit only with a blind-index column, never by making
+ * the field encryption deterministic.
+ */
 
 /** The known plaintext the canary row round-trips. Not a secret. */
 const CANARY_PLAINTEXT = 'freevoices-canary-v1';
@@ -250,6 +274,42 @@ function decryptField(table, column, value) {
   return Buffer.concat([decipher.update(ciphertext), decipher.final()]).toString('utf8');
 }
 
+// ─── Token hashing ────────────────────────────────────────────────────────────
+
+/**
+ * One-way SHA-256 for bearer tokens: session tokens, password-reset tokens,
+ * email-verification tokens and invoice share tokens.
+ *
+ * Hashing, NOT encryption, and the difference is the point. These values are
+ * never read back — they only ever arrive from a client and get compared — so
+ * there is nothing to decrypt and no reason to keep them recoverable. A stolen
+ * database then yields no usable session, no working reset link and no readable
+ * invoice.
+ *
+ * Deliberately UNPEPPERED: no keyring input. Peppering from the data key would
+ * tie every live session and every share link already sitting in a customer's
+ * inbox to that key's lifecycle, so rotating it would log everyone out and 404
+ * links we have already sent. These are 122-bit random UUIDs; against an
+ * attacker who cannot brute-force them, a pepper buys nothing for that cost.
+ *
+ * Note what is NOT hashed: `documents.pay_token`. That one has to stay
+ * recoverable, because every invoice email and PDF must be able to quote the
+ * same payment URL months after it was minted — see ensurePayToken in
+ * server.js. A hash cannot be turned back into a URL.
+ */
+function hashToken(token) {
+  if (token === null || token === undefined || token === '') return token;
+  return crypto.createHash('sha256').update(String(token), 'utf8').digest('hex');
+}
+
+/** Columns holding hashed tokens, for the backfill. */
+const HASHED_TOKEN_COLUMNS = Object.freeze([
+  ['sessions', 'token'],
+  ['password_reset_tokens', 'token'],
+  ['users', 'email_verification_token'],
+  ['documents', 'share_token'],
+]);
+
 // ─── Row mappers ──────────────────────────────────────────────────────────────
 
 /**
@@ -287,8 +347,51 @@ function encryptRow(table, input) {
   return out;
 }
 
+/**
+ * Decrypt columns that a JOIN has aliased, e.g. `c.billing_address AS
+ * customer_billing_address`.
+ *
+ * The AAD is built from the REAL table and column, never the alias — the alias
+ * is only how this query happened to name it, while the AAD is part of what was
+ * sealed at write time.
+ */
+function decryptAliasedRow(table, row, prefix) {
+  if (!row) return row;
+  const columns = REGISTRY[table];
+  if (!columns) return row;
+
+  const out = { ...row };
+  for (const column of columns) {
+    const alias = `${prefix}${column}`;
+    if (Object.prototype.hasOwnProperty.call(out, alias)) {
+      out[alias] = decryptField(table, column, out[alias]);
+    }
+  }
+  return out;
+}
+
 const decryptUserRow = (row) => decryptRow('users', row);
 const encryptUserInput = (input) => encryptRow('users', input);
+const decryptCustomerRow = (row) => decryptRow('customers', row);
+const encryptCustomerInput = (input) => encryptRow('customers', input);
+const decryptPaymentRow = (row) => decryptRow('payments', row);
+const decryptTrackingRow = (row) => decryptRow('document_tracking', row);
+
+/** `c.<col> AS customer_<col>`, the aliasing every invoice/quote join uses. */
+const decryptCustomerJoin = (row) => decryptAliasedRow('customers', row, 'customer_');
+
+/**
+ * The shape most invoice and quote queries return: document columns, the
+ * seller's own `users` columns unaliased, and the customer's columns under a
+ * `customer_` prefix.
+ *
+ * Composing mappers is safe because each only touches the column names it owns
+ * and decryptField passes non-envelopes straight through. What is NOT safe is
+ * applying the wrong one: `phone`, `vat_number` and `notes` all exist on more
+ * than one table, so a customers value run through the users mapper fails the
+ * auth tag — loudly, which is the point of binding the table into the AAD.
+ */
+const decryptInvoiceJoin = (row) => decryptCustomerJoin(decryptUserRow(row));
 
 // ─── Canary ───────────────────────────────────────────────────────────────────
 
@@ -345,7 +448,17 @@ async function verifyCanary() {
         'encrypted columns cannot be read without it.'
       );
     }
-    return { status: 'skipped', reason: 'no keyring configured' };
+    // POPIA phase 6 put core personal data behind this key — bank details, VAT
+    // and registration numbers, phones, addresses, customer notes. Booting
+    // without it would mean every write silently storing plaintext into a
+    // column the privacy policy says is encrypted, which is worse than not
+    // starting. Before phase 6 only PayFast used encryption and this returned
+    // "skipped"; that is no longer a defensible default.
+    throw new Error(
+      'DATA_ENCRYPTION_KEYS is not set. Personal information is stored encrypted, so the ' +
+      'application will not start without its key. Generate one with: ' +
+      `node -e "console.log('1:' + require('crypto').randomBytes(32).toString('base64'))"`
+    );
   }
 
   const { activeId } = requireKeyring();
@@ -400,8 +513,17 @@ module.exports = {
   decryptField,
   encryptRow,
   decryptRow,
+  hashToken,
+  HASHED_TOKEN_COLUMNS,
   decryptUserRow,
   encryptUserInput,
+  decryptCustomerRow,
+  encryptCustomerInput,
+  decryptPaymentRow,
+  decryptTrackingRow,
+  decryptCustomerJoin,
+  decryptInvoiceJoin,
+  decryptAliasedRow,
   verifyCanary,
   resetKeyringCache,
 };

@@ -11,6 +11,8 @@ const { runMigrations, tableExists } = require('./src/services/migrations.servic
 const { anonymiseExpiredAccounts } = require('./src/services/retention.service');
 const {
   decryptUserRow, encryptField, isEncryptionConfigured, verifyCanary,
+  decryptCustomerRow, decryptPaymentRow, decryptTrackingRow,
+  decryptCustomerJoin, decryptAliasedRow, hashToken,
 } = require('./src/services/encrypted-fields');
 const {
   buildPaymentForm, isPayfastEligible, payfastUrls, PAYFAST_MIN_AMOUNT, PAYFAST_CURRENCY,
@@ -188,6 +190,34 @@ const emailService = new EmailService({
   SMTP_PASS: process.env.SMTP_PASS,
 });
 
+/**
+ * executeQuery, then decrypt at the database boundary.
+ *
+ * Decryption happens HERE and nowhere deeper: pdf.service and email.service
+ * stay pure renderers that receive plaintext, because the failure mode of
+ * getting that wrong is a customer being emailed an invoice with the seller's
+ * bank account rendered as base64 — and `bankFields.filter(Boolean)` is happy
+ * to print it, so nothing errors.
+ *
+ * Pick the mapper that matches the table the columns actually came from.
+ * `phone`, `vat_number` and `notes` exist on more than one table, and the AAD
+ * binds the table name, so the wrong mapper throws rather than quietly
+ * returning ciphertext.
+ */
+const queryDecrypted = async (mapper, sql, params) => (await executeQuery(sql, params)).map(mapper);
+
+/**
+ * Encrypt one value on its way into the database.
+ *
+ * Deliberately called inline in the parameter arrays rather than by
+ * transforming an object first: these INSERTs and UPDATEs list their columns
+ * positionally, so encrypting at the exact position the column occupies is the
+ * only form that cannot drift out of step with the SQL above it.
+ */
+const encUser = (column, value) => encryptField('users', column, value);
+const encCustomer = (column, value) => encryptField('customers', column, value);
+const encTracking = (column, value) => encryptField('document_tracking', column, value);
+
 function validate(validators, options = {}) {
   // express-validator includes the REJECTED VALUE in every field error. For an
   // ordinary field that is helpful; for a secret it means the passphrase a user
@@ -242,7 +272,7 @@ const authenticateToken = async (req, res, next) => {
         WHERE s.token = ?
           AND s.expires > NOW()
           AND s.created_at > DATE_SUB(NOW(), INTERVAL ? DAY)`,
-      [token, SESSION_MAX_DAYS]
+      [hashToken(token), SESSION_MAX_DAYS]
     );
     if (sessions.length === 0) return res.status(401).json({ message: 'Invalid or expired token' });
 
@@ -264,7 +294,7 @@ const authenticateToken = async (req, res, next) => {
             SET expires = LEAST(DATE_ADD(NOW(), INTERVAL ? HOUR), DATE_ADD(created_at, INTERVAL ? DAY))
           WHERE token = ?
             AND expires < DATE_ADD(NOW(), INTERVAL ? HOUR)`,
-        [SESSION_IDLE_HOURS, SESSION_MAX_DAYS, token, SESSION_IDLE_HOURS - 1]
+        [SESSION_IDLE_HOURS, SESSION_MAX_DAYS, hashToken(token), SESSION_IDLE_HOURS - 1]
       );
     } catch (slideError) {
       // A failed renewal must not fail an otherwise authenticated request.
@@ -450,7 +480,7 @@ async function completeSignIn(req, res, user, eventType) {
   }
 
   const token = randomUUID();
-  await executeQuery('INSERT INTO sessions (userId, token, expires) VALUES (?, ?, ?)', [user.id, token, newSessionExpiry()]);
+  await executeQuery('INSERT INTO sessions (userId, token, expires) VALUES (?, ?, ?)', [user.id, hashToken(token), newSessionExpiry()]);
   await executeQuery('UPDATE users SET last_login_at = NOW() WHERE id = ?', [user.id]);
   await recordSecurityEvent(req, eventType, user.id);
   logger.info('User logged in successfully', { userId: user.id });
@@ -519,7 +549,7 @@ app.post('/api/auth/login', loginLimiter, validate([
     // auditable, retention-bounded authentication logging.
     if (!(await enforceCaptcha(req, res))) return;
 
-    const users = await executeQuery('SELECT * FROM users WHERE email = ?', [email]);
+    const users = await queryDecrypted(decryptUserRow, 'SELECT * FROM users WHERE email = ?', [email]);
     if (users.length === 0) return res.status(401).json({ message: 'Invalid credentials' });
     const user = users[0];
 
@@ -592,7 +622,7 @@ app.post('/api/auth/login', loginLimiter, validate([
 app.post('/api/logout', authenticateToken, async (req, res) => {
   try {
     const token = req.headers.authorization.split(' ')[1];
-    await executeQuery('DELETE FROM sessions WHERE token = ?', [token]);
+    await executeQuery('DELETE FROM sessions WHERE token = ?', [hashToken(token)]);
     res.json({ message: 'Logged out successfully' });
   } catch (error) { logger.error('Logout error:', error); res.status(500).json({ message: 'Logout error' }); }
 });
@@ -619,15 +649,19 @@ app.post('/api/auth/register', registerLimiter, validate([
     const password_hash = await argon2.hash(password);
     const result = await executeQuery(
       'INSERT INTO users (email, password_hash, company_name, company_registration, vat_number, contact_person, phone, address, bank_name, bank_account_number, bank_branch_code, bank_account_type) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
-      [email, password_hash, company_name, company_registration, vat_number, contact_person, phone, address, bank_name, bank_account_number, bank_branch_code, bank_account_type]
+      [email, password_hash, company_name,
+       encUser('company_registration', company_registration), encUser('vat_number', vat_number),
+       contact_person, encUser('phone', phone), encUser('address', address), bank_name,
+       encUser('bank_account_number', bank_account_number), encUser('bank_branch_code', bank_branch_code),
+       encUser('bank_account_type', bank_account_type)]
     );
     const token = randomUUID();
-    await executeQuery('INSERT INTO sessions (userId, token, expires) VALUES (?, ?, ?)', [result.insertId, token, newSessionExpiry()]);
+    await executeQuery('INSERT INTO sessions (userId, token, expires) VALUES (?, ?, ?)', [result.insertId, hashToken(token), newSessionExpiry()]);
     const user = await executeQuery('SELECT id, email, company_name FROM users WHERE id = ?', [result.insertId]);
     const verificationToken = randomUUID();
     const verificationExpires = new Date();
     verificationExpires.setHours(verificationExpires.getHours() + 24);
-    await executeQuery('UPDATE users SET email_verification_token = ?, email_verification_expires = ? WHERE id = ?', [verificationToken, verificationExpires, result.insertId]);
+    await executeQuery('UPDATE users SET email_verification_token = ?, email_verification_expires = ? WHERE id = ?', [hashToken(verificationToken), verificationExpires, result.insertId]);
     try { await emailService.sendVerificationEmail(email, verificationToken); } catch (emailError) { logger.error('Failed to send verification email:', emailError); }
     logger.info('User registered successfully', { userId: result.insertId });
     res.status(201).json({ token, user: user[0] });
@@ -656,14 +690,14 @@ app.post('/api/auth/google', loginLimiter, validate([
     const claims = await verifyGoogleIdToken(req.body.idToken);
     if (!claims) return res.status(401).json({ message: 'We could not verify that Google sign-in. Please try again.' });
 
-    let users = await executeQuery('SELECT * FROM users WHERE google_id = ?', [claims.sub]);
+    let users = await queryDecrypted(decryptUserRow, 'SELECT * FROM users WHERE google_id = ?', [claims.sub]);
 
     // Same person, already registered with a password. Link the Google account
     // onto the existing row instead of creating a duplicate they would then be
     // unable to reach their invoices from. Safe only because verifyGoogleIdToken
     // refuses tokens whose email_verified is not true.
     if (users.length === 0) {
-      const byEmail = await executeQuery('SELECT * FROM users WHERE email = ?', [claims.email]);
+      const byEmail = await queryDecrypted(decryptUserRow, 'SELECT * FROM users WHERE email = ?', [claims.email]);
       if (byEmail.length > 0) {
         await executeQuery('UPDATE users SET google_id = ?, email_verified = 1 WHERE id = ?', [claims.sub, byEmail[0].id]);
         await recordSecurityEvent(req, 'GOOGLE_ACCOUNT_LINKED', byEmail[0].id);
@@ -732,13 +766,16 @@ app.post('/api/auth/google/register', registerLimiter, validate([
                           vat_number, contact_person, phone, address, bank_name, bank_account_number,
                           bank_branch_code, bank_account_type)
        VALUES (?, NULL, ?, 1, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-      [claims.email, claims.sub, company_name, company_registration || null, vat_number || null,
-       contact_person, phone, address, bank_name || null, bank_account_number || null,
-       bank_branch_code || null, bank_account_type || null]
+      [claims.email, claims.sub, company_name,
+       encUser('company_registration', company_registration || null), encUser('vat_number', vat_number || null),
+       contact_person, encUser('phone', phone), encUser('address', address), bank_name || null,
+       encUser('bank_account_number', bank_account_number || null),
+       encUser('bank_branch_code', bank_branch_code || null),
+       encUser('bank_account_type', bank_account_type || null)]
     );
 
     const token = randomUUID();
-    await executeQuery('INSERT INTO sessions (userId, token, expires) VALUES (?, ?, ?)', [result.insertId, token, newSessionExpiry()]);
+    await executeQuery('INSERT INTO sessions (userId, token, expires) VALUES (?, ?, ?)', [result.insertId, hashToken(token), newSessionExpiry()]);
     await executeQuery('UPDATE users SET last_login_at = NOW() WHERE id = ?', [result.insertId]);
     await recordSecurityEvent(req, 'REGISTER_SUCCESS_GOOGLE', result.insertId);
     const user = await executeQuery('SELECT id, email, company_name FROM users WHERE id = ?', [result.insertId]);
@@ -766,7 +803,7 @@ app.post('/api/auth/forgot-password', passwordLimiter, async (req, res) => {
     const users = await executeQuery('SELECT id FROM users WHERE email = ? AND email_verified = 1', [email]);
     if (users.length === 0) return res.json({ message: 'If that email is registered you will receive a reset link shortly.' });
     const token = randomUUID();
-    await executeQuery('INSERT INTO password_reset_tokens (user_id, token, expires_at) VALUES (?, ?, DATE_ADD(NOW(), INTERVAL 1 HOUR))', [users[0].id, token]);
+    await executeQuery('INSERT INTO password_reset_tokens (user_id, token, expires_at) VALUES (?, ?, DATE_ADD(NOW(), INTERVAL 1 HOUR))', [users[0].id, hashToken(token)]);
     await emailService.sendPasswordResetEmail(email, token);
     res.json({ message: 'If that email is registered you will receive a reset link shortly.' });
   } catch (error) { logger.error('Forgot password error:', error); res.status(500).json({ message: 'Failed to process request' }); }
@@ -780,7 +817,7 @@ app.post('/api/auth/reset-password', passwordLimiter, validate([
     const { token, password } = req.body;
     if (!token || !password) return res.status(400).json({ message: 'Token and new password are required' });
     if (password.length < 8) return res.status(400).json({ message: 'Password must be at least 8 characters' });
-    const tokens = await executeQuery('SELECT id, user_id FROM password_reset_tokens WHERE token = ? AND expires_at > NOW() AND used = 0', [token]);
+    const tokens = await executeQuery('SELECT id, user_id FROM password_reset_tokens WHERE token = ? AND expires_at > NOW() AND used = 0', [hashToken(token)]);
     if (tokens.length === 0) return res.status(400).json({ message: 'Invalid or expired reset token' });
     const { id: tokenId, user_id } = tokens[0];
     const passwordHash = await argon2.hash(password);
@@ -811,7 +848,7 @@ app.get('/api/customers', authenticateToken, async (req, res) => {
     const params = [req.user.id], cntParams = [req.user.id];
     if (search) { const clause = ' AND (name LIKE ? OR email LIKE ?)'; sql += clause; cntSql += clause; params.push(`%${search}%`, `%${search}%`); cntParams.push(`%${search}%`, `%${search}%`); }
     sql += ' ORDER BY name ASC LIMIT ? OFFSET ?'; params.push(limit, offset);
-    const [customers, countResult] = await Promise.all([executeQuery(sql, params), executeQuery(cntSql, cntParams)]);
+    const [customers, countResult] = await Promise.all([queryDecrypted(decryptCustomerRow, sql, params), executeQuery(cntSql, cntParams)]);
     res.json({ data: customers, total: countResult[0].total, page, limit });
   } catch (error) { logger.error('Error fetching customers:', error); res.status(500).json({ message: 'Failed to fetch customers' }); }
 });
@@ -827,15 +864,15 @@ app.post('/api/customers', authenticateToken, validate([
   try {
     const { name, email, phone, vat_number, billing_address, shipping_address, payment_terms, notes } = req.body;
     if (!name || !email || !billing_address) return res.status(400).json({ message: 'Name, email, and billing address are required' });
-    const result = await executeQuery('INSERT INTO customers (user_id, name, email, phone, vat_number, billing_address, shipping_address, payment_terms, notes) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)', [req.user.id, name, email, phone || null, vat_number || null, billing_address, shipping_address || null, payment_terms || null, notes || null]);
-    res.status(201).json((await executeQuery('SELECT * FROM customers WHERE id = ?', [result.insertId]))[0]);
+    const result = await executeQuery('INSERT INTO customers (user_id, name, email, phone, vat_number, billing_address, shipping_address, payment_terms, notes) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)', [req.user.id, name, email, encCustomer('phone', phone || null), encCustomer('vat_number', vat_number || null), encCustomer('billing_address', billing_address), encCustomer('shipping_address', shipping_address || null), payment_terms || null, encCustomer('notes', notes || null)]);
+    res.status(201).json((await queryDecrypted(decryptCustomerRow, 'SELECT * FROM customers WHERE id = ?', [result.insertId]))[0]);
   } catch (error) { logger.error('Error creating customer:', error); res.status(500).json({ message: 'Failed to create customer' }); }
 });
 
 app.get('/api/customers/:id', authenticateToken, async (req, res) => {
   try {
     const { id } = req.params;
-    const customers = await executeQuery('SELECT * FROM customers WHERE id = ? AND user_id = ? AND active = 1', [id, req.user.id]);
+    const customers = await queryDecrypted(decryptCustomerRow, 'SELECT * FROM customers WHERE id = ? AND user_id = ? AND active = 1', [id, req.user.id]);
     if (customers.length === 0) return res.status(404).json({ message: 'Customer not found' });
     const documents = await executeQuery('SELECT * FROM documents WHERE customer_id = ? AND user_id = ? ORDER BY created_at DESC', [id, req.user.id]);
     res.json({ ...customers[0], documents });
@@ -856,8 +893,8 @@ app.put('/api/customers/:id', authenticateToken, validate([
     if (!name || !email || !billing_address) return res.status(400).json({ message: 'Name, email, and billing address are required' });
     const existing = await executeQuery('SELECT id FROM customers WHERE id = ? AND user_id = ? AND active = 1', [id, req.user.id]);
     if (existing.length === 0) return res.status(404).json({ message: 'Customer not found' });
-    await executeQuery('UPDATE customers SET name=?, email=?, phone=?, vat_number=?, billing_address=?, shipping_address=?, payment_terms=?, notes=?, updated_at=NOW() WHERE id = ? AND user_id = ?', [name, email, phone || null, vat_number || null, billing_address, shipping_address || null, payment_terms || null, notes || null, id, req.user.id]);
-    res.json((await executeQuery('SELECT * FROM customers WHERE id = ?', [id]))[0]);
+    await executeQuery('UPDATE customers SET name=?, email=?, phone=?, vat_number=?, billing_address=?, shipping_address=?, payment_terms=?, notes=?, updated_at=NOW() WHERE id = ? AND user_id = ?', [name, email, encCustomer('phone', phone || null), encCustomer('vat_number', vat_number || null), encCustomer('billing_address', billing_address), encCustomer('shipping_address', shipping_address || null), payment_terms || null, encCustomer('notes', notes || null), id, req.user.id]);
+    res.json((await queryDecrypted(decryptCustomerRow, 'SELECT * FROM customers WHERE id = ?', [id]))[0]);
   } catch (error) { logger.error('Error updating customer:', error); res.status(500).json({ message: 'Failed to update customer' }); }
 });
 
@@ -963,10 +1000,10 @@ app.get('/api/invoices/:id', authenticateToken, async (req, res) => {
   try {
     const { id } = req.params;
     const [invoices, items, tracking, payments] = await Promise.all([
-      executeQuery(`SELECT d.*, d.notifications_muted, c.name AS customer_name, c.email AS customer_email, c.billing_address AS customer_billing_address, c.vat_number AS customer_vat_number, cur.symbol AS currency_symbol, cur.code AS currency_code FROM documents d JOIN customers c ON c.id = d.customer_id LEFT JOIN currencies cur ON cur.id = d.currency_id WHERE d.id = ? AND d.user_id = ? AND d.type = 'INVOICE'`, [id, req.user.id]),
+      queryDecrypted(decryptCustomerJoin, `SELECT d.*, d.notifications_muted, c.name AS customer_name, c.email AS customer_email, c.billing_address AS customer_billing_address, c.vat_number AS customer_vat_number, cur.symbol AS currency_symbol, cur.code AS currency_code FROM documents d JOIN customers c ON c.id = d.customer_id LEFT JOIN currencies cur ON cur.id = d.currency_id WHERE d.id = ? AND d.user_id = ? AND d.type = 'INVOICE'`, [id, req.user.id]),
       executeQuery('SELECT * FROM document_items WHERE document_id = ? ORDER BY id ASC', [id]),
-      executeQuery('SELECT * FROM document_tracking WHERE document_id = ? ORDER BY event_date ASC', [id]),
-      executeQuery('SELECT * FROM payments WHERE document_id = ? ORDER BY payment_date DESC', [id])
+      executeQuery('SELECT id, document_id, event_type, event_date FROM document_tracking WHERE document_id = ? ORDER BY event_date ASC', [id]),
+      queryDecrypted(decryptPaymentRow, 'SELECT * FROM payments WHERE document_id = ? ORDER BY payment_date DESC', [id])
     ]);
     if (invoices.length === 0) return res.status(404).json({ message: 'Invoice not found' });
     res.json({ ...invoices[0], notifications_muted: !!invoices[0].notifications_muted, items, tracking, payments });
@@ -978,9 +1015,9 @@ app.get('/api/invoices/:id/pdf', authenticateToken, async (req, res) => {
     const { id } = req.params;
     const markSent = req.query.markSent === 'true';
     const [invoices, items, users, logoRows] = await Promise.all([
-      executeQuery(`SELECT d.*, c.name AS customer_name, c.email AS customer_email, c.billing_address AS customer_billing_address, c.vat_number AS customer_vat_number, cur.symbol AS currency_symbol, cur.code AS currency_code FROM documents d JOIN customers c ON c.id = d.customer_id LEFT JOIN currencies cur ON cur.id = d.currency_id WHERE d.id = ? AND d.user_id = ? AND d.type = 'INVOICE'`, [id, req.user.id]),
+      queryDecrypted(decryptCustomerJoin, `SELECT d.*, c.name AS customer_name, c.email AS customer_email, c.billing_address AS customer_billing_address, c.vat_number AS customer_vat_number, cur.symbol AS currency_symbol, cur.code AS currency_code FROM documents d JOIN customers c ON c.id = d.customer_id LEFT JOIN currencies cur ON cur.id = d.currency_id WHERE d.id = ? AND d.user_id = ? AND d.type = 'INVOICE'`, [id, req.user.id]),
       executeQuery('SELECT * FROM document_items WHERE document_id = ? ORDER BY id ASC', [id]),
-      executeQuery('SELECT * FROM users WHERE id = ?', [req.user.id]),
+      queryDecrypted(decryptUserRow, 'SELECT * FROM users WHERE id = ?', [req.user.id]),
       executeQuery("SELECT setting_value FROM settings WHERE user_id = ? AND setting_key = 'company_logo'", [req.user.id])
     ]);
     if (invoices.length === 0) return res.status(404).json({ message: 'Invoice not found' });
@@ -1005,11 +1042,11 @@ app.get('/api/invoices/:id/receipt', authenticateToken, async (req, res) => {
   try {
     const { id } = req.params;
     const [invoices, items, users, logoRows, payments] = await Promise.all([
-      executeQuery(`SELECT d.*, c.name AS customer_name, c.email AS customer_email, c.billing_address AS customer_billing_address, c.vat_number AS customer_vat_number, cur.symbol AS currency_symbol, cur.code AS currency_code FROM documents d JOIN customers c ON c.id = d.customer_id LEFT JOIN currencies cur ON cur.id = d.currency_id WHERE d.id = ? AND d.user_id = ? AND d.type = 'INVOICE'`, [id, req.user.id]),
+      queryDecrypted(decryptCustomerJoin, `SELECT d.*, c.name AS customer_name, c.email AS customer_email, c.billing_address AS customer_billing_address, c.vat_number AS customer_vat_number, cur.symbol AS currency_symbol, cur.code AS currency_code FROM documents d JOIN customers c ON c.id = d.customer_id LEFT JOIN currencies cur ON cur.id = d.currency_id WHERE d.id = ? AND d.user_id = ? AND d.type = 'INVOICE'`, [id, req.user.id]),
       executeQuery('SELECT * FROM document_items WHERE document_id = ? ORDER BY id ASC', [id]),
-      executeQuery('SELECT * FROM users WHERE id = ?', [req.user.id]),
+      queryDecrypted(decryptUserRow, 'SELECT * FROM users WHERE id = ?', [req.user.id]),
       executeQuery("SELECT setting_value FROM settings WHERE user_id = ? AND setting_key = 'company_logo'", [req.user.id]),
-      executeQuery('SELECT * FROM payments WHERE document_id = ? ORDER BY payment_date DESC', [id])
+      queryDecrypted(decryptPaymentRow, 'SELECT * FROM payments WHERE document_id = ? ORDER BY payment_date DESC', [id])
     ]);
     if (invoices.length === 0) return res.status(404).json({ message: 'Invoice not found' });
     if (invoices[0].status !== 'PAID') return res.status(400).json({ message: 'Receipt is only available for paid invoices' });
@@ -1025,11 +1062,11 @@ app.post('/api/invoices/:id/send-receipt', authenticateToken, async (req, res) =
   try {
     const { id } = req.params;
     const [invoices, items, users, logoRows, payments] = await Promise.all([
-      executeQuery(`SELECT d.*, c.name AS customer_name, c.email AS customer_email, c.billing_address AS customer_billing_address, c.vat_number AS customer_vat_number, cur.symbol AS currency_symbol, cur.code AS currency_code FROM documents d JOIN customers c ON c.id = d.customer_id LEFT JOIN currencies cur ON cur.id = d.currency_id WHERE d.id = ? AND d.user_id = ? AND d.type = 'INVOICE'`, [id, req.user.id]),
+      queryDecrypted(decryptCustomerJoin, `SELECT d.*, c.name AS customer_name, c.email AS customer_email, c.billing_address AS customer_billing_address, c.vat_number AS customer_vat_number, cur.symbol AS currency_symbol, cur.code AS currency_code FROM documents d JOIN customers c ON c.id = d.customer_id LEFT JOIN currencies cur ON cur.id = d.currency_id WHERE d.id = ? AND d.user_id = ? AND d.type = 'INVOICE'`, [id, req.user.id]),
       executeQuery('SELECT * FROM document_items WHERE document_id = ? ORDER BY id ASC', [id]),
-      executeQuery('SELECT * FROM users WHERE id = ?', [req.user.id]),
+      queryDecrypted(decryptUserRow, 'SELECT * FROM users WHERE id = ?', [req.user.id]),
       executeQuery("SELECT setting_value FROM settings WHERE user_id = ? AND setting_key = 'company_logo'", [req.user.id]),
-      executeQuery('SELECT * FROM payments WHERE document_id = ? ORDER BY payment_date DESC', [id])
+      queryDecrypted(decryptPaymentRow, 'SELECT * FROM payments WHERE document_id = ? ORDER BY payment_date DESC', [id])
     ]);
     if (invoices.length === 0) return res.status(404).json({ message: 'Invoice not found' });
     const invoice = invoices[0];
@@ -1101,9 +1138,9 @@ app.post('/api/invoices/:id/send', authenticateToken, async (req, res) => {
   try {
     const { id } = req.params;
     const [invoices, items, users, logoRows] = await Promise.all([
-      executeQuery(`SELECT d.*, c.name AS customer_name, c.email AS customer_email, c.billing_address AS customer_billing_address, c.vat_number AS customer_vat_number, cur.symbol AS currency_symbol, cur.code AS currency_code FROM documents d JOIN customers c ON c.id = d.customer_id LEFT JOIN currencies cur ON cur.id = d.currency_id WHERE d.id = ? AND d.user_id = ? AND d.type = 'INVOICE'`, [id, req.user.id]),
+      queryDecrypted(decryptCustomerJoin, `SELECT d.*, c.name AS customer_name, c.email AS customer_email, c.billing_address AS customer_billing_address, c.vat_number AS customer_vat_number, cur.symbol AS currency_symbol, cur.code AS currency_code FROM documents d JOIN customers c ON c.id = d.customer_id LEFT JOIN currencies cur ON cur.id = d.currency_id WHERE d.id = ? AND d.user_id = ? AND d.type = 'INVOICE'`, [id, req.user.id]),
       executeQuery('SELECT * FROM document_items WHERE document_id = ? ORDER BY id ASC', [id]),
-      executeQuery('SELECT * FROM users WHERE id = ?', [req.user.id]),
+      queryDecrypted(decryptUserRow, 'SELECT * FROM users WHERE id = ?', [req.user.id]),
       executeQuery("SELECT setting_value FROM settings WHERE user_id = ? AND setting_key = 'company_logo'", [req.user.id])
     ]);
     if (invoices.length === 0) return res.status(404).json({ message: 'Invoice not found' });
@@ -1187,7 +1224,7 @@ app.post('/api/invoices/:id/share', authenticateToken, async (req, res) => {
     const existing = await executeQuery(`SELECT id FROM documents WHERE id = ? AND user_id = ? AND type = 'INVOICE'`, [id, req.user.id]);
     if (existing.length === 0) return res.status(404).json({ message: 'Invoice not found' });
     const token = randomUUID().replace(/-/g, '');
-    await executeQuery('UPDATE documents SET share_token = ?, share_token_expires_at = DATE_ADD(NOW(), INTERVAL 30 DAY) WHERE id = ?', [token, id]);
+    await executeQuery('UPDATE documents SET share_token = ?, share_token_expires_at = DATE_ADD(NOW(), INTERVAL 30 DAY) WHERE id = ?', [hashToken(token), id]);
     const baseUrl = `${req.protocol}://${req.get('host')}`;
     res.json({ token, share_url: `${baseUrl}/portal/invoice/${token}` });
   } catch (error) { logger.error('Error generating share link:', error); res.status(500).json({ message: 'Failed to generate share link' }); }
@@ -1261,9 +1298,9 @@ app.get('/api/quotes/:id', authenticateToken, async (req, res) => {
   try {
     const { id } = req.params;
     const [quotes, items, tracking] = await Promise.all([
-      executeQuery(`SELECT d.*, c.name AS customer_name, c.email AS customer_email, c.billing_address AS customer_billing_address, c.vat_number AS customer_vat_number, cur.symbol AS currency_symbol, cur.code AS currency_code FROM documents d JOIN customers c ON c.id = d.customer_id LEFT JOIN currencies cur ON cur.id = d.currency_id WHERE d.id = ? AND d.user_id = ? AND d.type = 'QUOTE'`, [id, req.user.id]),
+      queryDecrypted(decryptCustomerJoin, `SELECT d.*, c.name AS customer_name, c.email AS customer_email, c.billing_address AS customer_billing_address, c.vat_number AS customer_vat_number, cur.symbol AS currency_symbol, cur.code AS currency_code FROM documents d JOIN customers c ON c.id = d.customer_id LEFT JOIN currencies cur ON cur.id = d.currency_id WHERE d.id = ? AND d.user_id = ? AND d.type = 'QUOTE'`, [id, req.user.id]),
       executeQuery('SELECT * FROM document_items WHERE document_id = ? ORDER BY id ASC', [id]),
-      executeQuery('SELECT * FROM document_tracking WHERE document_id = ? ORDER BY event_date ASC', [id])
+      executeQuery('SELECT id, document_id, event_type, event_date FROM document_tracking WHERE document_id = ? ORDER BY event_date ASC', [id])
     ]);
     if (quotes.length === 0) return res.status(404).json({ message: 'Quote not found' });
     res.json({ ...quotes[0], items, tracking });
@@ -1518,9 +1555,9 @@ app.put('/api/settings/profile', authenticateToken, validate([
       const valid = await argon2.verify(userRows[0].password_hash, current_password);
       if (!valid) return res.status(400).json({ message: 'Current password is incorrect' });
       const newHash = await argon2.hash(new_password);
-      await executeQuery('UPDATE users SET contact_person = ?, email = ?, phone = ?, password_hash = ?, updated_at = NOW() WHERE id = ?', [contact_person, email, phone || null, newHash, userId]);
+      await executeQuery('UPDATE users SET contact_person = ?, email = ?, phone = ?, password_hash = ?, updated_at = NOW() WHERE id = ?', [contact_person, email, encUser('phone', phone || null), newHash, userId]);
     } else {
-      await executeQuery('UPDATE users SET contact_person = ?, email = ?, phone = ?, updated_at = NOW() WHERE id = ?', [contact_person, email, phone || null, userId]);
+      await executeQuery('UPDATE users SET contact_person = ?, email = ?, phone = ?, updated_at = NOW() WHERE id = ?', [contact_person, email, encUser('phone', phone || null), userId]);
     }
     res.json({ message: 'Profile updated successfully' });
   } catch (error) { logger.error('Error updating profile:', error); res.status(500).json({ message: 'Failed to update profile' }); }
@@ -1535,7 +1572,8 @@ app.put('/api/settings/company', authenticateToken, validate([
   try {
     const userId = req.user.id;
     const { company_name, company_registration, vat_number, address } = req.body;
-    await executeQuery('UPDATE users SET company_name = ?, company_registration = ?, vat_number = ?, address = ?, updated_at = NOW() WHERE id = ?', [company_name || null, company_registration || null, vat_number || null, address || null, userId]);
+    await executeQuery('UPDATE users SET company_name = ?, company_registration = ?, vat_number = ?, address = ?, updated_at = NOW() WHERE id = ?', [company_name || null, encUser('company_registration', company_registration || null),
+       encUser('vat_number', vat_number || null), encUser('address', address || null), userId]);
     res.json({ message: 'Company details updated successfully' });
   } catch (error) { logger.error('Error updating company settings:', error); res.status(500).json({ message: 'Failed to update company details' }); }
 });
@@ -1579,7 +1617,9 @@ app.put('/api/settings/payment', authenticateToken, async (req, res) => {
   try {
     const userId = req.user.id;
     const { bank_name, bank_account_number, bank_branch_code, bank_account_type } = req.body;
-    await executeQuery('UPDATE users SET bank_name = ?, bank_account_number = ?, bank_branch_code = ?, bank_account_type = ?, updated_at = NOW() WHERE id = ?', [bank_name || null, bank_account_number || null, bank_branch_code || null, bank_account_type || null, userId]);
+    await executeQuery('UPDATE users SET bank_name = ?, bank_account_number = ?, bank_branch_code = ?, bank_account_type = ?, updated_at = NOW() WHERE id = ?', [bank_name || null, encUser('bank_account_number', bank_account_number || null),
+       encUser('bank_branch_code', bank_branch_code || null),
+       encUser('bank_account_type', bank_account_type || null), userId]);
     res.json({ message: 'Payment details updated successfully' });
   } catch (error) { logger.error('Error updating payment settings:', error); res.status(500).json({ message: 'Failed to update payment details' }); }
 });
@@ -1727,14 +1767,21 @@ app.get('/api/reports/vat-summary', authenticateToken, async (req, res) => {
 app.get('/api/public/invoice/:token', portalLimiter, async (req, res) => {
   try {
     const { token } = req.params;
-    const docs = await executeQuery(`SELECT d.id, d.document_number, d.type, d.status, d.issue_date, d.due_date, d.payment_terms, d.subtotal, d.vat_amount, d.total, d.notes, d.terms_conditions, c.name AS customer_name, c.email AS customer_email, c.billing_address AS customer_billing_address, c.vat_number AS customer_vat_number, cur.symbol AS currency_symbol, cur.code AS currency_code, u.company_name, u.vat_number AS company_vat_number, u.address AS company_address, u.email AS company_email, u.bank_name, u.bank_account_number, u.bank_branch_code, u.bank_account_type, u.payfast_enabled, u.payfast_merchant_id, u.payfast_merchant_key, u.payfast_passphrase FROM documents d JOIN customers c ON c.id = d.customer_id LEFT JOIN currencies cur ON cur.id = d.currency_id JOIN users u ON u.id = d.user_id WHERE d.share_token = ? AND d.type = 'INVOICE' AND (d.share_token_expires_at IS NULL OR d.share_token_expires_at > NOW())`, [token]);
+    const docs = await executeQuery(`SELECT d.id, d.document_number, d.type, d.status, d.issue_date, d.due_date, d.payment_terms, d.subtotal, d.vat_amount, d.total, d.notes, d.terms_conditions, c.name AS customer_name, c.email AS customer_email, c.billing_address AS customer_billing_address, c.vat_number AS customer_vat_number, cur.symbol AS currency_symbol, cur.code AS currency_code, u.company_name, u.vat_number AS company_vat_number, u.address AS company_address, u.email AS company_email, u.bank_name, u.bank_account_number, u.bank_branch_code, u.bank_account_type, u.payfast_enabled, u.payfast_merchant_id, u.payfast_merchant_key, u.payfast_passphrase FROM documents d JOIN customers c ON c.id = d.customer_id LEFT JOIN currencies cur ON cur.id = d.currency_id JOIN users u ON u.id = d.user_id WHERE d.share_token = ? AND d.type = 'INVOICE' AND (d.share_token_expires_at IS NULL OR d.share_token_expires_at > NOW())`, [hashToken(token)]);
     if (docs.length === 0) return res.status(404).json({ message: 'Invoice not found or link has expired' });
     const items = await executeQuery('SELECT description, quantity, unit_price, vat_rate, vat_amount, subtotal, total FROM document_items WHERE document_id = ? ORDER BY id ASC', [docs[0].id]);
     const logoRows = await executeQuery("SELECT setting_value FROM settings WHERE user_id = (SELECT user_id FROM documents WHERE id = ?) AND setting_key = 'company_logo'", [docs[0].id]);
-    await executeQuery(`INSERT INTO document_tracking (document_id, event_type, ip_address, user_agent) VALUES (?, 'VIEWED', ?, ?)`, [docs[0].id, req.ip || null, req.get('user-agent') || null]);
+    await executeQuery(`INSERT INTO document_tracking (document_id, event_type, ip_address, user_agent) VALUES (?, 'VIEWED', ?, ?)`, [docs[0].id, encTracking('ip_address', req.ip || null), encTracking('user_agent', req.get('user-agent') || null)]);
     // The seller's PayFast credentials are only ever used to decide whether a
     // button can be shown; they are stripped before the row leaves the server.
-    const seller = decryptUserRow(docs[0]);
+    // This one row carries encrypted columns under three different naming
+    // schemes: the seller's bank details unaliased (u.bank_account_number), the
+    // seller's vat_number and address under `company_`, and the customer's
+    // under `customer_`. Each mapper only touches the names it owns, so they
+    // compose; the AAD still uses the real table and column either way.
+    const seller = decryptCustomerJoin(
+      decryptAliasedRow('users', decryptUserRow(docs[0]), 'company_')
+    );
     const pay_url = await resolvePayUrl(seller, seller);
     const {
       payfast_enabled, payfast_merchant_id, payfast_merchant_key, payfast_passphrase, ...publicFields
@@ -1746,19 +1793,19 @@ app.get('/api/public/invoice/:token', portalLimiter, async (req, res) => {
 app.get('/api/public/invoice/:token/pdf', portalLimiter, async (req, res) => {
   try {
     const { token } = req.params;
-    const docs = await executeQuery(`SELECT d.*, c.name AS customer_name, c.email AS customer_email, c.billing_address AS customer_billing_address, c.vat_number AS customer_vat_number, cur.symbol AS currency_symbol, cur.code AS currency_code FROM documents d JOIN customers c ON c.id = d.customer_id LEFT JOIN currencies cur ON cur.id = d.currency_id WHERE d.share_token = ? AND d.type = 'INVOICE' AND (d.share_token_expires_at IS NULL OR d.share_token_expires_at > NOW())`, [token]);
+    const docs = await queryDecrypted(decryptCustomerJoin, `SELECT d.*, c.name AS customer_name, c.email AS customer_email, c.billing_address AS customer_billing_address, c.vat_number AS customer_vat_number, cur.symbol AS currency_symbol, cur.code AS currency_code FROM documents d JOIN customers c ON c.id = d.customer_id LEFT JOIN currencies cur ON cur.id = d.currency_id WHERE d.share_token = ? AND d.type = 'INVOICE' AND (d.share_token_expires_at IS NULL OR d.share_token_expires_at > NOW())`, [hashToken(token)]);
     if (docs.length === 0) return res.status(404).json({ message: 'Invoice not found or link has expired' });
     const invoice = docs[0];
     const [items, users, logoRows] = await Promise.all([
       executeQuery('SELECT * FROM document_items WHERE document_id = ? ORDER BY id ASC', [invoice.id]),
-      executeQuery('SELECT * FROM users WHERE id = ?', [invoice.user_id]),
+      queryDecrypted(decryptUserRow, 'SELECT * FROM users WHERE id = ?', [invoice.user_id]),
       executeQuery("SELECT setting_value FROM settings WHERE user_id = ? AND setting_key = 'company_logo'", [invoice.user_id])
     ]);
     const logoRelPath = logoRows[0]?.setting_value || null;
     const user = { ...decryptUserRow(users[0]), logo_path: logoRelPath ? path.join(__dirname, logoRelPath) : null };
     const pay_url = await resolvePayUrl(invoice, user);
     const pdfBuffer = await buildInvoicePdf({ ...invoice, pay_url }, items, user);
-    await executeQuery(`INSERT INTO document_tracking (document_id, event_type, ip_address, user_agent) VALUES (?, 'DOWNLOADED', ?, ?)`, [invoice.id, req.ip || null, req.get('user-agent') || null]);
+    await executeQuery(`INSERT INTO document_tracking (document_id, event_type, ip_address, user_agent) VALUES (?, 'DOWNLOADED', ?, ?)`, [invoice.id, encTracking('ip_address', req.ip || null), encTracking('user_agent', req.get('user-agent') || null)]);
     res.set({ 'Content-Type': 'application/pdf', 'Content-Disposition': `attachment; filename="${invoice.document_number}.pdf"`, 'Content-Length': pdfBuffer.length });
     res.send(pdfBuffer);
   } catch (error) { logger.error('Error generating public invoice PDF:', error); res.status(500).json({ message: 'Failed to generate PDF' }); }
@@ -1800,9 +1847,9 @@ async function processRecurringInvoices() {
         if (source.auto_send && newDocId) {
           try {
             const [invoices, newItems, users, logoRows] = await Promise.all([
-              executeQuery(`SELECT d.*, c.name AS customer_name, c.email AS customer_email, c.billing_address AS customer_billing_address, c.vat_number AS customer_vat_number, cur.symbol AS currency_symbol, cur.code AS currency_code FROM documents d JOIN customers c ON c.id = d.customer_id LEFT JOIN currencies cur ON cur.id = d.currency_id WHERE d.id = ?`, [newDocId]),
+              queryDecrypted(decryptCustomerJoin, `SELECT d.*, c.name AS customer_name, c.email AS customer_email, c.billing_address AS customer_billing_address, c.vat_number AS customer_vat_number, cur.symbol AS currency_symbol, cur.code AS currency_code FROM documents d JOIN customers c ON c.id = d.customer_id LEFT JOIN currencies cur ON cur.id = d.currency_id WHERE d.id = ?`, [newDocId]),
               executeQuery('SELECT * FROM document_items WHERE document_id = ? ORDER BY id ASC', [newDocId]),
-              executeQuery('SELECT * FROM users WHERE id = ?', [source.user_id]),
+              queryDecrypted(decryptUserRow, 'SELECT * FROM users WHERE id = ?', [source.user_id]),
               executeQuery("SELECT setting_value FROM settings WHERE user_id = ? AND setting_key = 'company_logo'", [source.user_id])
             ]);
             const invoice = invoices[0];
@@ -1906,23 +1953,27 @@ app.get('/api/account/export', authenticateToken, exportLimiter, async (req, res
 
     const [user, settings, customers, products, documents, items, payments, tracking, emails, consents, requests] =
       await Promise.all([
-        executeQuery(
+        queryDecrypted(decryptUserRow,
           // google_id is the Google account identifier we hold about this
           // person, so a subject access request has to return it like any other
           // personal data. password_hash stays out — a credential, not data
           // about them.
+          //
+          // This has to come back DECRYPTED: the point of the export is to tell
+          // the person what we hold about them, and a page of base64 does not
+          // discharge that duty.
           `SELECT id, email, google_id, company_name, company_registration, vat_number, contact_person,
                   phone, address, bank_name, bank_account_number, bank_branch_code, bank_account_type,
                   email_verified, status, created_at, updated_at, closed_at, last_login_at,
                   terms_accepted_at, terms_version, privacy_accepted_at, privacy_policy_version
              FROM users WHERE id = ?`, [uid]),
         executeQuery('SELECT setting_key, setting_value, updated_at FROM settings WHERE user_id = ?', [uid]),
-        executeQuery('SELECT * FROM customers WHERE user_id = ?', [uid]),
+        queryDecrypted(decryptCustomerRow, 'SELECT * FROM customers WHERE user_id = ?', [uid]),
         executeQuery('SELECT * FROM products WHERE user_id = ?', [uid]),
         executeQuery('SELECT * FROM documents WHERE user_id = ?', [uid]),
         executeQuery('SELECT i.* FROM document_items i JOIN documents d ON d.id = i.document_id WHERE d.user_id = ?', [uid]),
-        executeQuery('SELECT p.* FROM payments p JOIN documents d ON d.id = p.document_id WHERE d.user_id = ?', [uid]),
-        executeQuery('SELECT t.* FROM document_tracking t JOIN documents d ON d.id = t.document_id WHERE d.user_id = ?', [uid]),
+        queryDecrypted(decryptPaymentRow, 'SELECT p.* FROM payments p JOIN documents d ON d.id = p.document_id WHERE d.user_id = ?', [uid]),
+        queryDecrypted(decryptTrackingRow, 'SELECT t.* FROM document_tracking t JOIN documents d ON d.id = t.document_id WHERE d.user_id = ?', [uid]),
         executeQuery('SELECT e.* FROM email_log e JOIN documents d ON d.id = e.document_id WHERE d.user_id = ?', [uid]),
         hasConsents
           ? executeQuery('SELECT channel, source, consented_at FROM marketing_consents WHERE user_id = ?', [uid])
@@ -2649,7 +2700,8 @@ async function recordInvoicePayment({
         `INSERT INTO payments (document_id, amount, payment_date, payment_method, transaction_reference,
                                notes, provider, provider_payment_id, status, fee_amount, net_amount, raw_payload)
          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-        [invoiceId, amount, paymentDate, method, reference, notes,
+        [invoiceId, amount, paymentDate, method,
+         encryptField('payments', 'transaction_reference', reference), notes,
          provider, providerPaymentId, status, feeAmount, netAmount, rawPayload]
       );
     } catch (err) {
@@ -2671,7 +2723,7 @@ async function recordInvoicePayment({
     await q(
       `INSERT INTO document_tracking (document_id, event_type, ip_address, user_agent)
        VALUES (?, 'PAID', ?, ?)`,
-      [invoiceId, ip, userAgent]
+      [invoiceId, encTracking('ip_address', ip), encTracking('user_agent', userAgent)]
     );
     return { duplicate: false, statusChanged: update.affectedRows > 0 };
   });
@@ -2686,9 +2738,9 @@ async function recordInvoicePayment({
 async function sendPayfastFollowUps(invoice, posted, outcome) {
   const [items, users, logoRows, payments] = await Promise.all([
     executeQuery('SELECT * FROM document_items WHERE document_id = ? ORDER BY id ASC', [invoice.id]),
-    executeQuery('SELECT * FROM users WHERE id = ?', [invoice.user_id]),
+    queryDecrypted(decryptUserRow, 'SELECT * FROM users WHERE id = ?', [invoice.user_id]),
     executeQuery("SELECT setting_value FROM settings WHERE user_id = ? AND setting_key = 'company_logo'", [invoice.user_id]),
-    executeQuery('SELECT * FROM payments WHERE document_id = ? ORDER BY payment_date DESC', [invoice.id]),
+    queryDecrypted(decryptPaymentRow, 'SELECT * FROM payments WHERE document_id = ? ORDER BY payment_date DESC', [invoice.id]),
   ]);
 
   const logoRelPath = logoRows[0] ? logoRows[0].setting_value : null;

@@ -269,9 +269,131 @@ test('null rows survive the mappers', (t) => {
 
 // ─── Registry shape ───────────────────────────────────────────────────────────
 
-test('the registry covers exactly the three PayFast columns for now', () => {
-  assert.deepStrictEqual(Object.keys(ef.REGISTRY), ['users']);
+test('the registry covers exactly the POPIA phase 6 scope', () => {
+  // Pinned so that adding a column without widening it in a migration, or
+  // without wiring its call sites, shows up as a failing test rather than as
+  // truncated ciphertext in production.
+  assert.deepStrictEqual(Object.keys(ef.REGISTRY).sort(),
+    ['customers', 'document_tracking', 'payments', 'users']);
+
   assert.deepStrictEqual([...ef.REGISTRY.users], [
     'payfast_merchant_id', 'payfast_merchant_key', 'payfast_passphrase',
+    'bank_account_number', 'bank_branch_code', 'bank_account_type',
+    'vat_number', 'company_registration', 'phone', 'address',
   ]);
+  assert.deepStrictEqual([...ef.REGISTRY.customers],
+    ['phone', 'vat_number', 'billing_address', 'shipping_address', 'notes']);
+  assert.deepStrictEqual([...ef.REGISTRY.document_tracking], ['ip_address', 'user_agent']);
+  assert.deepStrictEqual([...ef.REGISTRY.payments], ['transaction_reference']);
+});
+
+test('identifying columns stay OUT of the registry', () => {
+  // Encrypting any of these silently breaks customer search, ORDER BY name,
+  // pagination and the report endpoints, because random IVs make every row's
+  // ciphertext unique. This test is the guard rail on that decision.
+  assert.ok(!ef.REGISTRY.users.includes('email'));
+  assert.ok(!ef.REGISTRY.customers.includes('name'));
+  assert.ok(!ef.REGISTRY.customers.includes('email'));
+});
+
+// ─── Per-table mappers ────────────────────────────────────────────────────────
+
+test('decryptCustomerRow round-trips every registered customers column', (t) => {
+  withKeyring(t, `1:${KEY_1}`, '1');
+  const input = {
+    id: 3,
+    name: 'Acme Buyer',
+    email: 'buyer@example.com',
+    phone: '+27 82 000 0000',
+    vat_number: '4123456789',
+    billing_address: '1 Long Street, Cape Town',
+    shipping_address: '2 Short Street, Cape Town',
+    notes: 'Pays late.',
+  };
+  const stored = ef.encryptCustomerInput(input);
+
+  assert.ok(ef.isEnvelope(stored.phone));
+  assert.ok(ef.isEnvelope(stored.notes));
+  assert.strictEqual(stored.name, 'Acme Buyer', 'name must stay searchable');
+  assert.strictEqual(stored.email, 'buyer@example.com', 'email must stay searchable');
+  assert.deepStrictEqual(ef.decryptCustomerRow(stored), input);
+});
+
+test('decryptPaymentRow and decryptTrackingRow work on their own tables', (t) => {
+  withKeyring(t, `1:${KEY_1}`, '1');
+
+  const payment = ef.encryptRow('payments', { id: 1, amount: '100.00', transaction_reference: 'PF-12345' });
+  assert.ok(ef.isEnvelope(payment.transaction_reference));
+  assert.strictEqual(payment.amount, '100.00', 'money columns are never encrypted');
+  assert.strictEqual(ef.decryptPaymentRow(payment).transaction_reference, 'PF-12345');
+
+  const tracking = ef.encryptRow('document_tracking', {
+    event_type: 'VIEWED', ip_address: '102.65.1.1', user_agent: 'Mozilla/5.0',
+  });
+  assert.ok(ef.isEnvelope(tracking.ip_address));
+  assert.strictEqual(tracking.event_type, 'VIEWED');
+  const back = ef.decryptTrackingRow(tracking);
+  assert.strictEqual(back.ip_address, '102.65.1.1');
+  assert.strictEqual(back.user_agent, 'Mozilla/5.0');
+});
+
+// ─── Aliased joins ────────────────────────────────────────────────────────────
+
+test('decryptCustomerJoin handles the customer_ prefix', (t) => {
+  withKeyring(t, `1:${KEY_1}`, '1');
+  // What `c.billing_address AS customer_billing_address` produces.
+  const row = {
+    document_number: 'INV-1',
+    customer_name: 'Acme Buyer',
+    customer_billing_address: ef.encryptField('customers', 'billing_address', '1 Long Street'),
+    customer_vat_number: ef.encryptField('customers', 'vat_number', '4123456789'),
+  };
+  const out = ef.decryptCustomerJoin(row);
+  assert.strictEqual(out.customer_billing_address, '1 Long Street');
+  assert.strictEqual(out.customer_vat_number, '4123456789');
+  assert.strictEqual(out.customer_name, 'Acme Buyer');
+  assert.strictEqual(out.document_number, 'INV-1');
+});
+
+test('decryptInvoiceJoin handles seller and customer columns in one row', (t) => {
+  withKeyring(t, `1:${KEY_1}`, '1');
+  // The real shape: documents columns, the seller's users columns unaliased,
+  // and the customer's columns under customer_.
+  const row = {
+    id: 8,
+    total: '6999.99',
+    address: ef.encryptField('users', 'address', '10 Seller Road'),
+    bank_account_number: ef.encryptField('users', 'bank_account_number', '1234567890'),
+    phone: ef.encryptField('users', 'phone', '+27 21 000 0000'),
+    customer_billing_address: ef.encryptField('customers', 'billing_address', '1 Buyer Lane'),
+  };
+  const out = ef.decryptInvoiceJoin(row);
+  assert.strictEqual(out.address, '10 Seller Road');
+  assert.strictEqual(out.bank_account_number, '1234567890');
+  assert.strictEqual(out.phone, '+27 21 000 0000');
+  assert.strictEqual(out.customer_billing_address, '1 Buyer Lane');
+  assert.strictEqual(out.total, '6999.99');
+});
+
+test('a customers value decrypted as a users value fails loudly', (t) => {
+  withKeyring(t, `1:${KEY_1}`, '1');
+  // phone, vat_number and notes all exist on more than one table. Binding the
+  // table into the AAD is what turns "wrong mapper at a call site" from silent
+  // corruption into an exception.
+  const customerPhone = ef.encryptField('customers', 'phone', '+27 82 000 0000');
+  assert.throws(() => ef.decryptUserRow({ phone: customerPhone }));
+
+  const userPhone = ef.encryptField('users', 'phone', '+27 21 000 0000');
+  assert.throws(() => ef.decryptCustomerRow({ phone: userPhone }));
+});
+
+test('mappers are safe to compose and to apply twice', (t) => {
+  withKeyring(t, `1:${KEY_1}`, '1');
+  // Decrypted output contains no envelopes, so a second pass is a no-op. This
+  // is what makes it safe to be generous with mappers at call sites.
+  const row = { phone: ef.encryptField('users', 'phone', '+27 21 000 0000') };
+  const once = ef.decryptUserRow(row);
+  const twice = ef.decryptUserRow(once);
+  assert.deepStrictEqual(twice, once);
+  assert.strictEqual(twice.phone, '+27 21 000 0000');
 });

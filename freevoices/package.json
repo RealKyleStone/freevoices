@@ -14,6 +14,8 @@
     "doctor": "node scripts/doctor.js",
     "test:server": "node --test",
     "check:payfast": "node scripts/payfast-check.js",
+    "encrypt:backfill": "node scripts/encrypt-backfill.js",
+    "encrypt:verify": "node scripts/encrypt-backfill.js --verify",
     "seed:legal": "node scripts/seed-legal.js",
     "seed:legal:check": "node scripts/seed-legal.js --check",
     "migrate": "node scripts/migrate.js",

@@ -521,6 +521,84 @@ const MIGRATIONS = [
       return done.length ? `applied: ${done.join(', ')}` : 'already present';
     },
   },
+
+  {
+    id: '012_widen_for_encryption',
+    description: 'Widen the columns POPIA phase 6 encrypts, so an AES-GCM envelope fits where the plaintext used to',
+    async up(q) {
+      // An envelope is roughly 1.34 x plaintext BYTES + 44, so every column
+      // holding a value we are about to encrypt has to grow before the backfill
+      // runs. Skip this and MySQL truncates the ciphertext on write — the value
+      // is then unrecoverable, and outside strict mode it happens silently.
+      //
+      // These stay CHARACTER columns in latin1 on purpose. base64url plus the
+      // `fv1.<keyId>$` prefix is pure ASCII, so it is byte-identical in latin1
+      // and utf8mb4 and the charset stops mattering. VARBINARY would make
+      // mysql2 hand back Buffers, turning a missed decrypt into
+      // `{"type":"Buffer",...}` rather than a recognisable `fv1.1$...`.
+      //
+      // Do NOT convert them to CHARACTER SET ascii — that would destroy every
+      // accented character in the addresses already stored.
+      const TARGETS = [
+        // varchar(<=255) keeps InnoDB's one-byte length prefix, so these can be
+        // done in place without rebuilding the table or blocking writes.
+        ['users', 'bank_account_number', 'varchar(255)'],
+        ['users', 'bank_branch_code', 'varchar(255)'],
+        ['users', 'bank_account_type', 'varchar(255)'],
+        ['users', 'vat_number', 'varchar(255)'],
+        ['users', 'company_registration', 'varchar(255)'],
+        ['users', 'phone', 'varchar(255)'],
+        ['customers', 'phone', 'varchar(255)'],
+        ['customers', 'vat_number', 'varchar(255)'],
+        ['document_tracking', 'ip_address', 'varchar(255)'],
+        // Crossing 255 bytes moves the length prefix to two bytes, and
+        // TEXT -> MEDIUMTEXT changes the storage class. Both rebuild the table
+        // and reject an ALGORITHM=INPLACE hint, so they must not carry one.
+        ['payments', 'transaction_reference', 'varchar(512)'],
+        ['users', 'address', 'mediumtext'],
+        ['customers', 'billing_address', 'mediumtext'],
+        ['customers', 'shipping_address', 'mediumtext'],
+        ['customers', 'notes', 'mediumtext'],
+        // Widened and registered, but deliberately excluded from the backfill —
+        // see scripts/encrypt-backfill.js. No code reads this column, and on a
+        // mature database it is the largest in the schema.
+        ['document_tracking', 'user_agent', 'mediumtext'],
+      ];
+
+      const widened = [];
+      for (const [table, column, targetType] of TARGETS) {
+        const rows = await q(
+          `SELECT COLUMN_TYPE, IS_NULLABLE
+             FROM INFORMATION_SCHEMA.COLUMNS
+            WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ? AND COLUMN_NAME = ?`,
+          [table, column]
+        );
+        if (rows.length === 0) continue;                                  // not in this schema
+        if (rows[0].COLUMN_TYPE.toLowerCase() === targetType) continue;   // already widened
+
+        // Every one of these is nullable with no meaningful default today, and
+        // MODIFY silently drops whatever it does not restate. Rather than carry
+        // logic to rebuild a definition we do not have, refuse — a migration
+        // that stops is far cheaper than one that quietly makes a NOT NULL
+        // column nullable.
+        if (rows[0].IS_NULLABLE === 'NO') {
+          throw new Error(
+            `${table}.${column} is NOT NULL, which this migration was written assuming it is not. ` +
+            'Restate its full definition here before widening it.'
+          );
+        }
+
+        const inPlace = /^varchar\(\d+\)$/.test(targetType)
+          && parseInt(targetType.match(/\d+/)[0], 10) <= 255;
+        const hint = inPlace ? ', ALGORITHM=INPLACE, LOCK=NONE' : '';
+
+        await q(`ALTER TABLE ${table} MODIFY COLUMN ${column} ${targetType} NULL${hint}`);
+        widened.push(`${table}.${column}`);
+      }
+
+      return widened.length ? `widened: ${widened.join(', ')}` : 'already widened';
+    },
+  },
 ];
 
 // ─── Runner ───────────────────────────────────────────────────────────────────

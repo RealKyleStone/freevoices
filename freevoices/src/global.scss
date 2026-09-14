@@ -614,6 +614,11 @@ ion-item.item-label-stacked.ion-focused {
   outline: none;
 }
 
+
+ion-item.item-label-stacked {
+  overflow: visible;
+}
+
 ion-item ion-input:focus-within .input-wrapper,
 ion-item ion-textarea:focus-within .textarea-wrapper {
   outline: 2px solid var(--ion-color-primary);
