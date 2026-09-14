@@ -24,7 +24,7 @@ const config: CapacitorConfig = {
       //
       // Leave empty and the Android build still compiles; the button just
       // fails at runtime. res/values/strings.xml has the fallback copy.
-      clientId: '280963257389-mngl773qmk23mmq8irq0qsj3ph41th1q.apps.googleusercontent.com',
+      clientId: '280963257389-s87mhiv8a2bg8v52tchua06hds3psq93.apps.googleusercontent.com',
       scopes: ['profile', 'email'],
       // No offline access: there is no server-side Google API call to make on
       // the user's behalf, so a refresh token would be a credential held for

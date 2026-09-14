@@ -31,5 +31,5 @@ export const environment = {
   // match. The Android build sends this same value as the plugin's
   // serverClientId, which is why there is no separate Android entry here.
   // Empty disables the "Continue with Google" buttons entirely.
-  googleClientId: '280963257389-mngl773qmk23mmq8irq0qsj3ph41th1q.apps.googleusercontent.com',
+  googleClientId: '280963257389-s87mhiv8a2bg8v52tchua06hds3psq93.apps.googleusercontent.com',
 };

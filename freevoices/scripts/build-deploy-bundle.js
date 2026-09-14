@@ -28,21 +28,20 @@ const ROOT = path.join(__dirname, '..');
 const OUT = path.join(ROOT, 'deploy');
 const STAGE = path.join(OUT, 'bundle');
 
-// Modules server.js and src/services/* actually require. Keep in sync with
-// `node scripts/build-deploy-bundle.js --audit`.
-const RUNTIME_DEPS = [
-  'argon2', 'axios', 'body-parser', 'cors', 'dotenv', 'express',
-  'express-rate-limit', 'express-validator', 'helmet', 'multer', 'mysql2',
-  'node-cron', 'nodemailer', 'pdfkit', 'winston',
-];
+// The runtime dependency list is DERIVED from the staged files further down,
+// never hand-maintained. A hardcoded list silently went stale twice — once
+// missing retention.service.js, once missing google-auth-library — and each time
+// the result was a server that died at require time before any logger existed,
+// returning 500 for every route with nothing written to error.log.
 
 // [source, destination] — destination defaults to the same relative path.
 const INCLUDE = [
   'server.js',
-  'src/services/db.service.js',
-  'src/services/migrations.service.js',
-  'src/services/email.service.js',
-  'src/services/pdf.service.js',
+  // The whole directory, not a hand-maintained list of four files. Enumerating
+  // them meant that adding retention.service.js — required by server.js at line
+  // 11 — silently produced a bundle that threw MODULE_NOT_FOUND before winston
+  // was even constructed, taking the site down with no log line to explain it.
+  'src/services',
   'scripts/migrate.js',
   'scripts/seed-legal.js',
   'scripts/backup-db.js',
@@ -53,6 +52,9 @@ const INCLUDE = [
 ];
 
 function copyRecursive(src, dest) {
+  // src/services/ holds Node services next to an Angular .ts service. The .ts
+  // is compiled into www/ already, and the server never requires it.
+  if (src.endsWith('.ts')) return;
   const stat = fs.statSync(src);
   if (stat.isDirectory()) {
     fs.mkdirSync(dest, { recursive: true });
@@ -76,14 +78,6 @@ function dirSize(dir) {
 
 const appPkg = JSON.parse(fs.readFileSync(path.join(ROOT, 'package.json'), 'utf8'));
 
-// Fail loudly rather than shipping a bundle that cannot install.
-const undeclared = RUNTIME_DEPS.filter((d) => !appPkg.dependencies[d]);
-if (undeclared.length) {
-  console.error(`\nThese runtime modules are not in package.json dependencies: ${undeclared.join(', ')}`);
-  console.error('Run `npm install <name> --save` for each, then retry.\n');
-  process.exit(1);
-}
-
 if (!fs.existsSync(path.join(ROOT, 'www', 'index.html'))) {
   console.error('\nwww/index.html is missing. Run `npm run build` before building the bundle.\n');
   process.exit(1);
@@ -102,6 +96,53 @@ for (const rel of INCLUDE) {
   copyRecursive(src, path.join(STAGE, rel));
   console.log(`  include ${rel}`);
 }
+
+/** Every .js file in the staged bundle (www/ is browser output, not Node). */
+function walkJs(dir, found = []) {
+  for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+    const p = path.join(dir, entry.name);
+    if (entry.isDirectory()) {
+      if (entry.name !== 'www' && entry.name !== 'node_modules') walkJs(p, found);
+    } else if (entry.name.endsWith('.js')) {
+      found.push(p);
+    }
+  }
+  return found;
+}
+
+const STAGED_JS = walkJs(STAGE);
+const BUILTINS = new Set(require('module').builtinModules);
+
+/**
+ * Derive the runtime dependencies by reading the code that will actually ship.
+ *
+ * Never hardcode this. Node resolves a missing module by walking UP the
+ * directory tree, so on a dev machine `require('google-auth-library')` quietly
+ * finds freevoices/node_modules and everything looks fine — while the server,
+ * whose node_modules contains only what this package.json lists, dies at
+ * require time with MODULE_NOT_FOUND before winston is constructed. No log
+ * line, 500 on every route, including static files.
+ */
+const usedPackages = new Set();
+for (const file of STAGED_JS) {
+  const contents = fs.readFileSync(file, 'utf8');
+  for (const m of contents.matchAll(/require\(\s*['"]([^.'"][^'"]*)['"]\s*\)/g)) {
+    const spec = m[1];
+    const name = spec.startsWith('@') ? spec.split('/').slice(0, 2).join('/') : spec.split('/')[0];
+    if (!BUILTINS.has(name)) usedPackages.add(name);
+  }
+}
+
+const RUNTIME_DEPS = [...usedPackages].sort();
+const undeclared = RUNTIME_DEPS.filter((d) => !appPkg.dependencies[d]);
+if (undeclared.length) {
+  console.error(`\nThe shipped code requires modules that are not in package.json dependencies:`);
+  for (const d of undeclared) console.error(`  ${d}`);
+  console.error('\nRun `npm install <name> --save` for each, then rebuild. Shipping this');
+  console.error('would install a node_modules without them and crash the server on boot.\n');
+  process.exit(1);
+}
+console.log(`  derived ${RUNTIME_DEPS.length} runtime dependencies from the staged code`);
 
 const serverPkg = {
   name: 'freevoices-server',
@@ -128,7 +169,33 @@ const serverPkg = {
 };
 
 fs.writeFileSync(path.join(STAGE, 'package.json'), JSON.stringify(serverPkg, null, 2) + '\n', 'utf8');
-console.log('  write   package.json (trimmed to 15 runtime deps)');
+console.log('  write   package.json (trimmed to the derived runtime deps)');
+
+/**
+ * Resolve every RELATIVE require inside the staged bundle (the npm ones were
+ * validated above). A missing local file is a build failure, not an outage.
+ */
+const unresolved = [];
+for (const file of STAGED_JS) {
+  const contents = fs.readFileSync(file, 'utf8');
+  for (const m of contents.matchAll(/require\(\s*['"](\.[^'"]+)['"]\s*\)/g)) {
+    const spec = m[1];
+    const base = path.resolve(path.dirname(file), spec);
+    const candidates = [base, base + '.js', base + '.json', path.join(base, 'index.js')];
+    if (!candidates.some((c) => fs.existsSync(c) && fs.statSync(c).isFile())) {
+      unresolved.push(path.relative(STAGE, file).split(path.sep).join('/') + ' -> ' + spec);
+    }
+  }
+}
+
+if (unresolved.length) {
+  console.error('\nBundle is incomplete — ' + unresolved.length + ' relative require(s) do not resolve inside it:\n');
+  for (const u of unresolved) console.error('  ' + u);
+  console.error('\nAdd the missing path to INCLUDE. Shipping this would take the site down');
+  console.error('with MODULE_NOT_FOUND at require time, before any logger exists.\n');
+  process.exit(1);
+}
+console.log('  verified: every relative require resolves inside the bundle');
 
 // Passenger needs this to exist to trigger a restart via `touch tmp/restart.txt`.
 fs.mkdirSync(path.join(STAGE, 'tmp'), { recursive: true });

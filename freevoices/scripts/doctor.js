@@ -22,11 +22,46 @@ const path = require('path');
 const ROOT = path.join(__dirname, '..');
 const MIN_NODE_MAJOR = 18;
 
-const RUNTIME_MODULES = [
-  'argon2', 'axios', 'body-parser', 'cors', 'dotenv', 'express',
-  'express-rate-limit', 'express-validator', 'helmet', 'multer', 'mysql2',
-  'node-cron', 'nodemailer', 'pdfkit', 'winston',
-];
+/**
+ * Both module lists are READ FROM THE DEPLOYED CODE, never hardcoded.
+ *
+ * An earlier hardcoded list is exactly why this script once reported "Ready to
+ * serve" while the site returned 500 for every route: server.js had gained
+ * `require('google-auth-library')`, which was neither in the list here nor in
+ * the shipped package.json, so it was never installed. The server died at
+ * require time before winston existed — no log line — and doctor cheerfully
+ * checked fifteen other modules and declared everything fine.
+ *
+ * Deriving from the real files means doctor can only get more accurate as the
+ * code changes, never less.
+ */
+const SERVER_FILES = (() => {
+  const files = [path.join(ROOT, 'server.js')];
+  const servicesDir = path.join(ROOT, 'src', 'services');
+  if (fs.existsSync(servicesDir)) {
+    for (const f of fs.readdirSync(servicesDir)) {
+      if (f.endsWith('.js')) files.push(path.join(servicesDir, f));
+    }
+  }
+  return files.filter((f) => fs.existsSync(f));
+})();
+
+function requiresIn(file) {
+  const contents = fs.readFileSync(file, 'utf8');
+  const bare = [];
+  const relative = [];
+  for (const m of contents.matchAll(/require\(\s*['"]([^'"]+)['"]\s*\)/g)) {
+    const spec = m[1];
+    if (spec.startsWith('.')) relative.push(spec);
+    else bare.push(spec.startsWith('@') ? spec.split('/').slice(0, 2).join('/') : spec.split('/')[0]);
+  }
+  return { bare, relative };
+}
+
+const BUILTINS = new Set(require('module').builtinModules);
+const RUNTIME_MODULES = [...new Set(
+  SERVER_FILES.flatMap((f) => requiresIn(f).bare).filter((m) => !BUILTINS.has(m))
+)].sort();
 
 const REQUIRED_ENV = ['DB_HOST', 'DB_USER', 'DB_PASSWORD', 'DB_NAME', 'APP_URL'];
 const RECOMMENDED_ENV = [
@@ -115,11 +150,25 @@ const section = (t) => console.log(`\n${t}`);
   }
 
   section('Server files');
-  for (const rel of ['server.js', 'src/services/db.service.js', 'src/services/migrations.service.js',
-    'src/services/email.service.js', 'src/services/pdf.service.js', 'package.json']) {
+  for (const rel of ['server.js', 'package.json']) {
     if (fs.existsSync(path.join(ROOT, rel))) pass(rel);
     else fail(`${rel} is MISSING`);
   }
+  // Every local require must resolve. A missing service file kills the process
+  // at require time, which no amount of module or database checking would see.
+  let brokenLocal = 0;
+  for (const file of SERVER_FILES) {
+    for (const spec of requiresIn(file).relative) {
+      const base = path.resolve(path.dirname(file), spec);
+      const found = [base, base + '.js', base + '.json', path.join(base, 'index.js')]
+        .some((c) => fs.existsSync(c) && fs.statSync(c).isFile());
+      if (!found) {
+        brokenLocal++;
+        fail(`${path.relative(ROOT, file).split(path.sep).join('/')} requires ${spec} — NOT FOUND`);
+      }
+    }
+  }
+  if (brokenLocal === 0) pass(`all local requires resolve (${SERVER_FILES.length} server file(s) scanned)`);
 
   // 5 & 6. Database. Last, because it is the only check with a network cost,
   //        and pointless if the modules above did not load.

@@ -2106,21 +2106,59 @@ app.get('*', (req, res) => {
 // Start server
 const port = process.env.PORT || 3000;
 
-runMigrations()
-  .then(() => {
-    if (!fs.existsSync(path.join(WEB_ROOT, 'index.html'))) {
-      logger.error(`${path.join(WEB_ROOT, 'index.html')} is missing — run \`ng build\` before starting the server. API routes will work; the web app will 404.`);
+/**
+ * Transient connection faults, as opposed to a migration that genuinely failed.
+ *
+ * The distinction matters: refusing to start on a bad migration is correct, but
+ * refusing to start because one TCP connection was reset takes the whole site
+ * down until somebody notices and restarts it by hand. This host closes idle
+ * connections aggressively (wait_timeout = 60), so a blip at boot is likely.
+ */
+const TRANSIENT_DB_ERRORS = new Set([
+  'ECONNRESET', 'PROTOCOL_CONNECTION_LOST', 'ECONNREFUSED', 'ETIMEDOUT',
+  'EPIPE', 'EHOSTUNREACH', 'ENOTFOUND', 'ER_LOCK_WAIT_TIMEOUT', 'ER_CON_COUNT_ERROR',
+]);
+
+const BOOT_MAX_ATTEMPTS = parseInt(process.env.BOOT_DB_MAX_ATTEMPTS, 10) || 5;
+
+function startListening() {
+  if (!fs.existsSync(path.join(WEB_ROOT, 'index.html'))) {
+    logger.error(`${path.join(WEB_ROOT, 'index.html')} is missing — run \`ng build\` before starting the server. API routes will work; the web app will 404.`);
+  }
+  app.listen(port, () => {
+    logger.info(`Server is running on port ${port}`);
+  });
+}
+
+async function bootstrap(attempt = 1) {
+  try {
+    await runMigrations();
+    startListening();
+  } catch (err) {
+    const transient = TRANSIENT_DB_ERRORS.has(err.code);
+
+    if (transient && attempt < BOOT_MAX_ATTEMPTS) {
+      // Back off: 2s, 4s, 8s, 16s. The migration runner is idempotent and holds
+      // a lock, so retrying is safe.
+      const delayMs = 2000 * Math.pow(2, attempt - 1);
+      logger.warn('Database not ready during startup — retrying', {
+        attempt, of: BOOT_MAX_ATTEMPTS, code: err.code, retryInMs: delayMs,
+      });
+      setTimeout(() => bootstrap(attempt + 1), delayMs);
+      return;
     }
-    app.listen(port, () => {
-      logger.info(`Server is running on port ${port}`);
+
+    // Still fatal for a real migration failure: serving traffic against a
+    // half-migrated schema is how you get silently truncated columns and
+    // unrecoverable data loss.
+    logger.error('Migrations failed — refusing to start', {
+      attempts: attempt, code: err.code, message: err.message, stack: err.stack,
     });
-  })
-  .catch((err) => {
-    // Deliberately fatal. Serving traffic against a half-migrated schema is how
-    // you get silently truncated columns and unrecoverable data loss.
-    logger.error('Migrations failed — refusing to start', { message: err.message, stack: err.stack });
     process.exitCode = 1;
     closePool();
-  });
+  }
+}
+
+bootstrap();
 
 module.exports = app;

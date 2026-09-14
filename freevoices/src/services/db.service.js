@@ -99,15 +99,30 @@ function buildSslConfig() {
   return ssl;
 }
 
+const CONNECTION_LIMIT = parseInt(process.env.DB_CONNECTION_LIMIT, 10) || 10;
+
+/**
+ * 
+ * Setting maxIdle below connectionLimit switches the sweeper on, and a 30s
+ * idleTimeout retires connections well before the server's 60s cutoff.
+ */
+const IDLE_TIMEOUT_MS = parseInt(process.env.DB_IDLE_TIMEOUT_MS, 10) || 30000;
+const MAX_IDLE = parseInt(process.env.DB_MAX_IDLE, 10) || Math.max(1, Math.min(4, CONNECTION_LIMIT - 1));
+
 const dbConfig = {
   host: process.env.DB_HOST,
   user: process.env.DB_USER,
   password: process.env.DB_PASSWORD,
   database: process.env.DB_NAME,
-  connectionLimit: parseInt(process.env.DB_CONNECTION_LIMIT, 10),
-  queueLimit: parseInt(process.env.DB_QUEUE_LIMIT, 10),
-  enableKeepAlive: process.env.DB_ENABLE_KEEP_ALIVE === 'true',
-  keepAliveInitialDelay: parseInt(process.env.DB_KEEP_ALIVE_INITIAL_DELAY, 10),
+  connectionLimit: CONNECTION_LIMIT,
+  queueLimit: parseInt(process.env.DB_QUEUE_LIMIT, 10) || 0,
+  // Must stay < connectionLimit or the sweeper is never scheduled.
+  maxIdle: Math.min(MAX_IDLE, Math.max(1, CONNECTION_LIMIT - 1)),
+  idleTimeout: IDLE_TIMEOUT_MS,
+  enableKeepAlive: process.env.DB_ENABLE_KEEP_ALIVE !== 'false',
+  // TCP keepalive is not a substitute for the above: wait_timeout is MySQL's
+  // own application-level idle limit and keepalive probes do not reset it.
+  keepAliveInitialDelay: parseInt(process.env.DB_KEEP_ALIVE_INITIAL_DELAY, 10) || 10000,
   ssl: buildSslConfig(),
 };
 
