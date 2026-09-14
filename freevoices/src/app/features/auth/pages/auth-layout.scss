@@ -156,6 +156,15 @@ ion-content {
 
 .auth-field-error { margin: 4px 0 0; font-size: 0.75rem; color: var(--fv-danger-text); }
 
+/* Applied to the offending ion-input so a missing/invalid field is obvious
+   at a glance, not just via the error text below it. */
+.auth-field-input.auth-field-invalid {
+  --border-color: var(--fv-danger-text, #dc2626);
+  --border-width: 2px;
+  --border-style: solid;
+  --highlight-color-invalid: var(--fv-danger-text, #dc2626);
+}
+
 .auth-error-banner { background: var(--fv-danger-bg); color: var(--fv-danger-text); border-radius: 10px; padding: 10px 14px; font-size: 0.82rem; margin-bottom: 1rem; font-weight: 500; }
 
 .auth-submit-btn {

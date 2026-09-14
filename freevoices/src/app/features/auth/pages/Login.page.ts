@@ -215,9 +215,27 @@ export class LoginPage implements OnInit, AfterViewInit {
     return '';
   }
 
+  /**
+   * Focus and scroll to the first invalid control, in form order, so the
+   * user isn't left guessing which of several fields needs fixing.
+   */
+  private focusFirstInvalidField(form: FormGroup) {
+    const fieldName = Object.keys(form.controls).find(name => form.get(name)?.invalid);
+    if (!fieldName) return;
+    const el = document.querySelector(`[formcontrolname="${fieldName}"]`) as (HTMLElement & { setFocus?: () => Promise<void> }) | null;
+    if (!el) return;
+    el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    if (typeof el.setFocus === 'function') el.setFocus();
+    else el.focus();
+  }
+
   async validateAndSubmit(event: Event) {
     event.preventDefault();
-    if (!this.loginForm.valid) { this.loginForm.markAllAsTouched(); return; }
+    if (!this.loginForm.valid) {
+      this.loginForm.markAllAsTouched();
+      this.focusFirstInvalidField(this.loginForm);
+      return;
+    }
     this.isLoading = true;
     this.errorMessage = '';
     try {

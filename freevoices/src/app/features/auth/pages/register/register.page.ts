@@ -270,6 +270,22 @@ export class RegisterPage implements OnInit {
     return field ? (field.invalid && (field.dirty || field.touched || this.submitted)) : false;
   }
 
+  /**
+   * Focus and scroll to the first invalid control, in form order, so the
+   * user isn't left guessing which of the many fields on this page needs
+   * fixing.
+   */
+  private focusFirstInvalidField() {
+    const fieldName = Object.keys(this.registerForm.controls)
+      .find(name => this.registerForm.get(name)?.invalid);
+    if (!fieldName) return;
+    const el = document.querySelector(`[formcontrolname="${fieldName}"]`) as (HTMLElement & { setFocus?: () => Promise<void> }) | null;
+    if (!el) return;
+    el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    if (typeof el.setFocus === 'function') el.setFocus();
+    else el.focus();
+  }
+
   getFieldError(fieldName: string): string {
     const control = this.registerForm.get(fieldName);
     if (!control) return '';
@@ -289,6 +305,7 @@ export class RegisterPage implements OnInit {
     
     if (!this.registerForm.valid) {
       this.registerForm.markAllAsTouched();
+      this.focusFirstInvalidField();
       return;
     }
 

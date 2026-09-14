@@ -101,6 +101,8 @@ app.use(helmet({
     : { directives: cspDirectives, reportOnly: process.env.CSP_REPORT_ONLY === 'true' },
   // Would block reCAPTCHA and cross-origin images without buying anything here.
   crossOriginEmbedderPolicy: false,
+  // Helmet's default 'same-origin' cuts off window.postMessage - need this to allow the google sign in popup to work
+  crossOriginOpenerPolicy: { policy: 'same-origin-allow-popups' },
   hsts: IS_PRODUCTION ? { maxAge: 31536000, includeSubDomains: true, preload: false } : false,
   referrerPolicy: { policy: 'strict-origin-when-cross-origin' },
   // Match the CSP's frame-ancestors 'none' for pre-CSP browsers.

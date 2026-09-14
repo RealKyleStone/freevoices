@@ -19,7 +19,15 @@ export class AuthService {
   constructor(private dbService: DatabaseService) {
     const user = localStorage.getItem('currentUser');
     if (user) {
-      this.currentUserSubject.next(JSON.parse(user));
+      try {
+        this.currentUserSubject.next(JSON.parse(user));
+      } catch {
+        // Corrupt storage must not crash the app on boot and strand the user
+        // on a login screen they can never get past — drop the bad entry and
+        // fall through to a normal, unauthenticated startup instead.
+        localStorage.removeItem('currentUser');
+        localStorage.removeItem('token');
+      }
     }
   }
 

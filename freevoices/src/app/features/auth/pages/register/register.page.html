@@ -55,18 +55,18 @@
           <p class="auth-section-title">Account</p>
           <div class="auth-field-group">
             <label class="auth-field-label">Email</label>
-            <ion-input type="email" formControlName="email" placeholder="you@company.com" class="auth-field-input" fill="solid" [clearInput]="true"></ion-input>
+            <ion-input type="email" formControlName="email" placeholder="you@company.com" class="auth-field-input" [class.auth-field-invalid]="isFieldInvalid('email')" fill="solid" [clearInput]="true"></ion-input>
             <p class="auth-field-error" *ngIf="isFieldInvalid('email')">{{ getFieldError('email') }}</p>
           </div>
           <div class="auth-field-group">
             <label class="auth-field-label">Password</label>
-            <ion-input type="password" formControlName="password" placeholder="Min. 8 characters" class="auth-field-input" fill="solid"></ion-input>
+            <ion-input type="password" formControlName="password" placeholder="Min. 8 characters" class="auth-field-input" [class.auth-field-invalid]="isFieldInvalid('password')" fill="solid"></ion-input>
             <p class="auth-field-hint" *ngIf="!isFieldInvalid('password')">Uppercase, lowercase, a number, and a symbol</p>
             <p class="auth-field-error" *ngIf="isFieldInvalid('password')">{{ getPasswordErrorMessage() }}</p>
           </div>
           <div class="auth-field-group">
             <label class="auth-field-label">Confirm password</label>
-            <ion-input type="password" formControlName="confirmPassword" placeholder="Repeat your password" class="auth-field-input" fill="solid"></ion-input>
+            <ion-input type="password" formControlName="confirmPassword" placeholder="Repeat your password" class="auth-field-input" [class.auth-field-invalid]="isFieldInvalid('confirmPassword') || (registerForm.hasError('mismatch') && registerForm.get('confirmPassword')?.touched)" fill="solid"></ion-input>
             <p class="auth-field-error" *ngIf="registerForm.hasError('mismatch') && registerForm.get('confirmPassword')?.touched">Passwords do not match</p>
           </div>
 
@@ -74,7 +74,7 @@
           <p class="auth-section-title">Company</p>
           <div class="auth-field-group">
             <label class="auth-field-label">Company name</label>
-            <ion-input formControlName="company_name" placeholder="Your business name" class="auth-field-input" fill="solid"></ion-input>
+            <ion-input formControlName="company_name" placeholder="Your business name" class="auth-field-input" [class.auth-field-invalid]="isFieldInvalid('company_name')" fill="solid"></ion-input>
             <p class="auth-field-error" *ngIf="isFieldInvalid('company_name')">{{ getFieldError('company_name') }}</p>
           </div>
           <div class="auth-field-group">
@@ -90,18 +90,18 @@
           <p class="auth-section-title">Contact</p>
           <div class="auth-field-group">
             <label class="auth-field-label">Contact person</label>
-            <ion-input formControlName="contact_person" placeholder="Full name" class="auth-field-input" fill="solid"></ion-input>
+            <ion-input formControlName="contact_person" placeholder="Full name" class="auth-field-input" [class.auth-field-invalid]="isFieldInvalid('contact_person')" fill="solid"></ion-input>
             <p class="auth-field-error" *ngIf="isFieldInvalid('contact_person')">{{ getFieldError('contact_person') }}</p>
           </div>
           <div class="auth-field-group">
             <label class="auth-field-label">Phone</label>
-            <ion-input type="tel" formControlName="phone" placeholder="e.g. +27821234567" class="auth-field-input" fill="solid"></ion-input>
+            <ion-input type="tel" formControlName="phone" placeholder="e.g. +27821234567" class="auth-field-input" [class.auth-field-invalid]="isFieldInvalid('phone')" fill="solid"></ion-input>
             <p class="auth-field-hint" *ngIf="!isFieldInvalid('phone')">Include the country code, e.g. +27 for South Africa — no leading 0</p>
             <p class="auth-field-error" *ngIf="isFieldInvalid('phone')">Enter your number in international format, e.g. +27821234567</p>
           </div>
           <div class="auth-field-group">
             <label class="auth-field-label">Address</label>
-            <ion-input formControlName="address" placeholder="Business address" class="auth-field-input" fill="solid"></ion-input>
+            <ion-input formControlName="address" placeholder="Business address" class="auth-field-input" [class.auth-field-invalid]="isFieldInvalid('address')" fill="solid"></ion-input>
             <p class="auth-field-error" *ngIf="isFieldInvalid('address')">{{ getFieldError('address') }}</p>
           </div>
 
@@ -115,7 +115,7 @@
           </div>
           <div class="auth-field-group">
             <label class="auth-field-label">Account number</label>
-            <ion-input formControlName="bank_account_number" type="number" maxlength="12" placeholder="9–12 digits" class="auth-field-input" fill="solid"></ion-input>
+            <ion-input formControlName="bank_account_number" type="number" maxlength="12" placeholder="9–12 digits" class="auth-field-input" [class.auth-field-invalid]="isFieldInvalid('bank_account_number')" fill="solid"></ion-input>
             <p class="auth-field-error" *ngIf="isFieldInvalid('bank_account_number')">Please enter a valid account number (9–12 digits)</p>
           </div>
           <div class="auth-field-group">

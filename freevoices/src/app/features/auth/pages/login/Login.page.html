@@ -46,13 +46,13 @@
 
           <div class="auth-field-group">
             <label class="auth-field-label">Email</label>
-            <ion-input type="email" formControlName="email" placeholder="you@company.com" class="auth-field-input" fill="solid" [clearInput]="true"></ion-input>
+            <ion-input formControlName="email" type="email" placeholder="you@company.com" class="auth-field-input" [class.auth-field-invalid]="isFieldInvalid('email')" fill="solid" [clearInput]="true"></ion-input>
             <p class="auth-field-error" *ngIf="isFieldInvalid('email')">{{ getFieldError('email') }}</p>
           </div>
 
           <div class="auth-field-group">
             <label class="auth-field-label">Password</label>
-            <ion-input type="password" formControlName="password" placeholder="••••••••••••" class="auth-field-input" fill="solid"></ion-input>
+            <ion-input formControlName="password" type="password" placeholder="••••••••••••" class="auth-field-input" [class.auth-field-invalid]="isFieldInvalid('password')" fill="solid"></ion-input>
             <p class="auth-field-error" *ngIf="isFieldInvalid('password')">{{ getFieldError('password') }}</p>
           </div>
 
