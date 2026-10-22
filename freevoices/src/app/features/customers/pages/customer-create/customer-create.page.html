@@ -16,16 +16,16 @@
           <ion-card-title>Contact details</ion-card-title>
         </ion-card-header>
         <ion-card-content>
-          <ion-item [class.ion-invalid]="isInvalid('name')">
+          <ion-item [class.ion-invalid]="isInvalid('name')" [class.ion-touched]="isInvalid('name')">
             <ion-label position="stacked">Name <ion-text color="danger">*</ion-text></ion-label>
             <ion-input aria-label="Name" formControlName="name" type="text" autocomplete="name"></ion-input>
-            <ion-note slot="error">Name is required (min 2 characters)</ion-note>
           </ion-item>
-          <ion-item [class.ion-invalid]="isInvalid('email')">
+          <p class="field-error" *ngIf="isInvalid('name')">Name is required (min 2 characters)</p>
+          <ion-item [class.ion-invalid]="isInvalid('email')" [class.ion-touched]="isInvalid('email')">
             <ion-label position="stacked">Email <ion-text color="danger">*</ion-text></ion-label>
             <ion-input aria-label="Email" formControlName="email" type="email" autocomplete="email"></ion-input>
-            <ion-note slot="error">Valid email is required</ion-note>
           </ion-item>
+          <p class="field-error" *ngIf="isInvalid('email')">Valid email is required</p>
           <ion-item>
             <ion-label position="stacked">Phone</ion-label>
             <ion-input aria-label="Phone" formControlName="phone" type="tel" autocomplete="tel"></ion-input>
@@ -42,11 +42,11 @@
           <ion-card-title>Addresses</ion-card-title>
         </ion-card-header>
         <ion-card-content>
-          <ion-item [class.ion-invalid]="isInvalid('billing_address')">
+          <ion-item [class.ion-invalid]="isInvalid('billing_address')" [class.ion-touched]="isInvalid('billing_address')">
             <ion-label position="stacked">Billing address <ion-text color="danger">*</ion-text></ion-label>
             <ion-textarea aria-label="Billing address" formControlName="billing_address" rows="3" autocomplete="street-address"></ion-textarea>
-            <ion-note slot="error">Billing address is required</ion-note>
           </ion-item>
+          <p class="field-error" *ngIf="isInvalid('billing_address')">Billing address is required</p>
           <ion-item>
             <ion-label position="stacked">Shipping address</ion-label>
             <ion-textarea aria-label="Shipping address" formControlName="shipping_address" rows="3"></ion-textarea>

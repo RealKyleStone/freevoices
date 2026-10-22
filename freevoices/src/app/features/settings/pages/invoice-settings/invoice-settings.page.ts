@@ -4,7 +4,7 @@ import { ReactiveFormsModule, FormBuilder, FormGroup, Validators } from '@angula
 import {
   ToastController,
   IonButton, IonCard, IonCardContent, IonCardHeader, IonCardTitle, IonIcon, IonInput, IonItem,
-  IonLabel, IonNote, IonSelect, IonSelectOption, IonSpinner, IonTextarea,
+  IonLabel, IonSelect, IonSelectOption, IonSpinner, IonTextarea,
 } from '@ionic/angular/standalone';
 import { addIcons } from 'ionicons';
 import { documentTextOutline } from 'ionicons/icons';
@@ -20,7 +20,7 @@ import { Currency } from '../../../../../models/database.models';
   imports: [
     CommonModule, ReactiveFormsModule,
     IonButton, IonCard, IonCardContent, IonCardHeader, IonCardTitle, IonIcon, IonInput,
-    IonItem, IonLabel, IonNote, IonSelect, IonSelectOption, IonSpinner, IonTextarea,
+    IonItem, IonLabel, IonSelect, IonSelectOption, IonSpinner, IonTextarea,
   ]
 })
 export class InvoiceSettingsPage implements OnInit {
@@ -78,7 +78,13 @@ export class InvoiceSettingsPage implements OnInit {
 
   onSubmit() {
     this.submitted = true;
-    if (this.form.invalid) return;
+    if (this.form.invalid) {
+      // Saving used to do nothing visible here: the page stayed put with no
+      // message, which read as a silent failure.
+      this.form.markAllAsTouched();
+      this.showToast('Please correct the highlighted fields', 'warning');
+      return;
+    }
 
     this.isSaving = true;
     this.settingsService.updateInvoiceDefaults(this.form.value).subscribe({

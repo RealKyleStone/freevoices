@@ -5,7 +5,7 @@ import { Router } from '@angular/router';
 import {
   ToastController,
   IonBackButton, IonButton, IonButtons, IonCard, IonCardContent, IonCardHeader,
-  IonCardTitle, IonContent, IonHeader, IonInput, IonItem, IonLabel, IonNote,
+  IonCardTitle, IonContent, IonHeader, IonInput, IonItem, IonLabel,
   IonSpinner, IonText, IonTextarea, IonTitle, IonToolbar,
 } from '@ionic/angular/standalone';
 import { CustomerService } from '../../services/customer.service';
@@ -18,7 +18,7 @@ import { CustomerService } from '../../services/customer.service';
   imports: [
     CommonModule, ReactiveFormsModule,
     IonBackButton, IonButton, IonButtons, IonCard, IonCardContent, IonCardHeader,
-    IonCardTitle, IonContent, IonHeader, IonInput, IonItem, IonLabel, IonNote,
+    IonCardTitle, IonContent, IonHeader, IonInput, IonItem, IonLabel,
     IonSpinner, IonText, IonTextarea, IonTitle, IonToolbar,
   ]
 })
