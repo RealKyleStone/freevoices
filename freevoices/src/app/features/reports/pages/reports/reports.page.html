@@ -25,7 +25,7 @@
       <header class="page-head">
         <div class="page-head-text">
           <h1>Reports</h1>
-          <p>What the business has invoiced, been paid and owes in VAT.</p>
+          <p>What the business has been paid, and the VAT on what it has invoiced.</p>
         </div>
       </header>
 
@@ -34,12 +34,12 @@
         <div class="summary-chip">
           <span class="chip-label">Paid revenue</span>
           <span class="chip-value">R {{ totalPaidRevenue | number:'1.2-2' }}</span>
-          <span class="chip-note">Last 12 months</span>
+          <span class="chip-note">Payments received, last 12 months</span>
         </div>
         <div class="summary-chip">
-          <span class="chip-label">VAT collected</span>
+          <span class="chip-label">Output VAT invoiced</span>
           <span class="chip-value">R {{ totalVat | number:'1.2-2' }}</span>
-          <span class="chip-note">Year to date</span>
+          <span class="chip-note">Invoice basis, year to date</span>
         </div>
       </div>
 
@@ -53,7 +53,7 @@
         <section class="report report-wide">
           <div class="section-head">
             <h2 class="fv-section-label">Revenue by month</h2>
-            <p class="section-note">Paid invoices, last 12 months</p>
+            <p class="section-note">Payments received by month, including part payments</p>
           </div>
           <div class="panel panel-pad">
             <div class="chart-wrap">
@@ -77,11 +77,11 @@
         <section class="report">
           <div class="section-head">
             <h2 class="fv-section-label">Top customers</h2>
-            <p class="section-note">By paid revenue, all time</p>
+            <p class="section-note">By payments received, all time</p>
           </div>
           <div class="panel panel-pad">
             <p *ngIf="topCustomers.length === 0" class="empty-msg">
-              No paid invoices yet. Top customers will appear here once invoices are settled.
+              No payments recorded yet. Top customers will appear here once payments come in.
             </p>
             <div class="chart-wrap" *ngIf="topCustomers.length > 0">
               <canvas #customersCanvas></canvas>
@@ -92,7 +92,7 @@
         <section class="report report-wide">
           <div class="section-head">
             <h2 class="fv-section-label">VAT summary</h2>
-            <p class="section-note">Subtotal against VAT, current year, sent and paid</p>
+            <p class="section-note">Invoice basis: every issued invoice (sent, overdue or paid) by issue month, current year</p>
           </div>
           <div class="panel panel-pad">
             <p *ngIf="vatRows.length === 0" class="empty-msg">

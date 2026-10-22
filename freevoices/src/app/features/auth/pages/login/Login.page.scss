@@ -76,6 +76,24 @@
   -webkit-text-fill-color: #ffffff;
 }
 
+/*
+ * Chrome autofill paints its own background directly on ion-input's inner
+ * <input> (rendered by the web component, not Angular, so it never carries
+ * the _ngcontent attribute Angular scopes normal rules to — ::ng-deep is
+ * required to reach it). In dark mode that left a light autofill background
+ * under text still forced to white by -webkit-text-fill-color above,
+ * i.e. invisible white-on-white content. The inset box-shadow repaints
+ * that background to match the field.
+ */
+:host-context(.ion-palette-dark) ::ng-deep .auth-field-input input:-webkit-autofill,
+:host-context(.ion-palette-dark) ::ng-deep .auth-field-input input:-webkit-autofill:hover,
+:host-context(.ion-palette-dark) ::ng-deep .auth-field-input input:-webkit-autofill:focus {
+  -webkit-text-fill-color: #ffffff;
+  -webkit-box-shadow: 0 0 0 1000px #1e1e1e inset;
+  box-shadow: 0 0 0 1000px #1e1e1e inset;
+  caret-color: #ffffff;
+}
+
 /* "or" rule between the password form and the Google button. */
 .auth-divider {
   display: flex;

@@ -599,6 +599,65 @@ const MIGRATIONS = [
       return widened.length ? `widened: ${widened.join(', ')}` : 'already widened';
     },
   },
+
+  {
+    id: '013_quote_conversion_and_part_payments',
+    description: 'Link converted invoices to their quote, add the CONVERTED quote status, and PAYMENT/CONVERTED history events',
+    async up(q) {
+      const done = [];
+
+      // ── documents.source_quote_id ─────────────────────────────────────────
+      //
+      // Converting a quote used to leave no trace on the invoice, so the only
+      // guard against converting it twice was the user's memory. The link is
+      // what lets the convert route refuse a duplicate and the two detail
+      // pages point at each other.
+      if (!(await columnExists(q, 'documents', 'source_quote_id'))) {
+        await q('ALTER TABLE documents ADD COLUMN source_quote_id bigint(20) DEFAULT NULL');
+        done.push('documents.source_quote_id');
+      }
+      if (!(await indexExists(q, 'documents', 'idx_documents_source_quote'))) {
+        await q('ALTER TABLE documents ADD KEY idx_documents_source_quote (source_quote_id)');
+        done.push('idx_documents_source_quote');
+      }
+      // SET NULL rather than CASCADE: deleting a quote must never take an
+      // issued invoice with it.
+      if (await setForeignKeyDeleteRule(q, 'documents', 'source_quote_id', 'documents', 'id', 'SET NULL')) {
+        done.push('fk documents.source_quote_id');
+      }
+
+      // ── documents.status: CONVERTED ───────────────────────────────────────
+      //
+      // Conversion used to set the quote to SENT, which claimed it had been
+      // sent when nothing was. MODIFY drops whatever it does not restate, so
+      // NOT NULL and the default are spelled out again.
+      const status = await columnDefinition(q, 'documents', 'status');
+      if (!status) throw new Error('documents.status not found');
+      if (!status.COLUMN_TYPE.includes("'CONVERTED'")) {
+        await q(
+          `ALTER TABLE documents
+             MODIFY status enum('DRAFT','SENT','PAID','OVERDUE','CANCELLED','CONVERTED') NOT NULL DEFAULT 'DRAFT'`
+        );
+        done.push("documents.status +'CONVERTED'");
+      }
+
+      // ── document_tracking.event_type: PAYMENT, CONVERTED ──────────────────
+      //
+      // PAYMENT is a part payment that leaves a balance; PAID stays reserved
+      // for the payment that settles the invoice.
+      const event = await columnDefinition(q, 'document_tracking', 'event_type');
+      if (!event) throw new Error('document_tracking.event_type not found');
+      if (!event.COLUMN_TYPE.includes("'PAYMENT'") || !event.COLUMN_TYPE.includes("'CONVERTED'")) {
+        await q(
+          `ALTER TABLE document_tracking
+             MODIFY event_type enum('CREATED','SENT','VIEWED','DOWNLOADED','PAID','CANCELLED','OVERDUE','PAYMENT','CONVERTED') NOT NULL`
+        );
+        done.push("document_tracking.event_type +'PAYMENT','CONVERTED'");
+      }
+
+      return done.length ? `applied: ${done.join(', ')}` : 'already present';
+    },
+  },
 ];
 
 // ─── Runner ───────────────────────────────────────────────────────────────────

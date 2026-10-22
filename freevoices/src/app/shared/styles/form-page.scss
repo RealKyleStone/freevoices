@@ -86,6 +86,17 @@ ion-item {
   }
 }
 
+/* ion-item in Ionic 8 has no "error" slot, so a slotted ion-note is never
+   rendered. Field messages sit below the item as plain text instead. */
+.field-error,
+.field-hint {
+  margin: var(--fv-tight-gap) 0 0;
+  padding-inline-start: 4px;
+  font-size: var(--fv-text-xs);
+}
+.field-error { color: var(--fv-danger-text); }
+.field-hint  { color: var(--ion-color-medium); }
+
 /*
  * Focus is not set here. The ring has to be drawn on the wrapper element
  * Ionic creates at runtime, which carries no Angular scoping attribute, so a

@@ -19,6 +19,7 @@ import { InvoiceService, InvoiceDetail } from '../../services/invoice.service';
 import { environment } from '../../../../../environments/environment';
 import { BrowserNotificationService } from '../../../../core/services/browser-notification.service';
 import { LocalNotificationService } from '../../../../core/services/local-notification.service';
+import { todayLocalIso } from '../../../../shared/utils/document-math';
 
 @Component({
   selector: 'app-invoice-detail',
@@ -88,7 +89,7 @@ export class InvoiceDetailPage implements OnInit {
 
     this.paymentForm = this.fb.group({
       amount:                [null, [Validators.required, Validators.min(0.01)]],
-      payment_date:         [new Date().toISOString().split('T')[0], Validators.required],
+      payment_date:         [todayLocalIso(), Validators.required],
       payment_method:       ['BANK_TRANSFER', Validators.required],
       transaction_reference: [''],
       notes:                ['']
@@ -106,9 +107,12 @@ export class InvoiceDetailPage implements OnInit {
       next: (invoice) => {
         this.invoice = invoice;
         this.isLoading = false;
-        const paid = (invoice.payments || []).reduce((s, p) => s + +p.amount, 0);
-        const outstanding = +invoice.total - paid;
-        if (outstanding > 0) this.paymentForm.patchValue({ amount: outstanding.toFixed(2) });
+        // Default to, and cap at, what is still owed. The server rejects more
+        // than the balance; this says so before the round trip.
+        const balance = +invoice.balance_due;
+        const amount = this.paymentForm.get('amount')!;
+        amount.setValidators([Validators.required, Validators.min(0.01), Validators.max(balance)]);
+        amount.setValue(balance > 0 ? balance.toFixed(2) : null);
       },
       error: async () => {
         this.isLoading = false;
@@ -129,9 +133,17 @@ export class InvoiceDetailPage implements OnInit {
   getTrackingIcon(eventType: string): string {
     const map: Record<string, string> = {
       CREATED: 'document-outline', SENT: 'send-outline', VIEWED: 'eye-outline',
-      DOWNLOADED: 'download-outline', PAID: 'checkmark-circle-outline', CANCELLED: 'close-circle-outline'
+      DOWNLOADED: 'download-outline', PAID: 'checkmark-circle-outline', CANCELLED: 'close-circle-outline',
+      PAYMENT: 'cash-outline', OVERDUE: 'alarm-outline'
     };
     return map[eventType] ?? 'ellipse-outline';
+  }
+
+  getTrackingLabel(eventType: string): string {
+    const map: Record<string, string> = {
+      PAYMENT: 'Part payment received', PAID: 'Paid in full'
+    };
+    return map[eventType] ?? eventType.charAt(0) + eventType.slice(1).toLowerCase();
   }
 
   async confirmSend() {
@@ -276,14 +288,16 @@ export class InvoiceDetailPage implements OnInit {
     if (this.paymentForm.invalid) { this.paymentForm.markAllAsTouched(); return; }
     this.isSubmittingPayment = true;
     this.invoiceService.markPaid(this.invoiceId, this.paymentForm.value).subscribe({
-      next: async () => {
+      next: async (res) => {
         this.showPaymentForm = false;
-        const toast = await this.toastCtrl.create({ message: 'Payment recorded', duration: 2500, color: 'success', position: 'bottom' });
+        const toast = await this.toastCtrl.create({ message: res.message || 'Payment recorded', duration: 3000, color: 'success', position: 'bottom' });
         await toast.present();
         // Browser notification — fires when payment is recorded
         this.browserNotifications.notify(
-          'Invoice Paid',
-          `Invoice ${this.invoice?.document_number} has been marked as paid.`
+          res.settled ? 'Invoice Paid' : 'Payment Recorded',
+          res.settled
+            ? `Invoice ${this.invoice?.document_number} has been paid in full.`
+            : `Payment recorded on invoice ${this.invoice?.document_number}. ${this.currencySymbol} ${res.balance_due} still outstanding.`
         );
         this.loadInvoice();
         this.isSubmittingPayment = false;
@@ -296,11 +310,16 @@ export class InvoiceDetailPage implements OnInit {
     });
   }
 
-  get totalPaid(): number {
-    return (this.invoice?.payments || []).reduce((s, p) => s + +p.amount, 0);
+  get amountPaid(): number { return +(this.invoice?.amount_paid ?? 0); }
+  get balanceDue(): number { return +(this.invoice?.balance_due ?? 0); }
+
+  /** Some money in, some still owed. Shown alongside the status, not instead of it. */
+  get isPartlyPaid(): boolean {
+    return this.amountPaid > 0 && this.balanceDue > 0 && this.invoice?.status !== 'CANCELLED';
   }
 
-  get canEdit(): boolean { return this.invoice?.status === 'DRAFT'; }
+  // Once a payment is recorded the lines are evidence of what was billed.
+  get canEdit(): boolean { return this.invoice?.status === 'DRAFT' && (this.invoice?.payments || []).length === 0; }
   get canSend(): boolean { return ['DRAFT', 'SENT'].includes(this.invoice?.status ?? ''); }
   get canMarkPaid(): boolean { return !['PAID', 'CANCELLED'].includes(this.invoice?.status ?? ''); }
   get canCancel(): boolean { return !['PAID', 'CANCELLED'].includes(this.invoice?.status ?? ''); }

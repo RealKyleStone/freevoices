@@ -26,6 +26,33 @@
 
 .page-head { align-items: flex-start; }
 
+/* Status plus a qualifier ("Partly paid"), kept together at the end. */
+.page-head-badges {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: var(--fv-space-2, 6px);
+}
+
+/* "Created from quote QUO-…" / "Converted to invoice INV-…" */
+.source-link {
+  margin: calc(-1 * var(--fv-space-2, 6px)) 0 var(--fv-space-4, 16px);
+  font-size: var(--fv-text-sm, 0.875rem);
+  color: var(--fv-medium-text);
+
+  a { color: var(--fv-teal-text); font-weight: var(--fv-weight-semibold); text-decoration: none; }
+  a:hover { text-decoration: underline; }
+}
+
+.field-hint,
+.field-error {
+  margin: var(--fv-tight-gap, 4px) 0 0;
+  padding-inline-start: 4px;
+  font-size: var(--fv-text-xs);
+}
+.field-hint  { color: var(--fv-medium-text); }
+.field-error { color: var(--fv-danger-text); }
+
 .doc-status {
   display: inline-block;
   padding: 5px 12px;

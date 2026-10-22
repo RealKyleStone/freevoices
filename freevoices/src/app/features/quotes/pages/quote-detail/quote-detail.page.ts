@@ -61,7 +61,7 @@ export class QuoteDetailPage implements OnInit {
 
   getStatusColor(status: string): string {
     const map: Record<string, string> = {
-      DRAFT: 'medium', SENT: 'primary', ACCEPTED: 'success', EXPIRED: 'warning', CANCELLED: 'danger'
+      DRAFT: 'medium', SENT: 'primary', ACCEPTED: 'success', CONVERTED: 'success', EXPIRED: 'warning', OVERDUE: 'warning', CANCELLED: 'danger'
     };
     return map[status] ?? 'medium';
   }
@@ -69,9 +69,15 @@ export class QuoteDetailPage implements OnInit {
   getTrackingIcon(eventType: string): string {
     const map: Record<string, string> = {
       CREATED: 'document-outline', SENT: 'send-outline', VIEWED: 'eye-outline',
-      DOWNLOADED: 'download-outline', PAID: 'checkmark-circle-outline', CANCELLED: 'close-circle-outline'
+      DOWNLOADED: 'download-outline', PAID: 'checkmark-circle-outline', CANCELLED: 'close-circle-outline',
+      CONVERTED: 'document-text-outline'
     };
     return map[eventType] ?? 'ellipse-outline';
+  }
+
+  getTrackingLabel(eventType: string): string {
+    if (eventType === 'CONVERTED') return 'Converted to invoice';
+    return eventType.charAt(0) + eventType.slice(1).toLowerCase();
   }
 
   async confirmSend() {
@@ -133,7 +139,9 @@ export class QuoteDetailPage implements OnInit {
   async confirmConvert() {
     const alert = await this.alertCtrl.create({
       header: 'Convert to Invoice',
-      message: 'This will create a new DRAFT invoice from this quote. Continue?',
+      message: this.cancelledInvoices.length
+        ? `This will create a new DRAFT invoice from this quote. The earlier invoice ${this.cancelledInvoices.map(i => i.document_number).join(', ')} was cancelled. Continue?`
+        : 'This will create a new DRAFT invoice from this quote. Continue?',
       buttons: [
         { text: 'Cancel', role: 'cancel' },
         { text: 'Convert', handler: () => this.convertToInvoice() }
@@ -147,7 +155,7 @@ export class QuoteDetailPage implements OnInit {
     this.quoteService.convertToInvoice(this.quoteId).subscribe({
       next: async (res) => {
         this.isConverting = false;
-        const toast = await this.toastCtrl.create({ message: 'Invoice created from quote', duration: 2500, color: 'success', position: 'bottom' });
+        const toast = await this.toastCtrl.create({ message: res.message || 'Invoice created from quote', duration: 2500, color: 'success', position: 'bottom' });
         await toast.present();
         // Browser notification — fires when quote is converted to invoice
         this.browserNotifications.notify(
@@ -158,6 +166,15 @@ export class QuoteDetailPage implements OnInit {
       },
       error: async (err) => {
         this.isConverting = false;
+        // Already converted (another tab, or a retry after a dropped
+        // connection): take the user to the invoice that exists rather than
+        // making a second one.
+        if (err.status === 409 && err.error?.invoice_id) {
+          const toast = await this.toastCtrl.create({ message: err.error.message, duration: 3500, color: 'warning', position: 'bottom' });
+          await toast.present();
+          this.router.navigate(['/invoices', err.error.invoice_id]);
+          return;
+        }
         const toast = await this.toastCtrl.create({ message: err.error?.message || 'Failed to convert quote', duration: 3000, color: 'danger', position: 'bottom' });
         await toast.present();
       }
@@ -166,5 +183,14 @@ export class QuoteDetailPage implements OnInit {
 
   get canEdit(): boolean { return this.quote?.status === 'DRAFT'; }
   get canSend(): boolean { return ['DRAFT', 'SENT'].includes(this.quote?.status ?? ''); }
-  get canConvert(): boolean { return this.quote?.status !== 'CANCELLED'; }
+  /** The invoice this quote became, if it has not been cancelled. */
+  get activeInvoice() {
+    return (this.quote?.converted_invoices || []).find(i => i.status !== 'CANCELLED');
+  }
+  get cancelledInvoices() {
+    return (this.quote?.converted_invoices || []).filter(i => i.status === 'CANCELLED');
+  }
+  // One live invoice per quote; the server enforces the same rule.
+  get canConvert(): boolean { return this.quote?.status !== 'CANCELLED' && !this.activeInvoice; }
+  get currencySymbol(): string { return this.quote?.currency_symbol || 'R'; }
 }

@@ -75,6 +75,10 @@ export class InvoiceListPage implements OnInit {
     if (this.page < this.totalPages) { this.page++; this.loadInvoices(); }
   }
 
+  isPartlyPaid(invoice: { status: string; total: number; amount_paid: string }): boolean {
+    return invoice.status !== 'PAID' && invoice.status !== 'CANCELLED' && +invoice.amount_paid > 0;
+  }
+
   getStatusColor(status: string): string {
     const map: Record<string, string> = {
       DRAFT: 'medium', SENT: 'primary', PAID: 'success', OVERDUE: 'warning', CANCELLED: 'danger'

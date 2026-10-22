@@ -1,4 +1,5 @@
 const nodemailer = require('nodemailer');
+const { formatDisplayDate } = require('./document-math');
 
 class EmailService {
   constructor(config) {
@@ -123,7 +124,7 @@ class EmailService {
             <p style="color: #374151;">Hi ${invoice.customer_name},</p>
             <p style="color: #374151;">
               Please find attached invoice <strong>${invoice.document_number}</strong>
-              ${invoice.due_date ? `due on <strong>${new Date(invoice.due_date).toLocaleDateString('en-ZA', { day: '2-digit', month: 'long', year: 'numeric' })}</strong>` : ''}.
+              ${invoice.due_date ? `due on <strong>${formatDisplayDate(invoice.due_date, { day: '2-digit', month: 'long', year: 'numeric' })}</strong>` : ''}.
             </p>
             <table style="width: 100%; border-collapse: collapse; margin: 16px 0;">
               <tr style="background: #e5e7eb;">
@@ -137,7 +138,7 @@ class EmailService {
               ${invoice.due_date ? `
               <tr style="background: #e5e7eb;">
                 <td style="padding: 8px 12px; font-weight: bold; color: #374151;">Due Date</td>
-                <td style="padding: 8px 12px; color: #374151;">${new Date(invoice.due_date).toLocaleDateString('en-ZA', { day: '2-digit', month: 'long', year: 'numeric' })}</td>
+                <td style="padding: 8px 12px; color: #374151;">${formatDisplayDate(invoice.due_date, { day: '2-digit', month: 'long', year: 'numeric' })}</td>
               </tr>` : ''}
             </table>
             ${invoice.pay_url ? `

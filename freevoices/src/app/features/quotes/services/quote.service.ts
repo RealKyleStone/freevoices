@@ -30,6 +30,8 @@ export interface QuoteDetail extends Document {
   customer_vat_number: string;
   items: DocumentItem[];
   tracking: DocumentTracking[];
+  /** Invoices created from this quote, oldest first, including cancelled ones. */
+  converted_invoices: { id: number; document_number: string; status: string; created_at: string }[];
   currency_symbol?: string;
   currency_code?: string;
 }
@@ -79,7 +81,7 @@ export class QuoteService {
     return this.db.create<{ message: string }>(`quotes/${id}/send`, {});
   }
 
-  convertToInvoice(id: number): Observable<{ message: string; invoice_id: number }> {
-    return this.db.create<{ message: string; invoice_id: number }>(`quotes/${id}/convert-to-invoice`, {});
+  convertToInvoice(id: number): Observable<{ message: string; invoice_id: number; document_number: string }> {
+    return this.db.create<{ message: string; invoice_id: number; document_number: string }>(`quotes/${id}/convert-to-invoice`, {});
   }
 }

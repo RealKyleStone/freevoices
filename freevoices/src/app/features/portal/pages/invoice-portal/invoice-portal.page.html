@@ -79,6 +79,10 @@
       <div class="totals-row"><span>Subtotal</span><span>{{ currencySymbol }} {{ invoice.subtotal | number:'1.2-2' }}</span></div>
       <div class="totals-row"><span>VAT</span><span>{{ currencySymbol }} {{ invoice.vat_amount | number:'1.2-2' }}</span></div>
       <div class="totals-row total-row"><strong>Total</strong><strong>{{ currencySymbol }} {{ invoice.total | number:'1.2-2' }}</strong></div>
+      <ng-container *ngIf="+invoice.amount_paid > 0">
+        <div class="totals-row"><span>Paid</span><span>{{ currencySymbol }} {{ invoice.amount_paid | number:'1.2-2' }}</span></div>
+        <div class="totals-row total-row"><strong>Balance due</strong><strong>{{ currencySymbol }} {{ invoice.balance_due | number:'1.2-2' }}</strong></div>
+      </ng-container>
     </div>
 
     <!-- Notes / Terms -->
@@ -108,7 +112,7 @@
     <div class="portal-actions">
       <ion-button *ngIf="invoice.pay_url" expand="block" color="primary" (click)="payNow()">
         <ion-icon slot="start" name="card-outline"></ion-icon>
-        Pay {{ currencySymbol }} {{ invoice.total | number:'1.2-2' }} online
+        Pay {{ currencySymbol }} {{ invoice.balance_due | number:'1.2-2' }} online
       </ion-button>
       <ion-button expand="block" [fill]="invoice.pay_url ? 'outline' : 'solid'" (click)="downloadPdf()" [disabled]="isDownloading">
         <ion-spinner *ngIf="isDownloading" slot="start" name="crescent"></ion-spinner>

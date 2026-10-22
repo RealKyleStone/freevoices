@@ -1,6 +1,6 @@
-import { Component, OnInit } from '@angular/core';
+import { Component, HostListener, OnInit } from '@angular/core';
 import { CommonModule } from '@angular/common';
-import { ReactiveFormsModule, FormBuilder, FormGroup, FormArray, Validators } from '@angular/forms';
+import { ReactiveFormsModule, FormBuilder, FormGroup, FormArray, Validators, AbstractControl, ValidationErrors } from '@angular/forms';
 import { ActivatedRoute, Router } from '@angular/router';
 import {
   ToastController,
@@ -9,10 +9,20 @@ import {
   IonSelectOption, IonSpinner, IonText, IonTextarea, IonTitle, IonToolbar,
 } from '@ionic/angular/standalone';
 import { forkJoin } from 'rxjs';
+import { addIcons } from 'ionicons';
+import { trashOutline, addOutline } from 'ionicons/icons';
 import { InvoiceService } from '../../services/invoice.service';
 import { CustomerService } from '../../../customers/services/customer.service';
 import { ProductService } from '../../../products/services/product.service';
 import { Customer, Product } from '../../../../../models/database.models';
+import { lineTotals, roundCents, dueDateFromTerms } from '../../../../shared/utils/document-math';
+import { HasUnsavedChanges } from '../../../../shared/guards/unsaved-changes.guard';
+
+/** Mirrors the server rule: a due date cannot precede the issue date. */
+function dueNotBeforeIssue(ctrl: AbstractControl): ValidationErrors | null {
+  const issue = ctrl.parent?.get('issue_date')?.value;
+  return ctrl.value && issue && ctrl.value < issue ? { beforeIssue: true } : null;
+}
 
 @Component({
   selector: 'app-invoice-edit',
@@ -26,7 +36,7 @@ import { Customer, Product } from '../../../../../models/database.models';
     IonSelectOption, IonSpinner, IonText, IonTextarea, IonTitle, IonToolbar,
   ]
 })
-export class InvoiceEditPage implements OnInit {
+export class InvoiceEditPage implements OnInit, HasUnsavedChanges {
   form: FormGroup;
   customers: Customer[] = [];
   products: Product[] = [];
@@ -34,6 +44,10 @@ export class InvoiceEditPage implements OnInit {
   isFetching = true;
   submitted = false;
   invoiceId!: number;
+  currencySymbol = 'R';
+  private saved = false;
+  // See invoice-create: an untouched due date follows issue date + terms.
+  private autoDueDate = '';
 
   constructor(
     private fb: FormBuilder,
@@ -44,15 +58,42 @@ export class InvoiceEditPage implements OnInit {
     private productService: ProductService,
     private toastCtrl: ToastController
   ) {
+    addIcons({ trashOutline, addOutline });
     this.form = this.fb.group({
       customer_id:      [null, Validators.required],
       issue_date:       ['', Validators.required],
-      due_date:         [''],
+      due_date:         ['', dueNotBeforeIssue],
       payment_terms:    [30],
       notes:            [''],
       terms_conditions: [''],
       items:            this.fb.array([])
     });
+
+    this.form.get('issue_date')!.valueChanges.subscribe(() => this.syncDueDate());
+    this.form.get('payment_terms')!.valueChanges.subscribe(() => this.syncDueDate());
+  }
+
+  private syncDueDate() {
+    const ctrl = this.form.get('due_date')!;
+    if (!ctrl.value || ctrl.value === this.autoDueDate) {
+      this.autoDueDate = dueDateFromTerms(this.form.get('issue_date')!.value, this.form.get('payment_terms')!.value);
+      ctrl.setValue(this.autoDueDate, { emitEvent: false });
+    }
+    // Re-run the "not before the issue date" check against the new issue date.
+    ctrl.updateValueAndValidity({ emitEvent: false });
+  }
+
+  get dueDateIsAuto(): boolean {
+    return !!this.autoDueDate && this.form.get('due_date')!.value === this.autoDueDate;
+  }
+
+  hasUnsavedChanges(): boolean {
+    return this.form.dirty && !this.saved;
+  }
+
+  @HostListener('window:beforeunload', ['$event'])
+  onBeforeUnload(event: BeforeUnloadEvent) {
+    if (this.hasUnsavedChanges()) { event.preventDefault(); event.returnValue = ''; }
   }
 
   ngOnInit() {
@@ -69,18 +110,34 @@ export class InvoiceEditPage implements OnInit {
           this.router.navigate(['/invoices', this.invoiceId]);
           return;
         }
+        if ((invoice.payments || []).length > 0) {
+          this.showToast('This invoice has payments recorded and can no longer be edited', 'warning');
+          this.router.navigate(['/invoices', this.invoiceId]);
+          return;
+        }
 
         this.customers = customers.data;
         this.products  = products.data;
 
+        this.currencySymbol = invoice.currency_symbol || 'R';
+        // Dates arrive as 'YYYY-MM-DD'. They used to arrive as a UTC
+        // timestamp of local midnight ('2026-10-19T22:00:00Z' for the 20th),
+        // and this split then loaded the day before into the form.
         this.form.patchValue({
           customer_id:      invoice.customer_id,
-          issue_date:       invoice.issue_date?.toString().split('T')[0],
-          due_date:         invoice.due_date?.toString().split('T')[0] ?? '',
+          issue_date:       invoice.issue_date?.toString().slice(0, 10),
+          due_date:         invoice.due_date?.toString().slice(0, 10) ?? '',
           payment_terms:    invoice.payment_terms,
           notes:            invoice.notes,
           terms_conditions: invoice.terms_conditions
-        });
+        }, { emitEvent: false });
+        // A stored due date that matches the terms is treated as calculated,
+        // so changing the terms moves it.
+        const calculated = dueDateFromTerms(this.form.value.issue_date, invoice.payment_terms);
+        if (!this.form.value.due_date || this.form.value.due_date === calculated) {
+          this.autoDueDate = calculated;
+          this.form.get('due_date')!.setValue(calculated, { emitEvent: false });
+        }
 
         invoice.items.forEach(item => {
           this.items.push(this.fb.group({
@@ -88,7 +145,7 @@ export class InvoiceEditPage implements OnInit {
             description: [item.description, Validators.required],
             quantity:    [item.quantity,    [Validators.required, Validators.min(0.01)]],
             unit_price:  [item.unit_price,  [Validators.required, Validators.min(0)]],
-            vat_rate:    [item.vat_rate,    [Validators.required, Validators.min(0)]]
+            vat_rate:    [item.vat_rate,    [Validators.required, Validators.min(0), Validators.max(100)]]
           }));
         });
 
@@ -113,12 +170,13 @@ export class InvoiceEditPage implements OnInit {
       description: ['', Validators.required],
       quantity:    [1,  [Validators.required, Validators.min(0.01)]],
       unit_price:  [0,  [Validators.required, Validators.min(0)]],
-      vat_rate:    [15, [Validators.required, Validators.min(0)]]
+      vat_rate:    [15, [Validators.required, Validators.min(0), Validators.max(100)]]
     }));
+    this.form.markAsDirty();
   }
 
   removeItem(i: number) {
-    if (this.items.length > 1) this.items.removeAt(i);
+    if (this.items.length > 1) { this.items.removeAt(i); this.form.markAsDirty(); }
   }
 
   onProductChange(index: number) {
@@ -129,29 +187,21 @@ export class InvoiceEditPage implements OnInit {
     this.items.at(index).patchValue({ description: product.name, unit_price: product.price, vat_rate: 15 });
   }
 
-  itemSubtotal(i: number): number {
-    const v = this.items.at(i).value;
-    return (v.quantity || 0) * (v.unit_price || 0);
-  }
-
-  itemVat(i: number): number {
-    return this.itemSubtotal(i) * ((this.items.at(i).value.vat_rate || 0) / 100);
-  }
-
-  itemTotal(i: number): number {
-    return this.itemSubtotal(i) + this.itemVat(i);
-  }
+  // Rounded per line, half-up, exactly as the server stores them.
+  itemSubtotal(i: number): number { return lineTotals(this.items.at(i).value).subtotal; }
+  itemVat(i: number): number { return lineTotals(this.items.at(i).value).vat; }
+  itemTotal(i: number): number { return lineTotals(this.items.at(i).value).total; }
 
   get docSubtotal(): number {
-    return this.items.controls.reduce((sum, _, i) => sum + this.itemSubtotal(i), 0);
+    return roundCents(this.items.controls.reduce((sum, _, i) => sum + this.itemSubtotal(i), 0));
   }
 
   get docVat(): number {
-    return this.items.controls.reduce((sum, _, i) => sum + this.itemVat(i), 0);
+    return roundCents(this.items.controls.reduce((sum, _, i) => sum + this.itemVat(i), 0));
   }
 
   get docTotal(): number {
-    return this.docSubtotal + this.docVat;
+    return roundCents(this.docSubtotal + this.docVat);
   }
 
   isItemInvalid(index: number, field: string): boolean {
@@ -166,7 +216,13 @@ export class InvoiceEditPage implements OnInit {
 
   async onSubmit() {
     this.submitted = true;
-    if (this.form.invalid) { this.form.markAllAsTouched(); return; }
+    if (this.form.invalid) {
+      // Saving used to do nothing visible here: the page stayed put with no
+      // message, which read as a silent failure.
+      this.form.markAllAsTouched();
+      await this.showToast('Please correct the highlighted fields', 'warning');
+      return;
+    }
 
     this.isLoading = true;
     const { items, ...rest } = this.form.value;
@@ -183,6 +239,7 @@ export class InvoiceEditPage implements OnInit {
 
     this.invoiceService.updateInvoice(this.invoiceId, payload).subscribe({
       next: () => {
+        this.saved = true;
         this.router.navigate(['/invoices', this.invoiceId]);
       },
       error: async (err) => {

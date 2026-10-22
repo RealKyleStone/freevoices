@@ -10,6 +10,10 @@ const { logger, executeQuery, getConnection, withTransaction, closePool } = requ
 const { runMigrations, tableExists } = require('./src/services/migrations.service');
 const { anonymiseExpiredAccounts } = require('./src/services/retention.service');
 const {
+  computeDocumentTotals, todayIso, normaliseTerms, resolveDueDate, formatDisplayDate,
+  balanceDue, isSettled, SETTLED_TOLERANCE,
+} = require('./src/services/document-math');
+const {
   decryptUserRow, encryptField, isEncryptionConfigured, verifyCanary,
   decryptCustomerRow, decryptPaymentRow, decryptTrackingRow,
   decryptCustomerJoin, decryptAliasedRow, hashToken,
@@ -935,7 +939,7 @@ app.get('/api/invoices', authenticateToken, async (req, res) => {
   try {
     const search = req.query.search || '', status = req.query.status || '';
     const page = Math.max(1, parseInt(req.query.page) || 1), limit = Math.min(100, parseInt(req.query.limit) || 20), offset = (page - 1) * limit;
-    let sql = `SELECT d.id, d.document_number, d.status, d.issue_date, d.due_date, d.subtotal, d.vat_amount, d.total, d.created_at, d.notifications_muted, c.name AS customer_name FROM documents d JOIN customers c ON c.id = d.customer_id WHERE d.user_id = ? AND d.type = 'INVOICE'`;
+    let sql = `SELECT d.id, d.document_number, d.status, d.issue_date, d.due_date, d.subtotal, d.vat_amount, d.total, d.created_at, d.notifications_muted, c.name AS customer_name, (SELECT COALESCE(SUM(p.amount), 0) FROM payments p WHERE p.document_id = d.id) AS amount_paid FROM documents d JOIN customers c ON c.id = d.customer_id WHERE d.user_id = ? AND d.type = 'INVOICE'`;
     let cntSql = `SELECT COUNT(*) AS total FROM documents d JOIN customers c ON c.id = d.customer_id WHERE d.user_id = ? AND d.type = 'INVOICE'`;
     const params = [req.user.id], cntParams = [req.user.id];
     if (status) { sql += ' AND d.status = ?'; cntSql += ' AND d.status = ?'; params.push(status); cntParams.push(status); }
@@ -946,29 +950,42 @@ app.get('/api/invoices', authenticateToken, async (req, res) => {
   } catch (error) { logger.error('Error fetching invoices:', error); res.status(500).json({ message: 'Failed to fetch invoices' }); }
 });
 
-app.post('/api/invoices', authenticateToken, validate([
+// Shared by invoice and quote create/update.
+//
+// optional({ values: 'falsy' }) because '' is what an empty date or number
+// input submits. optional({ nullable: true }) only skips null/undefined, so a
+// blank due date used to fail as "Due date must be a valid date" while the
+// convert route, which never sends one, sailed through.
+const documentRules = [
   body('customer_id').isInt({ min: 1 }).withMessage('A valid customer is required'),
   body('issue_date').isDate().withMessage('A valid issue date is required'),
-  body('due_date').optional({ nullable: true }).isDate().withMessage('Due date must be a valid date'),
-  body('payment_terms').optional({ nullable: true }).isInt({ min: 0 }).withMessage('Payment terms must be a positive number'),
+  body('payment_terms').optional({ values: 'falsy' }).isInt({ min: 0 }).withMessage('Payment terms must be a positive number'),
   body('items').isArray({ min: 1 }).withMessage('At least one line item is required'),
   body('items.*.description').trim().notEmpty().withMessage('Each item must have a description'),
   body('items.*.quantity').isFloat({ min: 0.01 }).withMessage('Quantity must be greater than 0'),
   body('items.*.unit_price').isFloat({ min: 0 }).withMessage('Unit price must be a positive number'),
   body('items.*.vat_rate').isFloat({ min: 0, max: 100 }).withMessage('VAT rate must be between 0 and 100'),
-]), async (req, res) => {
+];
+const invoiceRules = [
+  ...documentRules,
+  body('due_date').optional({ values: 'falsy' }).isDate().withMessage('Due date must be a valid date')
+    .custom((value, { req }) => !req.body.issue_date || value >= req.body.issue_date)
+    .withMessage('Due date cannot be before the issue date'),
+];
+const quoteRules = [
+  ...documentRules,
+  body('valid_until').optional({ values: 'falsy' }).isDate().withMessage('Valid until must be a valid date'),
+];
+
+app.post('/api/invoices', authenticateToken, validate(invoiceRules), async (req, res) => {
   try {
-    const { customer_id, issue_date, due_date, payment_terms, notes, terms_conditions, items, currency_id: reqCurrencyId, is_recurring, recurrence_interval, recurrence_end_date, auto_send } = req.body;
+    const { customer_id, issue_date, due_date: reqDueDate, payment_terms: reqTerms, notes, terms_conditions, items, currency_id: reqCurrencyId, is_recurring, recurrence_interval, recurrence_end_date, auto_send } = req.body;
     if (!customer_id || !issue_date || !items || items.length === 0) return res.status(400).json({ message: 'Customer, issue date, and at least one line item are required' });
     const customers = await executeQuery('SELECT id FROM customers WHERE id = ? AND user_id = ? AND active = 1', [customer_id, req.user.id]);
     if (customers.length === 0) return res.status(400).json({ message: 'Invalid customer' });
-    let subtotal = 0, vat_amount = 0, total = 0;
-    const lineItems = items.map(item => {
-      const qty = parseFloat(item.quantity) || 0, price = parseFloat(item.unit_price) || 0, rate = parseFloat(item.vat_rate) ?? 15;
-      const itemSubtotal = qty * price, itemVat = itemSubtotal * rate / 100, itemTotal = itemSubtotal + itemVat;
-      subtotal += itemSubtotal; vat_amount += itemVat; total += itemTotal;
-      return { ...item, quantity: qty, unit_price: price, vat_rate: rate, subtotal: itemSubtotal, vat_amount: itemVat, total: itemTotal };
-    });
+    const { lines: lineItems, subtotal, vat_amount, total } = computeDocumentTotals(items);
+    const payment_terms = normaliseTerms(reqTerms);
+    const due_date = resolveDueDate(issue_date, reqDueDate, payment_terms);
     const document_number = await getNextDocumentNumber(req.user.id, 'INVOICE');
     let currency_id = 1;
     if (reqCurrencyId) { const currRows = await executeQuery('SELECT id FROM currencies WHERE id = ? AND is_active = 1', [reqCurrencyId]); if (currRows.length > 0) currency_id = reqCurrencyId; }
@@ -981,7 +998,7 @@ app.post('/api/invoices', authenticateToken, validate([
       const recurEndDate = recurringFlag && recurrence_end_date ? recurrence_end_date : null, autoSendFlag = recurringFlag && auto_send ? 1 : 0;
       const docResult = await new Promise((resolve, reject) => conn.query(
         `INSERT INTO documents (user_id, customer_id, type, document_number, currency_id, status, issue_date, due_date, payment_terms, subtotal, vat_amount, total, notes, terms_conditions, is_recurring, recurrence_interval, recurrence_next_date, recurrence_end_date, auto_send) VALUES (?, ?, 'INVOICE', ?, ?, 'DRAFT', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-        [req.user.id, customer_id, document_number, currency_id, issue_date, due_date || null, payment_terms || null, subtotal.toFixed(2), vat_amount.toFixed(2), total.toFixed(2), notes || null, terms_conditions || null, recurringFlag, recurInterval, recurNextDate, recurEndDate, autoSendFlag],
+        [req.user.id, customer_id, document_number, currency_id, issue_date, due_date, payment_terms, subtotal.toFixed(2), vat_amount.toFixed(2), total.toFixed(2), notes || null, terms_conditions || null, recurringFlag, recurInterval, recurNextDate, recurEndDate, autoSendFlag],
         (err, result) => err ? reject(err) : resolve(result)
       ));
       const docId = docResult.insertId;
@@ -1000,13 +1017,19 @@ app.get('/api/invoices/:id', authenticateToken, async (req, res) => {
   try {
     const { id } = req.params;
     const [invoices, items, tracking, payments] = await Promise.all([
-      queryDecrypted(decryptCustomerJoin, `SELECT d.*, d.notifications_muted, c.name AS customer_name, c.email AS customer_email, c.billing_address AS customer_billing_address, c.vat_number AS customer_vat_number, cur.symbol AS currency_symbol, cur.code AS currency_code FROM documents d JOIN customers c ON c.id = d.customer_id LEFT JOIN currencies cur ON cur.id = d.currency_id WHERE d.id = ? AND d.user_id = ? AND d.type = 'INVOICE'`, [id, req.user.id]),
+      queryDecrypted(decryptCustomerJoin, `SELECT d.*, d.notifications_muted, c.name AS customer_name, c.email AS customer_email, c.billing_address AS customer_billing_address, c.vat_number AS customer_vat_number, cur.symbol AS currency_symbol, cur.code AS currency_code, q.document_number AS source_quote_number FROM documents d JOIN customers c ON c.id = d.customer_id LEFT JOIN currencies cur ON cur.id = d.currency_id LEFT JOIN documents q ON q.id = d.source_quote_id AND q.user_id = d.user_id WHERE d.id = ? AND d.user_id = ? AND d.type = 'INVOICE'`, [id, req.user.id]),
       executeQuery('SELECT * FROM document_items WHERE document_id = ? ORDER BY id ASC', [id]),
       executeQuery('SELECT id, document_id, event_type, event_date FROM document_tracking WHERE document_id = ? ORDER BY event_date ASC', [id]),
       queryDecrypted(decryptPaymentRow, 'SELECT * FROM payments WHERE document_id = ? ORDER BY payment_date DESC', [id])
     ]);
     if (invoices.length === 0) return res.status(404).json({ message: 'Invoice not found' });
-    res.json({ ...invoices[0], notifications_muted: !!invoices[0].notifications_muted, items, tracking, payments });
+    // Computed here rather than in the client so every screen agrees on what
+    // is still owed.
+    const amount_paid = payments.reduce((s, p) => s + Number(p.amount), 0);
+    res.json({
+      ...invoices[0], notifications_muted: !!invoices[0].notifications_muted, items, tracking, payments,
+      amount_paid: amount_paid.toFixed(2), balance_due: balanceDue(invoices[0].total, amount_paid).toFixed(2),
+    });
   } catch (error) { logger.error('Error fetching invoice:', error); res.status(500).json({ message: 'Failed to fetch invoice' }); }
 });
 
@@ -1015,7 +1038,7 @@ app.get('/api/invoices/:id/pdf', authenticateToken, async (req, res) => {
     const { id } = req.params;
     const markSent = req.query.markSent === 'true';
     const [invoices, items, users, logoRows] = await Promise.all([
-      queryDecrypted(decryptCustomerJoin, `SELECT d.*, c.name AS customer_name, c.email AS customer_email, c.billing_address AS customer_billing_address, c.vat_number AS customer_vat_number, cur.symbol AS currency_symbol, cur.code AS currency_code FROM documents d JOIN customers c ON c.id = d.customer_id LEFT JOIN currencies cur ON cur.id = d.currency_id WHERE d.id = ? AND d.user_id = ? AND d.type = 'INVOICE'`, [id, req.user.id]),
+      queryDecrypted(decryptCustomerJoin, `SELECT d.*, (SELECT COALESCE(SUM(pp.amount), 0) FROM payments pp WHERE pp.document_id = d.id) AS amount_paid, c.name AS customer_name, c.email AS customer_email, c.billing_address AS customer_billing_address, c.vat_number AS customer_vat_number, cur.symbol AS currency_symbol, cur.code AS currency_code FROM documents d JOIN customers c ON c.id = d.customer_id LEFT JOIN currencies cur ON cur.id = d.currency_id WHERE d.id = ? AND d.user_id = ? AND d.type = 'INVOICE'`, [id, req.user.id]),
       executeQuery('SELECT * FROM document_items WHERE document_id = ? ORDER BY id ASC', [id]),
       queryDecrypted(decryptUserRow, 'SELECT * FROM users WHERE id = ?', [req.user.id]),
       executeQuery("SELECT setting_value FROM settings WHERE user_id = ? AND setting_key = 'company_logo'", [req.user.id])
@@ -1042,7 +1065,7 @@ app.get('/api/invoices/:id/receipt', authenticateToken, async (req, res) => {
   try {
     const { id } = req.params;
     const [invoices, items, users, logoRows, payments] = await Promise.all([
-      queryDecrypted(decryptCustomerJoin, `SELECT d.*, c.name AS customer_name, c.email AS customer_email, c.billing_address AS customer_billing_address, c.vat_number AS customer_vat_number, cur.symbol AS currency_symbol, cur.code AS currency_code FROM documents d JOIN customers c ON c.id = d.customer_id LEFT JOIN currencies cur ON cur.id = d.currency_id WHERE d.id = ? AND d.user_id = ? AND d.type = 'INVOICE'`, [id, req.user.id]),
+      queryDecrypted(decryptCustomerJoin, `SELECT d.*, (SELECT COALESCE(SUM(pp.amount), 0) FROM payments pp WHERE pp.document_id = d.id) AS amount_paid, c.name AS customer_name, c.email AS customer_email, c.billing_address AS customer_billing_address, c.vat_number AS customer_vat_number, cur.symbol AS currency_symbol, cur.code AS currency_code FROM documents d JOIN customers c ON c.id = d.customer_id LEFT JOIN currencies cur ON cur.id = d.currency_id WHERE d.id = ? AND d.user_id = ? AND d.type = 'INVOICE'`, [id, req.user.id]),
       executeQuery('SELECT * FROM document_items WHERE document_id = ? ORDER BY id ASC', [id]),
       queryDecrypted(decryptUserRow, 'SELECT * FROM users WHERE id = ?', [req.user.id]),
       executeQuery("SELECT setting_value FROM settings WHERE user_id = ? AND setting_key = 'company_logo'", [req.user.id]),
@@ -1062,7 +1085,7 @@ app.post('/api/invoices/:id/send-receipt', authenticateToken, async (req, res) =
   try {
     const { id } = req.params;
     const [invoices, items, users, logoRows, payments] = await Promise.all([
-      queryDecrypted(decryptCustomerJoin, `SELECT d.*, c.name AS customer_name, c.email AS customer_email, c.billing_address AS customer_billing_address, c.vat_number AS customer_vat_number, cur.symbol AS currency_symbol, cur.code AS currency_code FROM documents d JOIN customers c ON c.id = d.customer_id LEFT JOIN currencies cur ON cur.id = d.currency_id WHERE d.id = ? AND d.user_id = ? AND d.type = 'INVOICE'`, [id, req.user.id]),
+      queryDecrypted(decryptCustomerJoin, `SELECT d.*, (SELECT COALESCE(SUM(pp.amount), 0) FROM payments pp WHERE pp.document_id = d.id) AS amount_paid, c.name AS customer_name, c.email AS customer_email, c.billing_address AS customer_billing_address, c.vat_number AS customer_vat_number, cur.symbol AS currency_symbol, cur.code AS currency_code FROM documents d JOIN customers c ON c.id = d.customer_id LEFT JOIN currencies cur ON cur.id = d.currency_id WHERE d.id = ? AND d.user_id = ? AND d.type = 'INVOICE'`, [id, req.user.id]),
       executeQuery('SELECT * FROM document_items WHERE document_id = ? ORDER BY id ASC', [id]),
       queryDecrypted(decryptUserRow, 'SELECT * FROM users WHERE id = ?', [req.user.id]),
       executeQuery("SELECT setting_value FROM settings WHERE user_id = ? AND setting_key = 'company_logo'", [req.user.id]),
@@ -1083,33 +1106,22 @@ app.post('/api/invoices/:id/send-receipt', authenticateToken, async (req, res) =
   } catch (error) { logger.error('Error sending receipt:', error); res.status(500).json({ message: 'Failed to send receipt' }); }
 });
 
-app.put('/api/invoices/:id', authenticateToken, validate([
-  body('customer_id').isInt({ min: 1 }).withMessage('A valid customer is required'),
-  body('issue_date').isDate().withMessage('A valid issue date is required'),
-  body('due_date').optional({ nullable: true }).isDate().withMessage('Due date must be a valid date'),
-  body('payment_terms').optional({ nullable: true }).isInt({ min: 0 }).withMessage('Payment terms must be a positive number'),
-  body('items').isArray({ min: 1 }).withMessage('At least one line item is required'),
-  body('items.*.description').trim().notEmpty().withMessage('Each item must have a description'),
-  body('items.*.quantity').isFloat({ min: 0.01 }).withMessage('Quantity must be greater than 0'),
-  body('items.*.unit_price').isFloat({ min: 0 }).withMessage('Unit price must be a positive number'),
-  body('items.*.vat_rate').isFloat({ min: 0, max: 100 }).withMessage('VAT rate must be between 0 and 100'),
-]), async (req, res) => {
+app.put('/api/invoices/:id', authenticateToken, validate(invoiceRules), async (req, res) => {
   try {
     const { id } = req.params;
-    const { customer_id, issue_date, due_date, payment_terms, notes, terms_conditions, items, currency_id: reqCurrencyId, is_recurring, recurrence_interval, recurrence_end_date, auto_send } = req.body;
-    const existing = await executeQuery(`SELECT id, status, currency_id FROM documents WHERE id = ? AND user_id = ? AND type = 'INVOICE'`, [id, req.user.id]);
+    const { customer_id, issue_date, due_date: reqDueDate, payment_terms: reqTerms, notes, terms_conditions, items, currency_id: reqCurrencyId, is_recurring, recurrence_interval, recurrence_end_date, auto_send } = req.body;
+    const existing = await executeQuery(`SELECT id, status, currency_id, (SELECT COUNT(*) FROM payments p WHERE p.document_id = documents.id) AS payment_count FROM documents WHERE id = ? AND user_id = ? AND type = 'INVOICE'`, [id, req.user.id]);
     if (existing.length === 0) return res.status(404).json({ message: 'Invoice not found' });
     if (existing[0].status !== 'DRAFT') return res.status(400).json({ message: 'Only DRAFT invoices can be edited' });
+    // A payment is evidence the customer was billed these amounts. Letting the
+    // lines change underneath it could leave the total below what was paid.
+    if (Number(existing[0].payment_count) > 0) return res.status(400).json({ message: 'This invoice has payments recorded against it and can no longer be edited' });
     if (!customer_id || !issue_date || !items || items.length === 0) return res.status(400).json({ message: 'Customer, issue date, and at least one line item are required' });
     const customers = await executeQuery('SELECT id FROM customers WHERE id = ? AND user_id = ? AND active = 1', [customer_id, req.user.id]);
     if (customers.length === 0) return res.status(400).json({ message: 'Invalid customer' });
-    let subtotal = 0, vat_amount = 0, total = 0;
-    const lineItems = items.map(item => {
-      const qty = parseFloat(item.quantity) || 0, price = parseFloat(item.unit_price) || 0, rate = parseFloat(item.vat_rate) ?? 15;
-      const itemSubtotal = qty * price, itemVat = itemSubtotal * rate / 100, itemTotal = itemSubtotal + itemVat;
-      subtotal += itemSubtotal; vat_amount += itemVat; total += itemTotal;
-      return { ...item, quantity: qty, unit_price: price, vat_rate: rate, subtotal: itemSubtotal, vat_amount: itemVat, total: itemTotal };
-    });
+    const { lines: lineItems, subtotal, vat_amount, total } = computeDocumentTotals(items);
+    const payment_terms = normaliseTerms(reqTerms);
+    const due_date = resolveDueDate(issue_date, reqDueDate, payment_terms);
     const conn = await getConnection();
     try {
       await new Promise((resolve, reject) => conn.beginTransaction(err => err ? reject(err) : resolve()));
@@ -1120,7 +1132,7 @@ app.put('/api/invoices/:id', authenticateToken, validate([
       const recurEndDate = recurringFlag && recurrence_end_date ? recurrence_end_date : null, autoSendFlag = recurringFlag && auto_send ? 1 : 0;
       await new Promise((resolve, reject) => conn.query(
         `UPDATE documents SET customer_id=?, issue_date=?, due_date=?, payment_terms=?, currency_id=?, subtotal=?, vat_amount=?, total=?, notes=?, terms_conditions=?, is_recurring=?, recurrence_interval=?, recurrence_next_date=?, recurrence_end_date=?, auto_send=?, updated_at=NOW() WHERE id=? AND user_id=?`,
-        [customer_id, issue_date, due_date || null, payment_terms || null, newCurrencyId, subtotal.toFixed(2), vat_amount.toFixed(2), total.toFixed(2), notes || null, terms_conditions || null, recurringFlag, recurInterval, recurNextDate, recurEndDate, autoSendFlag, id, req.user.id],
+        [customer_id, issue_date, due_date, payment_terms, newCurrencyId, subtotal.toFixed(2), vat_amount.toFixed(2), total.toFixed(2), notes || null, terms_conditions || null, recurringFlag, recurInterval, recurNextDate, recurEndDate, autoSendFlag, id, req.user.id],
         (err, r) => err ? reject(err) : resolve(r)
       ));
       await new Promise((resolve, reject) => conn.query('DELETE FROM document_items WHERE document_id = ?', [id], (err, r) => err ? reject(err) : resolve(r)));
@@ -1138,7 +1150,7 @@ app.post('/api/invoices/:id/send', authenticateToken, async (req, res) => {
   try {
     const { id } = req.params;
     const [invoices, items, users, logoRows] = await Promise.all([
-      queryDecrypted(decryptCustomerJoin, `SELECT d.*, c.name AS customer_name, c.email AS customer_email, c.billing_address AS customer_billing_address, c.vat_number AS customer_vat_number, cur.symbol AS currency_symbol, cur.code AS currency_code FROM documents d JOIN customers c ON c.id = d.customer_id LEFT JOIN currencies cur ON cur.id = d.currency_id WHERE d.id = ? AND d.user_id = ? AND d.type = 'INVOICE'`, [id, req.user.id]),
+      queryDecrypted(decryptCustomerJoin, `SELECT d.*, (SELECT COALESCE(SUM(pp.amount), 0) FROM payments pp WHERE pp.document_id = d.id) AS amount_paid, c.name AS customer_name, c.email AS customer_email, c.billing_address AS customer_billing_address, c.vat_number AS customer_vat_number, cur.symbol AS currency_symbol, cur.code AS currency_code FROM documents d JOIN customers c ON c.id = d.customer_id LEFT JOIN currencies cur ON cur.id = d.currency_id WHERE d.id = ? AND d.user_id = ? AND d.type = 'INVOICE'`, [id, req.user.id]),
       executeQuery('SELECT * FROM document_items WHERE document_id = ? ORDER BY id ASC', [id]),
       queryDecrypted(decryptUserRow, 'SELECT * FROM users WHERE id = ?', [req.user.id]),
       executeQuery("SELECT setting_value FROM settings WHERE user_id = ? AND setting_key = 'company_logo'", [req.user.id])
@@ -1177,18 +1189,29 @@ app.post('/api/invoices/:id/mark-paid', authenticateToken, validate([
     const invoices = await executeQuery(`SELECT id, total, status FROM documents WHERE id = ? AND user_id = ? AND type = 'INVOICE'`, [id, req.user.id]);
     if (invoices.length === 0) return res.status(404).json({ message: 'Invoice not found' });
     if (invoices[0].status === 'CANCELLED') return res.status(400).json({ message: 'Cannot record payment on a cancelled invoice' });
+    if (invoices[0].status === 'PAID') return res.status(400).json({ message: 'This invoice is already paid in full' });
     // Ownership was established by the SELECT above, so the shared helper does
     // not re-check user_id. It runs all three writes in one transaction, which
     // this route previously did not.
-    await recordInvoicePayment({
+    const outcome = await recordInvoicePayment({
       invoiceId: id,
-      amount,
+      amount: Number(amount).toFixed(2),
       paymentDate: payment_date,
       method: payment_method,
       reference: transaction_reference || null,
       notes: notes || null,
+      // A manual entry is a typo until proven otherwise. PayFast cannot be
+      // refused — that money has already moved — so only this path rejects.
+      rejectOverpayment: true,
     });
-    res.status(201).json({ message: 'Payment recorded successfully' });
+    if (outcome.overpayment) {
+      return res.status(400).json({ message: `Amount exceeds the outstanding balance of ${Number(outcome.balanceBefore).toFixed(2)}`, balance_due: Number(outcome.balanceBefore).toFixed(2) });
+    }
+    res.status(201).json({
+      message: outcome.settled ? 'Payment recorded — invoice paid in full' : `Payment recorded — ${outcome.balanceAfter.toFixed(2)} still outstanding`,
+      settled: outcome.settled,
+      balance_due: outcome.balanceAfter.toFixed(2),
+    });
   } catch (error) { logger.error('Error recording payment:', error); res.status(500).json({ message: 'Failed to record payment' }); }
 });
 
@@ -1247,29 +1270,14 @@ app.get('/api/quotes', authenticateToken, async (req, res) => {
   } catch (error) { logger.error('Error fetching quotes:', error); res.status(500).json({ message: 'Failed to fetch quotes' }); }
 });
 
-app.post('/api/quotes', authenticateToken, validate([
-  body('customer_id').isInt({ min: 1 }).withMessage('A valid customer is required'),
-  body('issue_date').isDate().withMessage('A valid issue date is required'),
-  body('valid_until').optional({ nullable: true }).isDate().withMessage('Valid until must be a valid date'),
-  body('payment_terms').optional({ nullable: true }).isInt({ min: 0 }).withMessage('Payment terms must be a positive number'),
-  body('items').isArray({ min: 1 }).withMessage('At least one line item is required'),
-  body('items.*.description').trim().notEmpty().withMessage('Each item must have a description'),
-  body('items.*.quantity').isFloat({ min: 0.01 }).withMessage('Quantity must be greater than 0'),
-  body('items.*.unit_price').isFloat({ min: 0 }).withMessage('Unit price must be a positive number'),
-  body('items.*.vat_rate').isFloat({ min: 0, max: 100 }).withMessage('VAT rate must be between 0 and 100'),
-]), async (req, res) => {
+app.post('/api/quotes', authenticateToken, validate(quoteRules), async (req, res) => {
   try {
-    const { customer_id, issue_date, valid_until, payment_terms, notes, terms_conditions, items, currency_id: reqCurrencyId } = req.body;
+    const { customer_id, issue_date, valid_until, payment_terms: reqTerms, notes, terms_conditions, items, currency_id: reqCurrencyId } = req.body;
     if (!customer_id || !issue_date || !items || items.length === 0) return res.status(400).json({ message: 'Customer, issue date, and at least one line item are required' });
     const customers = await executeQuery('SELECT id FROM customers WHERE id = ? AND user_id = ? AND active = 1', [customer_id, req.user.id]);
     if (customers.length === 0) return res.status(400).json({ message: 'Invalid customer' });
-    let subtotal = 0, vat_amount = 0, total = 0;
-    const lineItems = items.map(item => {
-      const qty = parseFloat(item.quantity) || 0, price = parseFloat(item.unit_price) || 0, rate = parseFloat(item.vat_rate) ?? 15;
-      const itemSubtotal = qty * price, itemVat = itemSubtotal * rate / 100, itemTotal = itemSubtotal + itemVat;
-      subtotal += itemSubtotal; vat_amount += itemVat; total += itemTotal;
-      return { ...item, quantity: qty, unit_price: price, vat_rate: rate, subtotal: itemSubtotal, vat_amount: itemVat, total: itemTotal };
-    });
+    const { lines: lineItems, subtotal, vat_amount, total } = computeDocumentTotals(items);
+    const payment_terms = normaliseTerms(reqTerms);
     const document_number = await getNextDocumentNumber(req.user.id, 'QUOTE');
     let currency_id = 1;
     if (reqCurrencyId) { const currRows = await executeQuery('SELECT id FROM currencies WHERE id = ? AND is_active = 1', [reqCurrencyId]); if (currRows.length > 0) currency_id = reqCurrencyId; }
@@ -1279,7 +1287,7 @@ app.post('/api/quotes', authenticateToken, validate([
       await new Promise((resolve, reject) => conn.beginTransaction(err => err ? reject(err) : resolve()));
       const docResult = await new Promise((resolve, reject) => conn.query(
         `INSERT INTO documents (user_id, customer_id, type, document_number, currency_id, status, issue_date, valid_until, payment_terms, subtotal, vat_amount, total, notes, terms_conditions) VALUES (?, ?, 'QUOTE', ?, ?, 'DRAFT', ?, ?, ?, ?, ?, ?, ?, ?)`,
-        [req.user.id, customer_id, document_number, currency_id, issue_date, valid_until || null, payment_terms || null, subtotal.toFixed(2), vat_amount.toFixed(2), total.toFixed(2), notes || null, terms_conditions || null],
+        [req.user.id, customer_id, document_number, currency_id, issue_date, valid_until || null, payment_terms, subtotal.toFixed(2), vat_amount.toFixed(2), total.toFixed(2), notes || null, terms_conditions || null],
         (err, result) => err ? reject(err) : resolve(result)
       ));
       const docId = docResult.insertId;
@@ -1297,43 +1305,29 @@ app.post('/api/quotes', authenticateToken, validate([
 app.get('/api/quotes/:id', authenticateToken, async (req, res) => {
   try {
     const { id } = req.params;
-    const [quotes, items, tracking] = await Promise.all([
+    const [quotes, items, tracking, converted_invoices] = await Promise.all([
       queryDecrypted(decryptCustomerJoin, `SELECT d.*, c.name AS customer_name, c.email AS customer_email, c.billing_address AS customer_billing_address, c.vat_number AS customer_vat_number, cur.symbol AS currency_symbol, cur.code AS currency_code FROM documents d JOIN customers c ON c.id = d.customer_id LEFT JOIN currencies cur ON cur.id = d.currency_id WHERE d.id = ? AND d.user_id = ? AND d.type = 'QUOTE'`, [id, req.user.id]),
       executeQuery('SELECT * FROM document_items WHERE document_id = ? ORDER BY id ASC', [id]),
-      executeQuery('SELECT id, document_id, event_type, event_date FROM document_tracking WHERE document_id = ? ORDER BY event_date ASC', [id])
+      executeQuery('SELECT id, document_id, event_type, event_date FROM document_tracking WHERE document_id = ? ORDER BY event_date ASC', [id]),
+      executeQuery(`SELECT id, document_number, status, created_at FROM documents WHERE source_quote_id = ? AND user_id = ? AND type = 'INVOICE' ORDER BY id ASC`, [id, req.user.id])
     ]);
     if (quotes.length === 0) return res.status(404).json({ message: 'Quote not found' });
-    res.json({ ...quotes[0], items, tracking });
+    res.json({ ...quotes[0], items, tracking, converted_invoices });
   } catch (error) { logger.error('Error fetching quote:', error); res.status(500).json({ message: 'Failed to fetch quote' }); }
 });
 
-app.put('/api/quotes/:id', authenticateToken, validate([
-  body('customer_id').isInt({ min: 1 }).withMessage('A valid customer is required'),
-  body('issue_date').isDate().withMessage('A valid issue date is required'),
-  body('valid_until').optional({ nullable: true }).isDate().withMessage('Valid until must be a valid date'),
-  body('payment_terms').optional({ nullable: true }).isInt({ min: 0 }).withMessage('Payment terms must be a positive number'),
-  body('items').isArray({ min: 1 }).withMessage('At least one line item is required'),
-  body('items.*.description').trim().notEmpty().withMessage('Each item must have a description'),
-  body('items.*.quantity').isFloat({ min: 0.01 }).withMessage('Quantity must be greater than 0'),
-  body('items.*.unit_price').isFloat({ min: 0 }).withMessage('Unit price must be a positive number'),
-  body('items.*.vat_rate').isFloat({ min: 0, max: 100 }).withMessage('VAT rate must be between 0 and 100'),
-]), async (req, res) => {
+app.put('/api/quotes/:id', authenticateToken, validate(quoteRules), async (req, res) => {
   try {
     const { id } = req.params;
-    const { customer_id, issue_date, valid_until, payment_terms, notes, terms_conditions, items, currency_id: reqCurrencyId } = req.body;
+    const { customer_id, issue_date, valid_until, payment_terms: reqTerms, notes, terms_conditions, items, currency_id: reqCurrencyId } = req.body;
     const existing = await executeQuery(`SELECT id, status, currency_id FROM documents WHERE id = ? AND user_id = ? AND type = 'QUOTE'`, [id, req.user.id]);
     if (existing.length === 0) return res.status(404).json({ message: 'Quote not found' });
     if (existing[0].status !== 'DRAFT') return res.status(400).json({ message: 'Only DRAFT quotes can be edited' });
     if (!customer_id || !issue_date || !items || items.length === 0) return res.status(400).json({ message: 'Customer, issue date, and at least one line item are required' });
     const customers = await executeQuery('SELECT id FROM customers WHERE id = ? AND user_id = ? AND active = 1', [customer_id, req.user.id]);
     if (customers.length === 0) return res.status(400).json({ message: 'Invalid customer' });
-    let subtotal = 0, vat_amount = 0, total = 0;
-    const lineItems = items.map(item => {
-      const qty = parseFloat(item.quantity) || 0, price = parseFloat(item.unit_price) || 0, rate = parseFloat(item.vat_rate) ?? 15;
-      const itemSubtotal = qty * price, itemVat = itemSubtotal * rate / 100, itemTotal = itemSubtotal + itemVat;
-      subtotal += itemSubtotal; vat_amount += itemVat; total += itemTotal;
-      return { ...item, quantity: qty, unit_price: price, vat_rate: rate, subtotal: itemSubtotal, vat_amount: itemVat, total: itemTotal };
-    });
+    const { lines: lineItems, subtotal, vat_amount, total } = computeDocumentTotals(items);
+    const payment_terms = normaliseTerms(reqTerms);
     const conn = await getConnection();
     try {
       await new Promise((resolve, reject) => conn.beginTransaction(err => err ? reject(err) : resolve()));
@@ -1341,7 +1335,7 @@ app.put('/api/quotes/:id', authenticateToken, validate([
       if (reqCurrencyId) { const currRows = await executeQuery('SELECT id FROM currencies WHERE id = ? AND is_active = 1', [reqCurrencyId]); if (currRows.length > 0) newCurrencyId = reqCurrencyId; }
       await new Promise((resolve, reject) => conn.query(
         `UPDATE documents SET customer_id=?, issue_date=?, valid_until=?, payment_terms=?, currency_id=?, subtotal=?, vat_amount=?, total=?, notes=?, terms_conditions=?, updated_at=NOW() WHERE id=? AND user_id=?`,
-        [customer_id, issue_date, valid_until || null, payment_terms || null, newCurrencyId, subtotal.toFixed(2), vat_amount.toFixed(2), total.toFixed(2), notes || null, terms_conditions || null, id, req.user.id],
+        [customer_id, issue_date, valid_until || null, payment_terms, newCurrencyId, subtotal.toFixed(2), vat_amount.toFixed(2), total.toFixed(2), notes || null, terms_conditions || null, id, req.user.id],
         (err, r) => err ? reject(err) : resolve(r)
       ));
       await new Promise((resolve, reject) => conn.query('DELETE FROM document_items WHERE document_id = ?', [id], (err, r) => err ? reject(err) : resolve(r)));
@@ -1370,28 +1364,41 @@ app.post('/api/quotes/:id/send', authenticateToken, async (req, res) => {
 app.post('/api/quotes/:id/convert-to-invoice', authenticateToken, async (req, res) => {
   try {
     const { id } = req.params;
-    const quotes = await executeQuery(`SELECT d.*, c.id AS cust_id FROM documents d JOIN customers c ON c.id = d.customer_id WHERE d.id = ? AND d.user_id = ? AND d.type = 'QUOTE'`, [id, req.user.id]);
-    if (quotes.length === 0) return res.status(404).json({ message: 'Quote not found' });
-    if (quotes[0].status === 'CANCELLED') return res.status(400).json({ message: 'Cannot convert a cancelled quote' });
-    const quoteItems = await executeQuery('SELECT * FROM document_items WHERE document_id = ? ORDER BY id ASC', [id]);
-    const invoice_number = await getNextDocumentNumber(req.user.id, 'INVOICE');
-    const today = new Date().toISOString().split('T')[0];
-    const conn = await getConnection();
-    try {
-      await new Promise((resolve, reject) => conn.beginTransaction(err => err ? reject(err) : resolve()));
-      const docResult = await new Promise((resolve, reject) => conn.query(
-        `INSERT INTO documents (user_id, customer_id, type, document_number, currency_id, status, issue_date, payment_terms, subtotal, vat_amount, total, notes, terms_conditions) VALUES (?, ?, 'INVOICE', ?, ?, 'DRAFT', ?, ?, ?, ?, ?, ?, ?)`,
-        [req.user.id, quotes[0].customer_id, invoice_number, quotes[0].currency_id, today, quotes[0].payment_terms, quotes[0].subtotal, quotes[0].vat_amount, quotes[0].total, quotes[0].notes || null, quotes[0].terms_conditions || null],
-        (err, result) => err ? reject(err) : resolve(result)
-      ));
+    const outcome = await withTransaction(async (q) => {
+      // Locked so a double-click, or a retry after a dropped connection, waits
+      // for the first conversion to commit and then sees its invoice.
+      const quotes = await q(`SELECT * FROM documents WHERE id = ? AND user_id = ? AND type = 'QUOTE' FOR UPDATE`, [id, req.user.id]);
+      if (quotes.length === 0) return { status: 404, body: { message: 'Quote not found' } };
+      const quote = quotes[0];
+      if (quote.status === 'CANCELLED') return { status: 400, body: { message: 'Cannot convert a cancelled quote' } };
+
+      // One live invoice per quote. Converting again is allowed only once
+      // every earlier invoice from it has been cancelled.
+      const existing = await q(`SELECT id, document_number FROM documents WHERE source_quote_id = ? AND user_id = ? AND type = 'INVOICE' AND status <> 'CANCELLED' ORDER BY id ASC LIMIT 1`, [id, req.user.id]);
+      if (existing.length > 0) {
+        return { status: 409, body: { message: `This quote was already converted to invoice ${existing[0].document_number}`, invoice_id: existing[0].id, document_number: existing[0].document_number } };
+      }
+
+      const quoteItems = await q('SELECT * FROM document_items WHERE document_id = ? ORDER BY id ASC', [id]);
+      const invoice_number = await getNextDocumentNumber(req.user.id, 'INVOICE');
+      const issue_date = todayIso();
+      const due_date = resolveDueDate(issue_date, null, quote.payment_terms);
+      const docResult = await q(
+        `INSERT INTO documents (user_id, customer_id, type, document_number, currency_id, status, issue_date, due_date, payment_terms, subtotal, vat_amount, total, notes, terms_conditions, source_quote_id) VALUES (?, ?, 'INVOICE', ?, ?, 'DRAFT', ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        [req.user.id, quote.customer_id, invoice_number, quote.currency_id, issue_date, due_date, quote.payment_terms, quote.subtotal, quote.vat_amount, quote.total, quote.notes || null, quote.terms_conditions || null, quote.id]
+      );
       const invoiceId = docResult.insertId;
-      for (const item of quoteItems) { await new Promise((resolve, reject) => conn.query('INSERT INTO document_items (document_id, product_id, description, quantity, unit_price, vat_rate, vat_amount, subtotal, total) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)', [invoiceId, item.product_id || null, item.description, item.quantity, item.unit_price, item.vat_rate, item.vat_amount, item.subtotal, item.total], (err, r) => err ? reject(err) : resolve(r))); }
-      await new Promise((resolve, reject) => conn.query(`INSERT INTO document_tracking (document_id, event_type) VALUES (?, 'CREATED')`, [invoiceId], (err, r) => err ? reject(err) : resolve(r)));
-      await new Promise((resolve, reject) => conn.query(`UPDATE documents SET status = 'SENT', updated_at = NOW() WHERE id = ? AND status = 'DRAFT'`, [id], (err, r) => err ? reject(err) : resolve(r)));
-      await new Promise((resolve, reject) => conn.commit(err => err ? reject(err) : resolve()));
-      conn.release();
-      res.status(201).json({ message: 'Quote converted to invoice', invoice_id: invoiceId });
-    } catch (txError) { await new Promise(resolve => conn.rollback(resolve)); conn.release(); throw txError; }
+      for (const item of quoteItems) {
+        await q('INSERT INTO document_items (document_id, product_id, description, quantity, unit_price, vat_rate, vat_amount, subtotal, total) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)', [invoiceId, item.product_id || null, item.description, item.quantity, item.unit_price, item.vat_rate, item.vat_amount, item.subtotal, item.total]);
+      }
+      await q(`INSERT INTO document_tracking (document_id, event_type) VALUES (?, 'CREATED')`, [invoiceId]);
+      // CONVERTED, not SENT: conversion says nothing about whether the
+      // customer ever received the quote.
+      await q(`UPDATE documents SET status = 'CONVERTED', updated_at = NOW() WHERE id = ?`, [id]);
+      await q(`INSERT INTO document_tracking (document_id, event_type) VALUES (?, 'CONVERTED')`, [id]);
+      return { status: 201, body: { message: `Quote converted to invoice ${invoice_number}`, invoice_id: invoiceId, document_number: invoice_number } };
+    });
+    res.status(outcome.status).json(outcome.body);
   } catch (error) { logger.error('Error converting quote to invoice:', error); res.status(500).json({ message: 'Failed to convert quote to invoice' }); }
 });
 
@@ -1472,7 +1479,10 @@ app.get('/api/dashboard/summary', authenticateToken, async (req, res) => {
   try {
     const userId = req.user.id;
     const [revenueRows, customersRows, openRows, overdueRows, recentRows] = await Promise.all([
-      executeQuery(`SELECT COALESCE(SUM(total), 0) AS monthRevenue, COALESCE(SUM(CASE WHEN YEAR(issue_date) = YEAR(CURDATE()) THEN total ELSE 0 END), 0) AS yearRevenue FROM documents WHERE user_id = ? AND type = 'INVOICE' AND status = 'PAID' AND YEAR(issue_date) = YEAR(CURDATE()) AND MONTH(issue_date) = MONTH(CURDATE())`, [userId]),
+      // Money actually received this month, by payment date. Summing PAID
+      // invoice totals counted a R1,150 invoice as R1,150 of revenue after
+      // only R400 had come in, and ignored part payments entirely.
+      executeQuery(`SELECT COALESCE(SUM(p.amount), 0) AS monthRevenue FROM payments p JOIN documents d ON d.id = p.document_id WHERE d.user_id = ? AND d.type = 'INVOICE' AND p.payment_date >= DATE_FORMAT(CURDATE(), '%Y-%m-01') AND p.payment_date <= CURDATE()`, [userId]),
       executeQuery('SELECT COUNT(*) AS total FROM customers WHERE user_id = ? AND active = 1', [userId]),
       executeQuery(`SELECT COUNT(*) AS total FROM documents WHERE user_id = ? AND type = 'INVOICE' AND status = 'SENT'`, [userId]),
       executeQuery(`SELECT COUNT(*) AS total FROM documents WHERE user_id = ? AND type = 'INVOICE' AND status = 'OVERDUE' AND notifications_muted = 0`, [userId]),
@@ -1743,7 +1753,9 @@ app.put('/api/settings/notifications', authenticateToken, async (req, res) => {
 // ─── Reports ──────────────────────────────────────────────────────────────────
 
 app.get('/api/reports/revenue-by-month', authenticateToken, async (req, res) => {
-  try { res.json(await executeQuery(`SELECT DATE_FORMAT(issue_date, '%Y-%m') AS month, SUM(total) AS revenue FROM documents WHERE user_id = ? AND type = 'INVOICE' AND status = 'PAID' AND issue_date >= DATE_SUB(CURDATE(), INTERVAL 12 MONTH) GROUP BY DATE_FORMAT(issue_date, '%Y-%m') ORDER BY month ASC`, [req.user.id])); }
+  // Paid revenue reconciles to the payments table: each payment lands in the
+  // month it was received, whatever the state of its invoice.
+  try { res.json(await executeQuery(`SELECT DATE_FORMAT(p.payment_date, '%Y-%m') AS month, SUM(p.amount) AS revenue FROM payments p JOIN documents d ON d.id = p.document_id WHERE d.user_id = ? AND d.type = 'INVOICE' AND p.payment_date >= DATE_SUB(CURDATE(), INTERVAL 12 MONTH) GROUP BY DATE_FORMAT(p.payment_date, '%Y-%m') ORDER BY month ASC`, [req.user.id])); }
   catch (error) { logger.error('Error fetching revenue by month:', error); res.status(500).json({ message: 'Failed to fetch revenue report' }); }
 });
 
@@ -1753,12 +1765,15 @@ app.get('/api/reports/invoice-status', authenticateToken, async (req, res) => {
 });
 
 app.get('/api/reports/top-customers', authenticateToken, async (req, res) => {
-  try { res.json(await executeQuery(`SELECT c.name, SUM(d.total) AS revenue, COUNT(d.id) AS invoice_count FROM documents d JOIN customers c ON d.customer_id = c.id WHERE d.user_id = ? AND d.type = 'INVOICE' AND d.status = 'PAID' GROUP BY c.id, c.name ORDER BY revenue DESC LIMIT 5`, [req.user.id])); }
+  try { res.json(await executeQuery(`SELECT c.name, SUM(p.amount) AS revenue, COUNT(DISTINCT d.id) AS invoice_count FROM payments p JOIN documents d ON d.id = p.document_id JOIN customers c ON d.customer_id = c.id WHERE d.user_id = ? AND d.type = 'INVOICE' GROUP BY c.id, c.name ORDER BY revenue DESC LIMIT 5`, [req.user.id])); }
   catch (error) { logger.error('Error fetching top customers:', error); res.status(500).json({ message: 'Failed to fetch top customers report' }); }
 });
 
 app.get('/api/reports/vat-summary', authenticateToken, async (req, res) => {
-  try { res.json(await executeQuery(`SELECT DATE_FORMAT(issue_date, '%Y-%m') AS month, SUM(subtotal) AS subtotal, SUM(vat_amount) AS vat_amount, SUM(total) AS total FROM documents WHERE user_id = ? AND type = 'INVOICE' AND status IN ('SENT', 'PAID') AND YEAR(issue_date) = YEAR(CURDATE()) GROUP BY DATE_FORMAT(issue_date, '%Y-%m') ORDER BY month ASC`, [req.user.id])); }
+  // Invoice basis: VAT on every invoice issued in the month, paid or not —
+  // the default basis for a SARS VAT201. OVERDUE used to be left out, so an
+  // invoice dropped off the VAT figure the day it passed its due date.
+  try { res.json(await executeQuery(`SELECT DATE_FORMAT(issue_date, '%Y-%m') AS month, SUM(subtotal) AS subtotal, SUM(vat_amount) AS vat_amount, SUM(total) AS total FROM documents WHERE user_id = ? AND type = 'INVOICE' AND status IN ('SENT', 'OVERDUE', 'PAID') AND YEAR(issue_date) = YEAR(CURDATE()) GROUP BY DATE_FORMAT(issue_date, '%Y-%m') ORDER BY month ASC`, [req.user.id])); }
   catch (error) { logger.error('Error fetching VAT summary:', error); res.status(500).json({ message: 'Failed to fetch VAT summary report' }); }
 });
 
@@ -1771,6 +1786,7 @@ app.get('/api/public/invoice/:token', portalLimiter, async (req, res) => {
     if (docs.length === 0) return res.status(404).json({ message: 'Invoice not found or link has expired' });
     const items = await executeQuery('SELECT description, quantity, unit_price, vat_rate, vat_amount, subtotal, total FROM document_items WHERE document_id = ? ORDER BY id ASC', [docs[0].id]);
     const logoRows = await executeQuery("SELECT setting_value FROM settings WHERE user_id = (SELECT user_id FROM documents WHERE id = ?) AND setting_key = 'company_logo'", [docs[0].id]);
+    const [{ paid }] = await executeQuery('SELECT COALESCE(SUM(amount), 0) AS paid FROM payments WHERE document_id = ?', [docs[0].id]);
     await executeQuery(`INSERT INTO document_tracking (document_id, event_type, ip_address, user_agent) VALUES (?, 'VIEWED', ?, ?)`, [docs[0].id, encTracking('ip_address', req.ip || null), encTracking('user_agent', req.get('user-agent') || null)]);
     // The seller's PayFast credentials are only ever used to decide whether a
     // button can be shown; they are stripped before the row leaves the server.
@@ -1786,14 +1802,17 @@ app.get('/api/public/invoice/:token', portalLimiter, async (req, res) => {
     const {
       payfast_enabled, payfast_merchant_id, payfast_merchant_key, payfast_passphrase, ...publicFields
     } = seller;
-    res.json({ ...publicFields, pay_url, company_logo: logoRows[0]?.setting_value || null, items });
+    res.json({
+      ...publicFields, pay_url, company_logo: logoRows[0]?.setting_value || null, items,
+      amount_paid: Number(paid).toFixed(2), balance_due: balanceDue(seller.total, paid).toFixed(2),
+    });
   } catch (error) { logger.error('Error fetching public invoice:', error); res.status(500).json({ message: 'Failed to fetch invoice' }); }
 });
 
 app.get('/api/public/invoice/:token/pdf', portalLimiter, async (req, res) => {
   try {
     const { token } = req.params;
-    const docs = await queryDecrypted(decryptCustomerJoin, `SELECT d.*, c.name AS customer_name, c.email AS customer_email, c.billing_address AS customer_billing_address, c.vat_number AS customer_vat_number, cur.symbol AS currency_symbol, cur.code AS currency_code FROM documents d JOIN customers c ON c.id = d.customer_id LEFT JOIN currencies cur ON cur.id = d.currency_id WHERE d.share_token = ? AND d.type = 'INVOICE' AND (d.share_token_expires_at IS NULL OR d.share_token_expires_at > NOW())`, [hashToken(token)]);
+    const docs = await queryDecrypted(decryptCustomerJoin, `SELECT d.*, (SELECT COALESCE(SUM(pp.amount), 0) FROM payments pp WHERE pp.document_id = d.id) AS amount_paid, c.name AS customer_name, c.email AS customer_email, c.billing_address AS customer_billing_address, c.vat_number AS customer_vat_number, cur.symbol AS currency_symbol, cur.code AS currency_code FROM documents d JOIN customers c ON c.id = d.customer_id LEFT JOIN currencies cur ON cur.id = d.currency_id WHERE d.share_token = ? AND d.type = 'INVOICE' AND (d.share_token_expires_at IS NULL OR d.share_token_expires_at > NOW())`, [hashToken(token)]);
     if (docs.length === 0) return res.status(404).json({ message: 'Invoice not found or link has expired' });
     const invoice = docs[0];
     const [items, users, logoRows] = await Promise.all([
@@ -1821,12 +1840,13 @@ async function processRecurringInvoices() {
     for (const source of due) {
       try {
         const sourceItems = await executeQuery('SELECT * FROM document_items WHERE document_id = ? ORDER BY id ASC', [source.id]);
-        const today = new Date().toISOString().split('T')[0];
+        const today = todayIso();
         const document_number = await getNextDocumentNumber(source.user_id, 'INVOICE');
-        let due_date = null;
-        if (source.payment_terms) { const d = new Date(); d.setUTCDate(d.getUTCDate() + source.payment_terms); due_date = d.toISOString().split('T')[0]; }
+        const due_date = resolveDueDate(today, null, source.payment_terms);
+        // DATE columns arrive as 'YYYY-MM-DD' strings (see db.service), so
+        // these compare as strings.
         const nextDate = advanceDate(source.recurrence_next_date, source.recurrence_interval);
-        const endReached = source.recurrence_end_date && nextDate > source.recurrence_end_date.toISOString?.().split('T')[0] || (typeof source.recurrence_end_date === 'string' && nextDate > source.recurrence_end_date);
+        const endReached = !!source.recurrence_end_date && nextDate > source.recurrence_end_date;
         const conn = await getConnection();
         let newDocId;
         try {
@@ -1847,7 +1867,7 @@ async function processRecurringInvoices() {
         if (source.auto_send && newDocId) {
           try {
             const [invoices, newItems, users, logoRows] = await Promise.all([
-              queryDecrypted(decryptCustomerJoin, `SELECT d.*, c.name AS customer_name, c.email AS customer_email, c.billing_address AS customer_billing_address, c.vat_number AS customer_vat_number, cur.symbol AS currency_symbol, cur.code AS currency_code FROM documents d JOIN customers c ON c.id = d.customer_id LEFT JOIN currencies cur ON cur.id = d.currency_id WHERE d.id = ?`, [newDocId]),
+              queryDecrypted(decryptCustomerJoin, `SELECT d.*, (SELECT COALESCE(SUM(pp.amount), 0) FROM payments pp WHERE pp.document_id = d.id) AS amount_paid, c.name AS customer_name, c.email AS customer_email, c.billing_address AS customer_billing_address, c.vat_number AS customer_vat_number, cur.symbol AS currency_symbol, cur.code AS currency_code FROM documents d JOIN customers c ON c.id = d.customer_id LEFT JOIN currencies cur ON cur.id = d.currency_id WHERE d.id = ?`, [newDocId]),
               executeQuery('SELECT * FROM document_items WHERE document_id = ? ORDER BY id ASC', [newDocId]),
               queryDecrypted(decryptUserRow, 'SELECT * FROM users WHERE id = ?', [source.user_id]),
               executeQuery("SELECT setting_value FROM settings WHERE user_id = ? AND setting_key = 'company_logo'", [source.user_id])
@@ -2531,8 +2551,10 @@ app.get('/pay/:token', payLimiter, payPageCsp(true), async (req, res) => {
     const settled = await executeQuery(
       'SELECT COALESCE(SUM(amount), 0) AS paid FROM payments WHERE document_id = ?', [row.id]
     );
-    const alreadyPaid = row.status === 'PAID'
-      || Number(settled[0].paid) >= Number(row.total) - 0.005;
+    const alreadyPaid = row.status === 'PAID' || isSettled(row.total, settled[0].paid);
+    // What the buyer is asked for. A part payment already recorded comes off,
+    // or a customer who paid a deposit would be charged the full total again.
+    const balance = balanceDue(row.total, settled[0].paid);
 
     if (alreadyPaid) {
       return res.type('html').send(renderPayNotice({
@@ -2549,14 +2571,14 @@ app.get('/pay/:token', payLimiter, payPageCsp(true), async (req, res) => {
         seller,
       }));
     }
-    if (Number(row.total) < PAYFAST_MIN_AMOUNT) {
+    if (balance < PAYFAST_MIN_AMOUNT) {
       return res.type('html').send(renderPayNotice({
         nonce, title: 'Amount below minimum', heading: 'This amount is below the online payment minimum',
         message: `PayFast cannot process payments under ${formatMoney('R', PAYFAST_MIN_AMOUNT)}. You can still pay by bank transfer.`,
         seller,
       }));
     }
-    if (!isPayfastEligible({ invoice: { ...row, currency_code: currency }, user: row })) {
+    if (!isPayfastEligible({ invoice: { ...row, total: balance, currency_code: currency }, user: row })) {
       return res.type('html').send(renderPayNotice({
         nonce, title: 'Online payment unavailable', heading: 'Online payment is not available for this invoice',
         message: `${row.company_name || 'The sender'} has not switched on online card payments. You can pay by bank transfer instead.`,
@@ -2570,7 +2592,7 @@ app.get('/pay/:token', payLimiter, payPageCsp(true), async (req, res) => {
       notifyUrl: `${appBaseUrl()}/payfast/itn`,
     };
     const { action, fields } = buildPaymentForm({
-      invoice: row,
+      invoice: { ...row, total: balance },
       user: row,
       customer: { name: row.customer_name, email: row.customer_email },
       urls,
@@ -2583,7 +2605,7 @@ app.get('/pay/:token', payLimiter, payPageCsp(true), async (req, res) => {
     // sessions on the buyer's behalf, and lets the buyer see what they are
     // paying before they leave this domain.
     const dueRow = row.due_date
-      ? `<dt>Due</dt><dd>${escapeHtml(new Date(row.due_date).toLocaleDateString('en-ZA', { day: '2-digit', month: 'long', year: 'numeric' }))}</dd>`
+      ? `<dt>Due</dt><dd>${escapeHtml(formatDisplayDate(row.due_date, { day: '2-digit', month: 'long', year: 'numeric' }))}</dd>`
       : '';
 
     const body = `<div class="card">
@@ -2593,11 +2615,11 @@ app.get('/pay/:token', payLimiter, payPageCsp(true), async (req, res) => {
 <dt>Billed to</dt><dd>${escapeHtml(row.customer_name)}</dd>
 ${dueRow}
 </dl>
-<div class="total"><span class="label">Amount due</span><span class="amount">${escapeHtml(formatMoney(symbol, row.total))}</span></div>
+<div class="total"><span class="label">Amount due</span><span class="amount">${escapeHtml(formatMoney(symbol, balance))}</span></div>
 <form action="${escapeHtml(action)}" method="post">
 ${fields.map((f) => `<input type="hidden" name="${escapeHtml(f.name)}" value="${escapeHtml(f.value)}">`).join('\n')}
 <p class="note">You will be taken to PayFast to complete the payment securely.</p>
-<button type="submit">Pay ${escapeHtml(formatMoney(symbol, row.total))} with PayFast</button>
+<button type="submit">Pay ${escapeHtml(formatMoney(symbol, balance))} with PayFast</button>
 </form>
 </div>${renderBankBlock(seller)}`;
 
@@ -2687,14 +2709,30 @@ const itnLimiter = rateLimit({
  * the two cannot drift. The three writes used to run outside a transaction,
  * which meant a failure between them left a payment with no status change, or
  * a status change with no audit row.
+ *
+ * The invoice only becomes PAID once its payments cover the total. It used to
+ * flip to PAID on any payment at all, so R400 against R1,150 read as settled
+ * and the outstanding R750 vanished from every screen.
+ *
+ * Returns { duplicate, settled, cancelled, overpayment, balanceBefore, balanceAfter }.
  */
 async function recordInvoicePayment({
   invoiceId, amount, paymentDate, method, reference = null, notes = null,
   provider = null, providerPaymentId = null, status = null,
   feeAmount = null, netAmount = null, rawPayload = null,
-  ip = null, userAgent = null,
+  ip = null, userAgent = null, rejectOverpayment = false,
 }) {
   return withTransaction(async (q) => {
+    // Lock the invoice first, so two payments recorded at the same moment are
+    // checked against the balance one after the other, not both against the
+    // same stale figure.
+    const [invoice] = await q('SELECT total, status FROM documents WHERE id = ? FOR UPDATE', [invoiceId]);
+    const [{ paid: paidBefore }] = await q('SELECT COALESCE(SUM(amount), 0) AS paid FROM payments WHERE document_id = ?', [invoiceId]);
+    const balanceBefore = balanceDue(invoice.total, paidBefore);
+    if (rejectOverpayment && Number(amount) > balanceBefore + SETTLED_TOLERANCE) {
+      return { duplicate: false, settled: false, cancelled: false, overpayment: true, balanceBefore, balanceAfter: balanceBefore };
+    }
+
     try {
       await q(
         `INSERT INTO payments (document_id, amount, payment_date, payment_method, transaction_reference,
@@ -2709,23 +2747,27 @@ async function recordInvoicePayment({
       // pf_payment_id legitimately arrives more than once. Caught explicitly
       // rather than using INSERT IGNORE, which would also swallow truncation
       // and foreign-key errors — that is how a payment goes missing unnoticed.
-      if (err.code === 'ER_DUP_ENTRY') return { duplicate: true, statusChanged: false };
+      if (err.code === 'ER_DUP_ENTRY') return { duplicate: true, settled: false, cancelled: invoice.status === 'CANCELLED', overpayment: false, balanceBefore, balanceAfter: balanceBefore };
       throw err;
     }
 
+    const paidAfter = Number(paidBefore) + Number(amount);
+    const settled = isSettled(invoice.total, paidAfter);
+    const cancelled = invoice.status === 'CANCELLED';
+
     // A payment against a cancelled invoice must not resurrect it. The money
-    // is still recorded — see the caller, which alerts the seller.
-    const update = await q(
-      `UPDATE documents SET status = 'PAID', updated_at = NOW()
-        WHERE id = ? AND status <> 'CANCELLED'`,
-      [invoiceId]
-    );
+    // is still recorded — see the caller, which alerts the seller. A part
+    // payment leaves the status alone: SENT stays SENT and OVERDUE stays
+    // OVERDUE until the balance is cleared.
+    if (settled && !cancelled) {
+      await q(`UPDATE documents SET status = 'PAID', updated_at = NOW() WHERE id = ?`, [invoiceId]);
+    }
     await q(
       `INSERT INTO document_tracking (document_id, event_type, ip_address, user_agent)
-       VALUES (?, 'PAID', ?, ?)`,
-      [invoiceId, encTracking('ip_address', ip), encTracking('user_agent', userAgent)]
+       VALUES (?, ?, ?, ?)`,
+      [invoiceId, settled ? 'PAID' : 'PAYMENT', encTracking('ip_address', ip), encTracking('user_agent', userAgent)]
     );
-    return { duplicate: false, statusChanged: update.affectedRows > 0 };
+    return { duplicate: false, settled, cancelled, overpayment: false, balanceBefore, balanceAfter: balanceDue(invoice.total, paidAfter) };
   });
 }
 
@@ -2756,7 +2798,10 @@ async function sendPayfastFollowUps(invoice, posted, outcome) {
     [invoice.id]
   );
 
-  if (full.length && full[0].customer_email) {
+  // A receipt says "paid in full", so a part payment does not get one. The pay
+  // page charges the outstanding balance, so in practice only a race with a
+  // manually recorded payment lands here unsettled.
+  if (outcome.settled && full.length && full[0].customer_email) {
     const pdf = await buildReceiptPdf(full[0], items, user, payments);
     await emailService.sendReceiptEmail(
       full[0].customer_email,
@@ -2768,11 +2813,13 @@ async function sendPayfastFollowUps(invoice, posted, outcome) {
   // The two cases a seller genuinely has to act on. Rejecting either payment
   // would be worse: the money is in their PayFast account either way, and an
   // unrecorded payment is far harder to reconcile than a flagged one.
-  const alert = !outcome.statusChanged
+  const alert = outcome.cancelled
     ? `a payment was received for invoice ${invoice.document_number}, but the invoice is CANCELLED`
     : (invoice.status === 'PAID'
       ? `a second payment was received for invoice ${invoice.document_number}, which was already marked paid`
-      : null);
+      : (Number(posted.amount_gross) > outcome.balanceBefore + SETTLED_TOLERANCE
+        ? `a payment was received for invoice ${invoice.document_number} that exceeds the ${outcome.balanceBefore.toFixed(2)} that was outstanding`
+        : null));
 
   if (alert && user.email) {
     await emailService.sendPaymentAlertEmail(user.email, {
@@ -2878,9 +2925,26 @@ app.post('/payfast/itn',
 
       // 6. Amount. mysql2 hands decimal columns back as strings, so both sides
       //    are coerced and compared with a tolerance rather than ===.
-      const expected = Number(invoice.total);
+      //
+      //    The pay page charges what is still outstanding, not the invoice
+      //    total, so that is what a genuine notification carries. This very
+      //    transaction is excluded from the sum: PayFast re-sends until it gets
+      //    a 200, and a repeat must reach the duplicate check further down
+      //    rather than fail here against a balance it already reduced.
+      //
+      //    The full total is still accepted. A buyer with the pay page open in
+      //    two tabs can pay twice; refusing the second notification would
+      //    leave real money unrecorded. It is recorded and the seller alerted.
+      const [{ paid: alreadyPaid }] = await executeQuery(
+        `SELECT COALESCE(SUM(amount), 0) AS paid FROM payments
+          WHERE document_id = ? AND NOT (provider <=> 'PAYFAST' AND provider_payment_id <=> ?)`,
+        [invoice.id, String(posted.pf_payment_id)]
+      );
+      const expected = balanceDue(invoice.total, alreadyPaid);
       const received = Number(posted.amount_gross);
-      if (!(Math.abs(expected - received) <= 0.01)) {
+      const matchesBalance = Math.abs(expected - received) <= 0.01;
+      const matchesTotal = Math.abs(Number(invoice.total) - received) <= 0.01;
+      if (!matchesBalance && !matchesTotal) {
         return done(`amount mismatch: expected ${expected.toFixed(2)}, received ${posted.amount_gross}`, 'error');
       }
 
@@ -2906,7 +2970,7 @@ app.post('/payfast/itn',
         invoiceId: invoice.id,
         amount: Number(posted.amount_gross).toFixed(2),
         // The notification carries no date, and payments.payment_date is NOT NULL.
-        paymentDate: new Date().toISOString().slice(0, 10),
+        paymentDate: todayIso(),
         method: 'PAYFAST',
         reference: String(posted.pf_payment_id),
         provider: 'PAYFAST',
@@ -2929,7 +2993,8 @@ app.post('/payfast/itn',
         invoice: invoice.document_number,
         pf_payment_id: posted.pf_payment_id,
         amount: posted.amount_gross,
-        statusChanged: outcome.statusChanged,
+        settled: outcome.settled,
+        balanceAfter: outcome.balanceAfter,
       });
 
       // Best effort, and deliberately not awaited into the response.

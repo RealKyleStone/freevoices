@@ -24,27 +24,30 @@
           <ion-select aria-label="Customer" formControlName="customer_id" interface="popover" placeholder="Select customer">
             <ion-select-option *ngFor="let c of customers" [value]="c.id">{{ c.name }}</ion-select-option>
           </ion-select>
-          <ion-note slot="error">Customer is required</ion-note>
         </ion-item>
+        <p class="field-error" *ngIf="isInvalid('customer_id')">Customer is required</p>
 
         <ion-item [class.ion-invalid]="isInvalid('currency_id')" [class.ion-touched]="isInvalid('currency_id')">
           <ion-label position="stacked">Currency <ion-text color="danger">*</ion-text></ion-label>
           <ion-select aria-label="Currency" formControlName="currency_id" interface="popover" placeholder="Select currency">
             <ion-select-option *ngFor="let c of currencies" [value]="c.id">{{ c.code }} — {{ c.name }} ({{ c.symbol }})</ion-select-option>
           </ion-select>
-          <ion-note slot="error">Currency is required</ion-note>
         </ion-item>
+        <p class="field-error" *ngIf="isInvalid('currency_id')">Currency is required</p>
 
         <ion-item [class.ion-invalid]="isInvalid('issue_date')" [class.ion-touched]="isInvalid('issue_date')">
           <ion-label position="stacked">Issue Date <ion-text color="danger">*</ion-text></ion-label>
           <ion-input aria-label="Issue Date" formControlName="issue_date" type="date"></ion-input>
-          <ion-note slot="error">Issue date is required</ion-note>
         </ion-item>
+        <p class="field-error" *ngIf="isInvalid('issue_date')">Issue date is required</p>
 
         <ion-item>
           <ion-label position="stacked">Due date</ion-label>
           <ion-input aria-label="Due date" formControlName="due_date" type="date"></ion-input>
         </ion-item>
+        <p class="field-error" *ngIf="isInvalid('due_date')">Due date cannot be before the issue date</p>
+        <p class="field-hint" *ngIf="!isInvalid('due_date') && dueDateIsAuto">Calculated from the issue date and payment terms. Pick a date to override it.</p>
+        <p class="field-hint" *ngIf="!isInvalid('due_date') && !form.get('due_date')?.value">Leave blank to calculate it from the payment terms.</p>
 
         <ion-item>
           <ion-label position="stacked">Payment terms (days)</ion-label>
@@ -64,7 +67,7 @@
         <div *ngFor="let item of items.controls; let i = index" [formGroupName]="i" class="line-item">
           <div class="line-item-header">
             <span class="line-item-num">Item {{ i + 1 }}</span>
-            <ion-button fill="clear" color="danger" size="small" [attr.aria-label]="'Remove line item ' + (i + 1)" (click)="removeItem(i)" type="button">
+            <ion-button fill="clear" color="danger" size="small" [attr.aria-label]="'Remove line item ' + (i + 1)" (click)="removeItem(i)" [disabled]="items.length === 1" type="button">
               <ion-icon slot="icon-only" name="trash-outline"></ion-icon>
             </ion-button>
           </div>
@@ -81,27 +84,28 @@
           <ion-item [class.ion-invalid]="isItemInvalid(i, 'description')" [class.ion-touched]="isItemInvalid(i, 'description')">
             <ion-label position="stacked">Description <ion-text color="danger">*</ion-text></ion-label>
             <ion-input aria-label="Description" formControlName="description" type="text"></ion-input>
-            <ion-note slot="error">Description is required</ion-note>
           </ion-item>
+          <p class="field-error" *ngIf="isItemInvalid(i, 'description')">Description is required</p>
 
           <div class="item-row">
             <ion-item [class.ion-invalid]="isItemInvalid(i, 'quantity')" [class.ion-touched]="isItemInvalid(i, 'quantity')" class="flex-1">
               <ion-label position="stacked">Qty <ion-text color="danger">*</ion-text></ion-label>
               <ion-input aria-label="Qty" formControlName="quantity" type="number" min="0.01" step="0.01"></ion-input>
-              <ion-note slot="error">Min 0.01</ion-note>
             </ion-item>
 
             <ion-item [class.ion-invalid]="isItemInvalid(i, 'unit_price')" [class.ion-touched]="isItemInvalid(i, 'unit_price')" class="flex-2">
               <ion-label position="stacked">Unit price <ion-text color="danger">*</ion-text></ion-label>
               <ion-input aria-label="Unit price" formControlName="unit_price" type="number" min="0" step="0.01"></ion-input>
-              <ion-note slot="error">Required</ion-note>
             </ion-item>
 
-            <ion-item class="flex-1">
+            <ion-item [class.ion-invalid]="isItemInvalid(i, 'vat_rate')" [class.ion-touched]="isItemInvalid(i, 'vat_rate')" class="flex-1">
               <ion-label position="stacked">VAT %</ion-label>
               <ion-input aria-label="VAT %" formControlName="vat_rate" type="number" min="0" step="0.5"></ion-input>
             </ion-item>
           </div>
+          <p class="field-error" *ngIf="isItemInvalid(i, 'quantity')">Quantity must be greater than 0</p>
+          <p class="field-error" *ngIf="isItemInvalid(i, 'unit_price')">Unit price cannot be negative</p>
+          <p class="field-error" *ngIf="isItemInvalid(i, 'vat_rate')">VAT must be between 0 and 100</p>
 
           <div class="item-totals">
             <span>Subtotal: {{ currencySymbol }} {{ itemSubtotal(i) | number:'1.2-2' }}</span>

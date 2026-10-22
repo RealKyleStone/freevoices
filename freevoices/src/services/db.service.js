@@ -123,6 +123,12 @@ const dbConfig = {
   // TCP keepalive is not a substitute for the above: wait_timeout is MySQL's
   // own application-level idle limit and keepalive probes do not reset it.
   keepAliveInitialDelay: parseInt(process.env.DB_KEEP_ALIVE_INITIAL_DELAY, 10) || 10000,
+  // DATE columns (issue_date, due_date, payment_date, ...) are calendar days,
+  // not instants. Left to the default, mysql2 turns '2026-10-20' into a Date at
+  // the server's local midnight, which JSON-serialises as
+  // '2026-10-19T22:00:00.000Z' — and every client that splits on 'T' then
+  // shows the day before. DATETIME and TIMESTAMP are unaffected.
+  dateStrings: ['DATE'],
   ssl: buildSslConfig(),
 };
 

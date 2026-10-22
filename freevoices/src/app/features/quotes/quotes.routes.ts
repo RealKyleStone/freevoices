@@ -1,5 +1,6 @@
 // src/app/features/quotes/quotes.routes.ts
 import { Routes } from '@angular/router';
+import { unsavedChangesGuard } from '../../shared/guards/unsaved-changes.guard';
 
 export const QUOTE_ROUTES: Routes = [
   {
@@ -10,7 +11,8 @@ export const QUOTE_ROUTES: Routes = [
   {
     path: 'new',
     loadComponent: () => import('./pages/quote-create/quote-create.page')
-      .then(m => m.QuoteCreatePage)
+      .then(m => m.QuoteCreatePage),
+    canDeactivate: [unsavedChangesGuard]
   },
   {
     path: ':id',
@@ -20,6 +22,7 @@ export const QUOTE_ROUTES: Routes = [
   {
     path: ':id/edit',
     loadComponent: () => import('./pages/quote-edit/quote-edit.page')
-      .then(m => m.QuoteEditPage)
+      .then(m => m.QuoteEditPage),
+    canDeactivate: [unsavedChangesGuard]
   }
 ];

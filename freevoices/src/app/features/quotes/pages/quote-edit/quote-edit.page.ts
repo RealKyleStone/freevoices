@@ -1,4 +1,4 @@
-import { Component, OnInit } from '@angular/core';
+import { Component, HostListener, OnInit } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { ReactiveFormsModule, FormBuilder, FormGroup, FormArray, Validators } from '@angular/forms';
 import { ActivatedRoute, Router } from '@angular/router';
@@ -13,6 +13,8 @@ import { QuoteService } from '../../services/quote.service';
 import { CustomerService } from '../../../customers/services/customer.service';
 import { ProductService } from '../../../products/services/product.service';
 import { Customer, Product } from '../../../../../models/database.models';
+import { lineTotals, roundCents, todayLocalIso } from '../../../../shared/utils/document-math';
+import { HasUnsavedChanges } from '../../../../shared/guards/unsaved-changes.guard';
 
 @Component({
   selector: 'app-quote-edit',
@@ -26,13 +28,15 @@ import { Customer, Product } from '../../../../../models/database.models';
     IonSelectOption, IonSpinner, IonText, IonTextarea, IonTitle, IonToolbar,
   ]
 })
-export class QuoteEditPage implements OnInit {
+export class QuoteEditPage implements OnInit, HasUnsavedChanges {
   form: FormGroup;
   customers: Customer[] = [];
   products: Product[] = [];
   isLoading = false;
   isFetching = true;
   submitted = false;
+  private saved = false;
+  currencySymbol = 'R';
   quoteId!: number;
 
   constructor(
@@ -55,6 +59,15 @@ export class QuoteEditPage implements OnInit {
     });
   }
 
+  hasUnsavedChanges(): boolean {
+    return this.form.dirty && !this.saved;
+  }
+
+  @HostListener('window:beforeunload', ['$event'])
+  onBeforeUnload(event: BeforeUnloadEvent) {
+    if (this.hasUnsavedChanges()) { event.preventDefault(); event.returnValue = ''; }
+  }
+
   ngOnInit() {
     this.quoteId = Number(this.route.snapshot.paramMap.get('id'));
 
@@ -73,10 +86,11 @@ export class QuoteEditPage implements OnInit {
         this.customers = customers.data;
         this.products  = products.data;
 
+        this.currencySymbol = quote.currency_symbol || 'R';
         this.form.patchValue({
           customer_id:      quote.customer_id,
-          issue_date:       quote.issue_date?.toString().split('T')[0],
-          valid_until:      quote.valid_until?.toString().split('T')[0] ?? '',
+          issue_date:       quote.issue_date?.toString().slice(0, 10),
+          valid_until:      quote.valid_until?.toString().slice(0, 10) ?? '',
           payment_terms:    quote.payment_terms,
           notes:            quote.notes,
           terms_conditions: quote.terms_conditions
@@ -88,7 +102,7 @@ export class QuoteEditPage implements OnInit {
             description: [item.description, Validators.required],
             quantity:    [item.quantity,    [Validators.required, Validators.min(0.01)]],
             unit_price:  [item.unit_price,  [Validators.required, Validators.min(0)]],
-            vat_rate:    [item.vat_rate,    [Validators.required, Validators.min(0)]]
+            vat_rate:    [item.vat_rate,    [Validators.required, Validators.min(0), Validators.max(100)]]
           }));
         });
 
@@ -111,11 +125,11 @@ export class QuoteEditPage implements OnInit {
       description: ['', Validators.required],
       quantity:    [1,  [Validators.required, Validators.min(0.01)]],
       unit_price:  [0,  [Validators.required, Validators.min(0)]],
-      vat_rate:    [15, [Validators.required, Validators.min(0)]]
+      vat_rate:    [15, [Validators.required, Validators.min(0), Validators.max(100)]]
     }));
   }
 
-  removeItem(i: number) { if (this.items.length > 1) this.items.removeAt(i); }
+  removeItem(i: number) { if (this.items.length > 1) { this.items.removeAt(i); this.form.markAsDirty(); } }
 
   onProductChange(index: number) {
     const productId = this.items.at(index).get('product_id')?.value;
@@ -125,15 +139,13 @@ export class QuoteEditPage implements OnInit {
     this.items.at(index).patchValue({ description: product.name, unit_price: product.price, vat_rate: 15 });
   }
 
-  itemSubtotal(i: number): number {
-    const v = this.items.at(i).value;
-    return (v.quantity || 0) * (v.unit_price || 0);
-  }
-  itemVat(i: number): number { return this.itemSubtotal(i) * ((this.items.at(i).value.vat_rate || 0) / 100); }
-  itemTotal(i: number): number { return this.itemSubtotal(i) + this.itemVat(i); }
-  get docSubtotal(): number { return this.items.controls.reduce((s, _, i) => s + this.itemSubtotal(i), 0); }
-  get docVat(): number { return this.items.controls.reduce((s, _, i) => s + this.itemVat(i), 0); }
-  get docTotal(): number { return this.docSubtotal + this.docVat; }
+  // Rounded per line, half-up, exactly as the server stores them.
+  itemSubtotal(i: number): number { return lineTotals(this.items.at(i).value).subtotal; }
+  itemVat(i: number): number { return lineTotals(this.items.at(i).value).vat; }
+  itemTotal(i: number): number { return lineTotals(this.items.at(i).value).total; }
+  get docSubtotal(): number { return roundCents(this.items.controls.reduce((s, _, i) => s + this.itemSubtotal(i), 0)); }
+  get docVat(): number { return roundCents(this.items.controls.reduce((s, _, i) => s + this.itemVat(i), 0)); }
+  get docTotal(): number { return roundCents(this.docSubtotal + this.docVat); }
 
   isItemInvalid(index: number, field: string): boolean {
     const ctrl = (this.items.at(index) as FormGroup).get(field);
@@ -146,7 +158,11 @@ export class QuoteEditPage implements OnInit {
 
   async onSubmit() {
     this.submitted = true;
-    if (this.form.invalid) { this.form.markAllAsTouched(); return; }
+    if (this.form.invalid) {
+      this.form.markAllAsTouched();
+      await this.showToast('Please correct the highlighted fields', 'warning');
+      return;
+    }
 
     this.isLoading = true;
     const { items, ...rest } = this.form.value;
@@ -162,7 +178,7 @@ export class QuoteEditPage implements OnInit {
     };
 
     this.quoteService.updateQuote(this.quoteId, payload).subscribe({
-      next: () => { this.router.navigate(['/quotes', this.quoteId]); },
+      next: () => { this.saved = true; this.router.navigate(['/quotes', this.quoteId]); },
       error: async (err) => {
         this.isLoading = false;
         await this.showToast(err.error?.message || 'Failed to update quote', 'danger');

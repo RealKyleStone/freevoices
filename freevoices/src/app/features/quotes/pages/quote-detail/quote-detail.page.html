@@ -31,6 +31,11 @@
         </span>
       </header>
 
+      <p class="source-link" *ngIf="activeInvoice as inv">
+        Converted to invoice
+        <a [routerLink]="['/invoices', inv.id]">{{ inv.document_number }}</a>
+      </p>
+
       <!-- Key figures and dates as one compact strip. -->
       <dl class="detail-meta">
         <div class="meta-cell">
@@ -47,7 +52,7 @@
         </div>
         <div class="meta-cell meta-cell-total">
           <dt>Total</dt>
-          <dd>R {{ quote.total | number:'1.2-2' }}</dd>
+          <dd>{{ currencySymbol }} {{ quote.total | number:'1.2-2' }}</dd>
         </div>
       </dl>
 
@@ -74,14 +79,14 @@
                     <small *ngIf="item.vat_rate > 0" class="vat-note">+{{ item.vat_rate }}% VAT</small>
                   </span>
                   <span class="qty">{{ item.quantity }}</span>
-                  <span class="price">R {{ item.unit_price | number:'1.2-2' }}</span>
-                  <span class="amount">R {{ item.total | number:'1.2-2' }}</span>
+                  <span class="price">{{ currencySymbol }} {{ item.unit_price | number:'1.2-2' }}</span>
+                  <span class="amount">{{ currencySymbol }} {{ item.total | number:'1.2-2' }}</span>
                 </div>
               </div>
               <div class="totals">
-                <div class="totals-row"><span>Subtotal</span><span>R {{ quote.subtotal | number:'1.2-2' }}</span></div>
-                <div class="totals-row"><span>VAT</span><span>R {{ quote.vat_amount | number:'1.2-2' }}</span></div>
-                <div class="totals-row total-row"><strong>Total</strong><strong>R {{ quote.total | number:'1.2-2' }}</strong></div>
+                <div class="totals-row"><span>Subtotal</span><span>{{ currencySymbol }} {{ quote.subtotal | number:'1.2-2' }}</span></div>
+                <div class="totals-row"><span>VAT</span><span>{{ currencySymbol }} {{ quote.vat_amount | number:'1.2-2' }}</span></div>
+                <div class="totals-row total-row"><strong>Total</strong><strong>{{ currencySymbol }} {{ quote.total | number:'1.2-2' }}</strong></div>
               </div>
             </div>
           </section>
@@ -125,6 +130,10 @@
                   <ion-icon *ngIf="!isConverting" slot="start" name="document-text-outline"></ion-icon>
                   Convert to invoice
                 </ion-button>
+                <ion-button *ngIf="activeInvoice as inv" expand="block" fill="solid" color="primary" [routerLink]="['/invoices', inv.id]">
+                  <ion-icon slot="start" name="document-text-outline"></ion-icon>
+                  View invoice {{ inv.document_number }}
+                </ion-button>
               </div>
 
               <div class="actions actions-secondary">
@@ -148,7 +157,7 @@
                     <ion-icon [name]="getTrackingIcon(event.event_type)" aria-hidden="true"></ion-icon>
                   </div>
                   <div class="timeline-content">
-                    <p class="event-type">{{ event.event_type | titlecase }}</p>
+                    <p class="event-type">{{ getTrackingLabel(event.event_type) }}</p>
                     <p class="event-date">{{ event.event_date | date:'d MMM y, HH:mm' }}</p>
                   </div>
                 </div>

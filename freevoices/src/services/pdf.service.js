@@ -1,4 +1,8 @@
 const PDFDocument = require('pdfkit');
+// formatDisplayDate keeps a 'YYYY-MM-DD' on its own calendar day whatever the
+// server's time zone; new Date('2026-10-20') is UTC midnight, which renders as
+// the 19th anywhere west of Greenwich.
+const { formatDisplayDate, balanceDue } = require('./document-math');
 
 // Colours
 const PRIMARY   = '#4a90e2';
@@ -85,10 +89,7 @@ function buildInvoicePdf(invoice, items, user) {
     const metaLabelW = 90;
     const metaValueX = metaX + metaLabelW + 5;
 
-    const formatDate = (d) => {
-      if (!d) return '—';
-      return new Date(d).toLocaleDateString('en-ZA', { day: '2-digit', month: 'short', year: 'numeric' });
-    };
+    const formatDate = (d) => formatDisplayDate(d);
 
     const metaRows = [
       ['Issue Date:',    formatDate(invoice.issue_date)],
@@ -159,6 +160,12 @@ function buildInvoicePdf(invoice, items, user) {
       ['VAT',      fmt(invoice.vat_amount), DARK, false],
       ['TOTAL',    fmt(invoice.total),      DARK, true ],
     ];
+    // A part-paid invoice shows what is still owed, so a re-sent copy does not
+    // ask the customer for money they have already paid.
+    if (Number(invoice.amount_paid) > 0) {
+      totalsRows.push(['Paid',        fmt(invoice.amount_paid), SUCCESS, false]);
+      totalsRows.push(['Balance due', fmt(balanceDue(invoice.total, invoice.amount_paid)), DARK, false]);
+    }
 
     for (const [label, value, color, bold] of totalsRows) {
       if (bold) {
@@ -268,10 +275,7 @@ function buildQuotePdf(quote, items, user) {
       mid:   doc.page.width / 2
     };
 
-    const formatDate = (d) => {
-      if (!d) return '—';
-      return new Date(d).toLocaleDateString('en-ZA', { day: '2-digit', month: 'short', year: 'numeric' });
-    };
+    const formatDate = (d) => formatDisplayDate(d);
 
     const currSym = quote.currency_symbol || 'R';
     const fmt = (n) => `${currSym} ${parseFloat(n).toLocaleString('en-ZA', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
@@ -464,10 +468,7 @@ function buildReceiptPdf(invoice, items, user, payments) {
       mid:   doc.page.width / 2
     };
 
-    const formatDate = (d) => {
-      if (!d) return '—';
-      return new Date(d).toLocaleDateString('en-ZA', { day: '2-digit', month: 'short', year: 'numeric' });
-    };
+    const formatDate = (d) => formatDisplayDate(d);
 
     const currSym = invoice.currency_symbol || 'R';
     const fmt = (n) => `${currSym} ${parseFloat(n).toLocaleString('en-ZA', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;

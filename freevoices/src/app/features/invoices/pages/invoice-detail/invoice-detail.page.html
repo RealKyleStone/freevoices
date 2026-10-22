@@ -26,10 +26,18 @@
           <h1>{{ invoice.document_number }}</h1>
           <p>{{ invoice.customer_name }}</p>
         </div>
-        <span class="doc-status" [ngClass]="'badge-' + getStatusColor(invoice.status)">
-          {{ invoice.status | titlecase }}
-        </span>
+        <div class="page-head-badges">
+          <span class="doc-status" [ngClass]="'badge-' + getStatusColor(invoice.status)">
+            {{ invoice.status | titlecase }}
+          </span>
+          <span class="doc-status badge-warning" *ngIf="isPartlyPaid">Partly paid</span>
+        </div>
       </header>
+
+      <p class="source-link" *ngIf="invoice.source_quote_id && invoice.source_quote_number">
+        Created from quote
+        <a [routerLink]="['/quotes', invoice.source_quote_id]">{{ invoice.source_quote_number }}</a>
+      </p>
 
       <!-- Key figures and dates, as one compact strip rather than three rows
            each carrying its own tinted icon tile. -->
@@ -49,6 +57,10 @@
         <div class="meta-cell meta-cell-total">
           <dt>Total</dt>
           <dd>{{ currencySymbol }} {{ invoice.total | number:'1.2-2' }}</dd>
+        </div>
+        <div class="meta-cell meta-cell-total" *ngIf="amountPaid > 0">
+          <dt>Balance due</dt>
+          <dd>{{ currencySymbol }} {{ balanceDue | number:'1.2-2' }}</dd>
         </div>
       </dl>
 
@@ -83,9 +95,14 @@
                 <div class="totals-row"><span>Subtotal</span><span>{{ currencySymbol }} {{ invoice.subtotal | number:'1.2-2' }}</span></div>
                 <div class="totals-row"><span>VAT</span><span>{{ currencySymbol }} {{ invoice.vat_amount | number:'1.2-2' }}</span></div>
                 <div class="totals-row total-row"><strong>Total</strong><strong>{{ currencySymbol }} {{ invoice.total | number:'1.2-2' }}</strong></div>
-                <div class="totals-row paid-row" *ngIf="totalPaid > 0">
-                  <span>Paid</span><span>{{ currencySymbol }} {{ totalPaid | number:'1.2-2' }}</span>
-                </div>
+                <ng-container *ngIf="amountPaid > 0">
+                  <div class="totals-row paid-row">
+                    <span>Paid</span><span>{{ currencySymbol }} {{ amountPaid | number:'1.2-2' }}</span>
+                  </div>
+                  <div class="totals-row total-row">
+                    <strong>Balance due</strong><strong>{{ currencySymbol }} {{ balanceDue | number:'1.2-2' }}</strong>
+                  </div>
+                </ng-container>
               </div>
             </div>
           </section>
@@ -190,8 +207,10 @@
               <div class="payment-form" *ngIf="showPaymentForm" [formGroup]="paymentForm">
                 <ion-item>
                   <ion-label position="stacked">Amount <ion-text color="danger">*</ion-text></ion-label>
-                  <ion-input aria-label="Amount" formControlName="amount" type="number" min="0.01" step="0.01"></ion-input>
+                  <ion-input aria-label="Amount" formControlName="amount" type="number" min="0.01" [max]="balanceDue" step="0.01"></ion-input>
                 </ion-item>
+                <p class="field-hint">Outstanding: {{ currencySymbol }} {{ balanceDue | number:'1.2-2' }}. Enter less to record a part payment.</p>
+                <p class="field-error" *ngIf="paymentForm.get('amount')?.hasError('max')">Cannot exceed the outstanding {{ currencySymbol }} {{ balanceDue | number:'1.2-2' }}</p>
                 <ion-item>
                   <ion-label position="stacked">Payment date <ion-text color="danger">*</ion-text></ion-label>
                   <ion-input aria-label="Payment date" formControlName="payment_date" type="date"></ion-input>
@@ -246,7 +265,7 @@
                     <ion-icon [name]="getTrackingIcon(event.event_type)" aria-hidden="true"></ion-icon>
                   </div>
                   <div class="timeline-content">
-                    <p class="event-type">{{ event.event_type | titlecase }}</p>
+                    <p class="event-type">{{ getTrackingLabel(event.event_type) }}</p>
                     <p class="event-date">{{ event.event_date | date:'d MMM y, HH:mm' }}</p>
                   </div>
                 </div>

@@ -27,6 +27,7 @@ import { Observable } from 'rxjs';
 import { filter, take } from 'rxjs/operators';
 import { LocalNotificationService } from './core/services/local-notification.service';
 import { BrowserNotificationService } from './core/services/browser-notification.service';
+import { todayLocalIso } from './shared/utils/document-math';
 import { InvoiceService } from './features/invoices/services/invoice.service';
 
 @Component({
@@ -129,7 +130,7 @@ export class AppComponent implements OnInit {
   private checkInvoicesOnStartup(): void {
     // Only fire overdue notifications once per day
     // We store today's date in localStorage and skip if it already ran today
-    const today = new Date().toISOString().split('T')[0]; // e.g. "2026-07-04"
+    const today = todayLocalIso(); // e.g. "2026-07-04", on the user's calendar
     const lastChecked = localStorage.getItem('fv-overdue-checked');
 
     if (lastChecked === today) {

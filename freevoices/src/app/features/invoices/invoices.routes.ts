@@ -1,4 +1,5 @@
 import { Routes } from '@angular/router';
+import { unsavedChangesGuard } from '../../shared/guards/unsaved-changes.guard';
 
 export const INVOICE_ROUTES: Routes = [
   {
@@ -9,7 +10,8 @@ export const INVOICE_ROUTES: Routes = [
   {
     path: 'new',
     loadComponent: () => import('./pages/invoice-create/invoice-create.page')
-      .then(m => m.InvoiceCreatePage)
+      .then(m => m.InvoiceCreatePage),
+    canDeactivate: [unsavedChangesGuard]
   },
   {
     path: ':id',
@@ -19,6 +21,7 @@ export const INVOICE_ROUTES: Routes = [
   {
     path: ':id/edit',
     loadComponent: () => import('./pages/invoice-edit/invoice-edit.page')
-      .then(m => m.InvoiceEditPage)
+      .then(m => m.InvoiceEditPage),
+    canDeactivate: [unsavedChangesGuard]
   }
 ];

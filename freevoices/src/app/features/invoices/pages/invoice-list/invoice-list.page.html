@@ -60,6 +60,7 @@
         </ion-label>
         <div slot="end" class="row-end">
           <span class="row-status" [ngClass]="'badge-' + getStatusColor(invoice.status)">{{ invoice.status | titlecase }}</span>
+          <span class="row-status badge-warning" *ngIf="isPartlyPaid(invoice)">Partly paid</span>
           <p class="row-amount">R {{ invoice.total | number:'1.2-2' }}</p>
         </div>
       </ion-item>

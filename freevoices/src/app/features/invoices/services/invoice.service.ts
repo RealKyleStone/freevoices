@@ -15,6 +15,7 @@ export interface InvoiceListItem {
   total: number;
   created_at: string;
   notifications_muted?: boolean;
+  amount_paid: string;
 }
 
 export interface InvoiceListResponse {
@@ -35,6 +36,11 @@ export interface InvoiceDetail extends Document {
   currency_symbol?: string;
   currency_code?: string;
   notifications_muted?: boolean;
+  /** Sum of recorded payments, from the server. */
+  amount_paid: string;
+  /** total - amount_paid, never negative. */
+  balance_due: string;
+  source_quote_number?: string | null;
 }
 
 export interface InvoiceItemPayload {
@@ -94,8 +100,8 @@ export class InvoiceService {
     return this.db.create<{ message: string }>(`invoices/${id}/send`, {});
   }
 
-  markPaid(id: number, data: MarkPaidPayload): Observable<{ message: string }> {
-    return this.db.create<{ message: string }>(`invoices/${id}/mark-paid`, data);
+  markPaid(id: number, data: MarkPaidPayload): Observable<{ message: string; settled: boolean; balance_due: string }> {
+    return this.db.create<{ message: string; settled: boolean; balance_due: string }>(`invoices/${id}/mark-paid`, data);
   }
 
   sendReceipt(id: number): Observable<{ message: string }> {

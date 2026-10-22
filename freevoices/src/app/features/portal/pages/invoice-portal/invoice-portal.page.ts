@@ -17,6 +17,8 @@ interface PortalInvoice {
   subtotal: number;
   vat_amount: number;
   total: number;
+  amount_paid: string;
+  balance_due: string;
   notes: string;
   terms_conditions: string;
   customer_name: string;

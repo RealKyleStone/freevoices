@@ -1,6 +1,7 @@
 import { Injectable } from '@angular/core';
 import { LocalNotifications, ScheduleOptions } from '@capacitor/local-notifications';
 import { Capacitor } from '@capacitor/core';
+import { parseDateOnly } from '../../shared/utils/document-math';
 import { InvoiceListItem } from '../../features/invoices/services/invoice.service';
 
 @Injectable({
@@ -47,8 +48,8 @@ export class LocalNotificationService {
       // Skip invoices with no due date, already paid/cancelled, or notifications muted
       if (!invoice.due_date || ['PAID', 'CANCELLED'].includes(invoice.status) || invoice.notifications_muted) continue;
 
-      const dueDate = new Date(invoice.due_date);
-      dueDate.setHours(0, 0, 0, 0);
+      // Local midnight of the due day; new Date('YYYY-MM-DD') is UTC midnight.
+      const dueDate = parseDateOnly(invoice.due_date);
 
       // Invoice is OVERDUE — fire an immediate notification
       if (invoice.status === 'OVERDUE') {
