@@ -17,17 +17,17 @@
         </ion-card-title>
       </ion-card-header>
       <ion-card-content>
-        <ion-item [class.ion-invalid]="isInvalid('contact_person')" [class.ion-touched]="form.get('contact_person')?.touched">
+        <ion-item [class.ion-invalid]="isInvalid('contact_person')" [class.ion-touched]="isInvalid('contact_person')">
           <ion-label position="stacked">Full name <span class="required">*</span></ion-label>
           <ion-input aria-label="Full name" formControlName="contact_person" type="text" placeholder="Your full name"></ion-input>
-          <ion-note slot="error">Full name is required</ion-note>
         </ion-item>
+        <p class="field-error" *ngIf="isInvalid('contact_person')">Full name is required</p>
 
-        <ion-item [class.ion-invalid]="isInvalid('email')" [class.ion-touched]="form.get('email')?.touched">
+        <ion-item [class.ion-invalid]="isInvalid('email')" [class.ion-touched]="isInvalid('email')">
           <ion-label position="stacked">Email address <span class="required">*</span></ion-label>
           <ion-input aria-label="Email address" formControlName="email" type="email" placeholder="you@example.com"></ion-input>
-          <ion-note slot="error">A valid email address is required</ion-note>
         </ion-item>
+        <p class="field-error" *ngIf="isInvalid('email')">A valid email address is required</p>
 
         <ion-item>
           <ion-label position="stacked">Phone</ion-label>
@@ -58,7 +58,7 @@
           </ion-button>
         </ion-item>
 
-        <ion-item [class.ion-invalid]="isInvalid('new_password')" [class.ion-touched]="form.get('new_password')?.touched">
+        <ion-item [class.ion-invalid]="isInvalid('new_password')" [class.ion-touched]="isInvalid('new_password')">
           <ion-label position="stacked">New password</ion-label>
           <ion-input aria-label="New password"
             formControlName="new_password"
@@ -68,18 +68,18 @@
           <ion-button fill="clear" slot="end" (click)="showNewPassword = !showNewPassword">
             <ion-icon [name]="showNewPassword ? 'eye-off-outline' : 'eye-outline'"></ion-icon>
           </ion-button>
-          <ion-note slot="error">Password must be at least 8 characters</ion-note>
         </ion-item>
+        <p class="field-error" *ngIf="isInvalid('new_password')">Password must be at least 8 characters</p>
 
-        <ion-item [class.ion-invalid]="isInvalid('confirm_password')" [class.ion-touched]="form.get('confirm_password')?.touched">
+        <ion-item [class.ion-invalid]="isInvalid('confirm_password')" [class.ion-touched]="isInvalid('confirm_password')">
           <ion-label position="stacked">Confirm new password</ion-label>
           <ion-input aria-label="Confirm new password"
             formControlName="confirm_password"
             type="password"
             placeholder="Repeat new password"
           ></ion-input>
-          <ion-note slot="error">Passwords do not match</ion-note>
         </ion-item>
+        <p class="field-error" *ngIf="isInvalid('confirm_password')">Passwords do not match</p>
       </ion-card-content>
     </ion-card>
 

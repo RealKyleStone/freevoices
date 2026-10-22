@@ -5,7 +5,7 @@ import { ActivatedRoute, Router } from '@angular/router';
 import {
   ToastController,
   IonBackButton, IonButton, IonButtons, IonCard, IonCardContent, IonCardHeader, IonCardTitle,
-  IonContent, IonHeader, IonInput, IonItem, IonLabel, IonNote, IonSpinner, IonText,
+  IonContent, IonHeader, IonInput, IonItem, IonLabel, IonSpinner, IonText,
   IonTextarea, IonTitle, IonToggle, IonToolbar,
 } from '@ionic/angular/standalone';
 import { ProductService } from '../../services/product.service';
@@ -18,7 +18,7 @@ import { ProductService } from '../../services/product.service';
   imports: [
     CommonModule, ReactiveFormsModule,
     IonBackButton, IonButton, IonButtons, IonCard, IonCardContent, IonCardHeader, IonCardTitle,
-    IonContent, IonHeader, IonInput, IonItem, IonLabel, IonNote, IonSpinner, IonText,
+    IonContent, IonHeader, IonInput, IonItem, IonLabel, IonSpinner, IonText,
     IonTextarea, IonTitle, IonToggle, IonToolbar,
   ]
 })
@@ -71,7 +71,13 @@ export class ProductEditPage implements OnInit {
 
   async onSubmit() {
     this.submitted = true;
-    if (this.form.invalid) { this.form.markAllAsTouched(); return; }
+    if (this.form.invalid) {
+      // Saving used to do nothing visible here: the page stayed put with no
+      // message, which read as a silent failure.
+      this.form.markAllAsTouched();
+      await this.showToast('Please correct the highlighted fields', 'warning');
+      return;
+    }
 
     this.isLoading = true;
     this.productService.updateProduct(this.productId, this.form.value).subscribe({

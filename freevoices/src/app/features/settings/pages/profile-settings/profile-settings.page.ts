@@ -73,7 +73,13 @@ export class ProfileSettingsPage implements OnInit {
 
   onSubmit() {
     this.submitted = true;
-    if (this.form.invalid) return;
+    if (this.form.invalid) {
+      // Saving used to do nothing visible here: the page stayed put with no
+      // message, which read as a silent failure.
+      this.form.markAllAsTouched();
+      this.showToast('Please correct the highlighted fields', 'warning');
+      return;
+    }
 
     const { contact_person, email, phone, current_password, new_password } = this.form.value;
 
