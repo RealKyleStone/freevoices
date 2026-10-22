@@ -6,10 +6,10 @@ import {
   ToastController,
   IonBackButton, IonButton, IonButtons, IonCard, IonCardContent, IonCardHeader, IonCardTitle,
   IonContent, IonHeader, IonIcon, IonInput, IonItem, IonLabel, IonNote, IonSelect,
-  IonSelectOption, IonSpinner, IonText, IonTextarea, IonTitle, IonToolbar,
+  IonSelectOption, IonSpinner, IonText, IonTextarea, IonTitle, IonToggle, IonToolbar,
 } from '@ionic/angular/standalone';
 import { forkJoin } from 'rxjs';
-import { InvoiceService } from '../../services/invoice.service';
+import { InvoiceService, InvoicePayload } from '../../services/invoice.service';
 import { CustomerService } from '../../../customers/services/customer.service';
 import { ProductService } from '../../../products/services/product.service';
 import { Customer, Product } from '../../../../../models/database.models';
@@ -23,7 +23,7 @@ import { Customer, Product } from '../../../../../models/database.models';
     CommonModule, ReactiveFormsModule,
     IonBackButton, IonButton, IonButtons, IonCard, IonCardContent, IonCardHeader, IonCardTitle,
     IonContent, IonHeader, IonIcon, IonInput, IonItem, IonLabel, IonNote, IonSelect,
-    IonSelectOption, IonSpinner, IonText, IonTextarea, IonTitle, IonToolbar,
+    IonSelectOption, IonSpinner, IonText, IonTextarea, IonTitle, IonToggle, IonToolbar,
   ]
 })
 export class InvoiceEditPage implements OnInit {
@@ -35,6 +35,8 @@ export class InvoiceEditPage implements OnInit {
   submitted = false;
   invoiceId!: number;
 
+  private readonly recurrenceFields = ['is_recurring', 'recurrence_interval', 'recurrence_end_date', 'auto_send'];
+
   constructor(
     private fb: FormBuilder,
     private route: ActivatedRoute,
@@ -45,13 +47,17 @@ export class InvoiceEditPage implements OnInit {
     private toastCtrl: ToastController
   ) {
     this.form = this.fb.group({
-      customer_id:      [null, Validators.required],
-      issue_date:       ['', Validators.required],
-      due_date:         [''],
-      payment_terms:    [30],
-      notes:            [''],
-      terms_conditions: [''],
-      items:            this.fb.array([])
+      customer_id:         [null, Validators.required],
+      issue_date:          ['', Validators.required],
+      due_date:            [''],
+      payment_terms:       [30],
+      notes:               [''],
+      terms_conditions:    [''],
+      items:               this.fb.array([]),
+      is_recurring:        [false],
+      recurrence_interval: [null],
+      recurrence_end_date: [''],
+      auto_send:           [false]
     });
   }
 
@@ -74,12 +80,16 @@ export class InvoiceEditPage implements OnInit {
         this.products  = products.data;
 
         this.form.patchValue({
-          customer_id:      invoice.customer_id,
-          issue_date:       invoice.issue_date?.toString().split('T')[0],
-          due_date:         invoice.due_date?.toString().split('T')[0] ?? '',
-          payment_terms:    invoice.payment_terms,
-          notes:            invoice.notes,
-          terms_conditions: invoice.terms_conditions
+          customer_id:         invoice.customer_id,
+          issue_date:          invoice.issue_date?.toString().split('T')[0],
+          due_date:            invoice.due_date?.toString().split('T')[0] ?? '',
+          payment_terms:       invoice.payment_terms,
+          notes:               invoice.notes,
+          terms_conditions:    invoice.terms_conditions,
+          is_recurring:        !!invoice.is_recurring,
+          recurrence_interval: invoice.recurrence_interval ?? null,
+          recurrence_end_date: invoice.recurrence_end_date?.toString().split('T')[0] ?? '',
+          auto_send:           !!invoice.auto_send
         });
 
         invoice.items.forEach(item => {
@@ -101,6 +111,10 @@ export class InvoiceEditPage implements OnInit {
         this.router.navigate(['/invoices']);
       }
     });
+  }
+
+  get isRecurring(): boolean {
+    return !!this.form.get('is_recurring')?.value;
   }
 
   get items(): FormArray {
@@ -169,8 +183,8 @@ export class InvoiceEditPage implements OnInit {
     if (this.form.invalid) { this.form.markAllAsTouched(); return; }
 
     this.isLoading = true;
-    const { items, ...rest } = this.form.value;
-    const payload = {
+    const { items, is_recurring, recurrence_interval, recurrence_end_date, auto_send, ...rest } = this.form.value;
+    const payload: InvoicePayload = {
       ...rest,
       items: items.map((item: any) => ({
         product_id:  item.product_id || null,
@@ -180,6 +194,16 @@ export class InvoiceEditPage implements OnInit {
         vat_rate:    item.vat_rate
       }))
     };
+    // The server keeps the stored schedule when is_recurring is absent, so it
+    // is only sent when the user actually changed the recurring card.
+    if (this.recurrenceFields.some(f => this.form.get(f)?.dirty)) {
+      Object.assign(payload, {
+        is_recurring,
+        recurrence_interval: is_recurring ? recurrence_interval : null,
+        recurrence_end_date: is_recurring && recurrence_end_date ? recurrence_end_date : null,
+        auto_send: is_recurring ? auto_send : false
+      });
+    }
 
     this.invoiceService.updateInvoice(this.invoiceId, payload).subscribe({
       next: () => {
