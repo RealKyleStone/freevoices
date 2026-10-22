@@ -2,17 +2,29 @@ import { Component, OnInit } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { RouterModule } from '@angular/router';
 import { FormsModule } from '@angular/forms';
-import { IonicModule, ToastController } from '@ionic/angular';
+import {
+  ToastController, IonButton, IonButtons, IonContent, IonFab, IonFabButton, IonHeader, IonIcon,
+  IonItem, IonLabel, IonMenuButton, IonRouterLink, IonSearchbar, IonSegment, IonSegmentButton,
+  IonSkeletonText, IonToolbar,
+} from '@ionic/angular/standalone';
 import { Subject } from 'rxjs';
 import { debounceTime, distinctUntilChanged } from 'rxjs/operators';
 import { InvoiceService, InvoiceListItem } from '../../services/invoice.service';
+import { addIcons } from 'ionicons';
+import {
+  add, addOutline, chevronBackOutline, chevronForwardOutline, documentTextOutline,
+} from 'ionicons/icons';
 
 @Component({
   selector: 'app-invoice-list',
   templateUrl: './invoice-list.page.html',
   styleUrls: ['./invoice-list.page.scss'],
   standalone: true,
-  imports: [CommonModule, RouterModule, FormsModule, IonicModule]
+  imports: [
+    CommonModule, RouterModule, FormsModule, IonButton, IonButtons, IonContent, IonFab,
+    IonFabButton, IonHeader, IonIcon, IonItem, IonLabel, IonMenuButton, IonRouterLink,
+    IonSearchbar, IonSegment, IonSegmentButton, IonSkeletonText, IonToolbar,
+  ]
 })
 export class InvoiceListPage implements OnInit {
   invoices: InvoiceListItem[] = [];
@@ -28,13 +40,21 @@ export class InvoiceListPage implements OnInit {
   constructor(
     private invoiceService: InvoiceService,
     private toastCtrl: ToastController
-  ) {}
+  ) {
+    addIcons({ add, addOutline, chevronBackOutline, chevronForwardOutline, documentTextOutline });
+  }
 
   ngOnInit() {
     this.searchSubject.pipe(debounceTime(300), distinctUntilChanged()).subscribe(() => {
       this.page = 1;
       this.loadInvoices();
     });
+  }
+
+  // Ionic keeps this page alive underneath the create and detail pages, so
+  // ngOnInit runs only once. This runs every time the page comes back into
+  // view, so a record added or changed elsewhere appears without a refresh.
+  ionViewWillEnter() {
     this.loadInvoices();
   }
 

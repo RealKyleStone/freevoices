@@ -1,7 +1,10 @@
 import { Component, OnInit } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { ReactiveFormsModule, FormBuilder, FormGroup } from '@angular/forms';
-import { IonicModule, ToastController } from '@ionic/angular';
+import {
+  ToastController, IonButton, IonCard, IonCardContent, IonCardHeader, IonCardTitle, IonIcon,
+  IonItem, IonLabel, IonSpinner, IonToggle,
+} from '@ionic/angular/standalone';
 import { addIcons } from 'ionicons';
 import { notificationsOutline, mailOutline } from 'ionicons/icons';
 import { SettingsService } from '../../services/settings.service';
@@ -11,7 +14,10 @@ import { SettingsService } from '../../services/settings.service';
   templateUrl: './notification-settings.page.html',
   styleUrls: ['./notification-settings.page.scss'],
   standalone: true,
-  imports: [CommonModule, ReactiveFormsModule, IonicModule]
+  imports: [
+    CommonModule, ReactiveFormsModule, IonButton, IonCard, IonCardContent, IonCardHeader,
+    IonCardTitle, IonIcon, IonItem, IonLabel, IonSpinner, IonToggle,
+  ]
 })
 export class NotificationSettingsPage implements OnInit {
   form!: FormGroup;

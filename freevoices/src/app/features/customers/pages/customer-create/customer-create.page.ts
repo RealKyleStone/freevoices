@@ -93,7 +93,7 @@ export class CustomerCreatePage {
     this.isLoading = true;
     this.customerService.createCustomer(this.form.value).subscribe({
       next: (customer) => {
-        this.router.navigate(['/customers', customer.id]);
+        this.router.navigate(['/customers', customer.id], { replaceUrl: true });
       },
       error: async (err) => {
         this.isLoading = false;

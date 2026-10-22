@@ -1,7 +1,10 @@
 import { Component, OnInit } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { RouterModule } from '@angular/router';
-import { IonicModule } from '@ionic/angular';
+import {
+  IonCard, IonCardContent, IonCardHeader, IonCardTitle, IonIcon, IonItem, IonLabel,
+  IonRouterLink, IonSpinner,
+} from '@ionic/angular/standalone';
 import { addIcons } from 'ionicons';
 import {
   readerOutline,
@@ -21,7 +24,10 @@ import { environment } from '../../../../../environments/environment';
   templateUrl: './legal-settings.page.html',
   styleUrls: ['./legal-settings.page.scss'],
   standalone: true,
-  imports: [CommonModule, IonicModule, RouterModule]
+  imports: [
+    CommonModule, IonCard, IonCardContent, IonCardHeader, IonCardTitle, IonIcon, IonItem, IonLabel,
+    IonRouterLink, IonSpinner, RouterModule,
+  ]
 })
 export class LegalSettingsPage implements OnInit {
   documents: LegalDocumentSummary[] = [];

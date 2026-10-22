@@ -1,7 +1,10 @@
 import { Component, OnInit } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { Router, RouterModule } from '@angular/router';
-import { AlertController, IonicModule, ToastController } from '@ionic/angular';
+import {
+  AlertController, ToastController, IonButton, IonCard, IonCardContent, IonCardHeader,
+  IonCardTitle, IonIcon, IonItem, IonLabel, IonRouterLink, IonSpinner,
+} from '@ionic/angular/standalone';
 import { addIcons } from 'ionicons';
 import {
   shieldCheckmarkOutline,
@@ -22,7 +25,10 @@ import { LegalService } from '../../../legal/services/legal.service';
   templateUrl: './privacy-settings.page.html',
   styleUrls: ['./privacy-settings.page.scss'],
   standalone: true,
-  imports: [CommonModule, IonicModule, RouterModule]
+  imports: [
+    CommonModule, IonButton, IonCard, IonCardContent, IonCardHeader, IonCardTitle, IonIcon,
+    IonItem, IonLabel, IonRouterLink, IonSpinner, RouterModule,
+  ]
 })
 export class PrivacySettingsPage implements OnInit {
   status?: AccountStatus;

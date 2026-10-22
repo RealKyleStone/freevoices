@@ -98,6 +98,11 @@ export class InvoiceDetailPage implements OnInit {
 
   ngOnInit() {
     this.invoiceId = Number(this.route.snapshot.paramMap.get('id'));
+  }
+
+  // Reloaded on every entry rather than once in ngOnInit: Ionic reuses this
+  // page when returning from Edit, which otherwise showed the old values.
+  ionViewWillEnter() {
     this.loadInvoice();
   }
 

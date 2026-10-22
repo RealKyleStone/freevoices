@@ -60,7 +60,7 @@ export class ProductCreatePage {
     this.isLoading = true;
     this.productService.createProduct(this.form.value).subscribe({
       next: (product) => {
-        this.router.navigate(['/products', product.id]);
+        this.router.navigate(['/products', product.id], { replaceUrl: true });
       },
       error: async (err) => {
         this.isLoading = false;

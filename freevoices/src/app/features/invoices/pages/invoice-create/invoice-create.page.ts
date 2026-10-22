@@ -229,7 +229,7 @@ export class InvoiceCreatePage implements OnInit, HasUnsavedChanges {
     this.invoiceService.createInvoice(payload).subscribe({
       next: (invoice) => {
         this.saved = true;
-        this.router.navigate(['/invoices', invoice.id]);
+        this.router.navigate(['/invoices', invoice.id], { replaceUrl: true });
       },
       error: async (err) => {
         this.isLoading = false;

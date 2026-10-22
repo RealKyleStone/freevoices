@@ -2,17 +2,29 @@ import { Component, OnInit } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { RouterModule } from '@angular/router';
 import { FormsModule } from '@angular/forms';
-import { IonicModule, ToastController } from '@ionic/angular';
+import {
+  ToastController, IonButton, IonButtons, IonContent, IonFab, IonFabButton, IonHeader, IonIcon,
+  IonItem, IonLabel, IonMenuButton, IonRouterLink, IonSearchbar, IonSegment, IonSegmentButton,
+  IonSkeletonText, IonToolbar,
+} from '@ionic/angular/standalone';
 import { Subject } from 'rxjs';
 import { debounceTime, distinctUntilChanged } from 'rxjs/operators';
 import { QuoteService, QuoteListItem } from '../../services/quote.service';
+import { addIcons } from 'ionicons';
+import {
+  add, addOutline, chevronBackOutline, chevronForwardOutline, documentOutline,
+} from 'ionicons/icons';
 
 @Component({
   selector: 'app-quote-list',
   templateUrl: './quote-list.page.html',
   styleUrls: ['./quote-list.page.scss'],
   standalone: true,
-  imports: [CommonModule, RouterModule, FormsModule, IonicModule]
+  imports: [
+    CommonModule, RouterModule, FormsModule, IonButton, IonButtons, IonContent, IonFab,
+    IonFabButton, IonHeader, IonIcon, IonItem, IonLabel, IonMenuButton, IonRouterLink,
+    IonSearchbar, IonSegment, IonSegmentButton, IonSkeletonText, IonToolbar,
+  ]
 })
 export class QuoteListPage implements OnInit {
   quotes: QuoteListItem[] = [];
@@ -28,13 +40,21 @@ export class QuoteListPage implements OnInit {
   constructor(
     private quoteService: QuoteService,
     private toastCtrl: ToastController
-  ) {}
+  ) {
+    addIcons({ add, addOutline, chevronBackOutline, chevronForwardOutline, documentOutline });
+  }
 
   ngOnInit() {
     this.searchSubject.pipe(debounceTime(300), distinctUntilChanged()).subscribe(() => {
       this.page = 1;
       this.loadQuotes();
     });
+  }
+
+  // Ionic keeps this page alive underneath the create and detail pages, so
+  // ngOnInit runs only once. This runs every time the page comes back into
+  // view, so a record added or changed elsewhere appears without a refresh.
+  ionViewWillEnter() {
     this.loadQuotes();
   }
 

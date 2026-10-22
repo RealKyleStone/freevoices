@@ -2,7 +2,9 @@ import { Component, OnInit } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { ActivatedRoute } from '@angular/router';
 import { HttpClient } from '@angular/common/http';
-import { IonicModule } from '@ionic/angular';
+import {
+  IonBadge, IonButton, IonContent, IonIcon, IonSpinner,
+} from '@ionic/angular/standalone';
 import { addIcons } from 'ionicons';
 import { cardOutline, downloadOutline, warningOutline } from 'ionicons/icons';
 import { environment } from '../../../../../environments/environment';
@@ -59,7 +61,7 @@ interface PortalInvoice {
   templateUrl: './invoice-portal.page.html',
   styleUrls: ['./invoice-portal.page.scss'],
   standalone: true,
-  imports: [CommonModule, IonicModule]
+  imports: [CommonModule, IonBadge, IonButton, IonContent, IonIcon, IonSpinner]
 })
 export class InvoicePortalPage implements OnInit {
   invoice?: PortalInvoice;

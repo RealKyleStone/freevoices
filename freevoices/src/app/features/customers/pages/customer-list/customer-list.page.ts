@@ -2,7 +2,11 @@ import { Component, OnInit } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { RouterModule } from '@angular/router';
 import { FormsModule } from '@angular/forms';
-import { IonicModule, AlertController, ToastController } from '@ionic/angular';
+import {
+  AlertController, ToastController, IonButton, IonButtons, IonContent, IonFab, IonFabButton,
+  IonHeader, IonIcon, IonItem, IonLabel, IonMenuButton, IonRouterLink, IonSearchbar,
+  IonSkeletonText, IonToolbar,
+} from '@ionic/angular/standalone';
 import { CustomerService } from '../../services/customer.service';
 import { Customer } from '../../../../../models/database.models';
 import { Subject } from 'rxjs';
@@ -15,7 +19,11 @@ import { add, addOutline, peopleOutline, createOutline, trashOutline, chevronBac
   templateUrl: './customer-list.page.html',
   styleUrls: ['./customer-list.page.scss'],
   standalone: true,
-  imports: [CommonModule, RouterModule, FormsModule, IonicModule]
+  imports: [
+    CommonModule, RouterModule, FormsModule, IonButton, IonButtons, IonContent, IonFab,
+    IonFabButton, IonHeader, IonIcon, IonItem, IonLabel, IonMenuButton, IonRouterLink,
+    IonSearchbar, IonSkeletonText, IonToolbar,
+  ]
 })
 export class CustomerListPage implements OnInit {
   customers: Customer[] = [];
@@ -40,6 +48,12 @@ export class CustomerListPage implements OnInit {
       this.page = 1;
       this.loadCustomers();
     });
+  }
+
+  // Ionic keeps this page alive underneath the create and detail pages, so
+  // ngOnInit runs only once. This runs every time the page comes back into
+  // view, so a record added or changed elsewhere appears without a refresh.
+  ionViewWillEnter() {
     this.loadCustomers();
   }
 

@@ -1,7 +1,10 @@
 import { Component, OnInit } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { RouterModule, ActivatedRoute, Router } from '@angular/router';
-import { IonicModule, AlertController, ToastController } from '@ionic/angular';
+import {
+  AlertController, ToastController, IonBackButton, IonButton, IonButtons, IonContent,
+  IonHeader, IonIcon, IonRouterLink, IonSpinner, IonToolbar,
+} from '@ionic/angular/standalone';
 import { addIcons } from 'ionicons';
 import {
   createOutline, calendarOutline, timerOutline, timeOutline,
@@ -17,7 +20,10 @@ import { BrowserNotificationService } from '../../../../core/services/browser-no
   templateUrl: './quote-detail.page.html',
   styleUrls: ['./quote-detail.page.scss'],
   standalone: true,
-  imports: [CommonModule, RouterModule, IonicModule]
+  imports: [
+    CommonModule, RouterModule, IonBackButton, IonButton, IonButtons, IonContent, IonHeader,
+    IonIcon, IonRouterLink, IonSpinner, IonToolbar,
+  ]
 })
 export class QuoteDetailPage implements OnInit {
   quote?: QuoteDetail;
@@ -43,6 +49,11 @@ export class QuoteDetailPage implements OnInit {
 
   ngOnInit() {
     this.quoteId = Number(this.route.snapshot.paramMap.get('id'));
+  }
+
+  // Reloaded on every entry rather than once in ngOnInit: Ionic reuses this
+  // page when returning from Edit, which otherwise showed the old values.
+  ionViewWillEnter() {
     this.loadQuote();
   }
 

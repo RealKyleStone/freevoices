@@ -162,7 +162,7 @@ export class QuoteCreatePage implements OnInit, HasUnsavedChanges {
     };
 
     this.quoteService.createQuote(payload).subscribe({
-      next: (quote) => { this.saved = true; this.router.navigate(['/quotes', quote.id]); },
+      next: (quote) => { this.saved = true; this.router.navigate(['/quotes', quote.id], { replaceUrl: true }); },
       error: async (err) => {
         this.isLoading = false;
         await this.showToast(err.error?.message || 'Failed to create quote', 'danger');

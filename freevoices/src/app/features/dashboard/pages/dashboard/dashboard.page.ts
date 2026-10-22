@@ -1,17 +1,29 @@
 import { Component, OnInit, OnDestroy } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { RouterModule, Router } from '@angular/router';
-import { IonicModule, AlertController } from '@ionic/angular';
+import {
+  AlertController, IonButton, IonButtons, IonContent, IonHeader, IonIcon, IonItem, IonLabel,
+  IonList, IonMenuButton, IonRouterLink, IonSkeletonText, IonToolbar,
+} from '@ionic/angular/standalone';
 import { CurrencyPipe } from '@angular/common';
 import { DashboardService, DashboardSummary } from '../../services/dashboard.service';
 import { AuthService } from 'src/app/core/auth/services/auth.service';
+import { addIcons } from 'ionicons';
+import {
+  addCircleOutline, alertCircleOutline, checkmarkCircleOutline, closeCircleOutline, documentOutline,
+  documentTextOutline, downloadOutline, eyeOutline, notificationsOutline, peopleOutline,
+  personAddOutline, personCircleOutline, sendOutline, walletOutline,
+} from 'ionicons/icons';
 
 @Component({
   selector: 'app-dashboard',
   templateUrl: './dashboard.page.html',
   styleUrls: ['./dashboard.page.scss'],
   standalone: true,
-  imports: [CommonModule, RouterModule, IonicModule, CurrencyPipe]
+  imports: [
+    CommonModule, RouterModule, IonButton, IonButtons, IonContent, IonHeader, IonIcon, IonItem,
+    IonLabel, IonList, IonMenuButton, IonRouterLink, IonSkeletonText, IonToolbar, CurrencyPipe,
+  ]
 })
 export class DashboardPage implements OnInit, OnDestroy {
   selectedCurrency = 'ZAR';
@@ -34,7 +46,14 @@ export class DashboardPage implements OnInit, OnDestroy {
     private authService: AuthService,
     private alertCtrl: AlertController,
     private router: Router
-  ) {}
+  ) {
+    // Includes the activity-feed icons picked at runtime by getActivityIcon().
+    addIcons({
+      addCircleOutline, alertCircleOutline, checkmarkCircleOutline, closeCircleOutline, documentOutline,
+      documentTextOutline, downloadOutline, eyeOutline, notificationsOutline, peopleOutline,
+      personAddOutline, personCircleOutline, sendOutline, walletOutline,
+    });
+  }
 
   ngOnInit() {
     const user = this.authService.getCurrentUser();

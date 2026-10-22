@@ -1,16 +1,28 @@
 import { Component, OnInit } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { RouterModule, ActivatedRoute, Router } from '@angular/router';
-import { IonicModule, AlertController, ToastController } from '@ionic/angular';
+import {
+  AlertController, ToastController, IonBackButton, IonButton, IonButtons, IonCard,
+  IonCardContent, IonCardHeader, IonCardTitle, IonContent, IonHeader, IonIcon, IonItem,
+  IonLabel, IonList, IonRouterLink, IonSpinner, IonTitle, IonToolbar,
+} from '@ionic/angular/standalone';
 import { ProductService } from '../../services/product.service';
 import { Product } from '../../../../../models/database.models';
+import { addIcons } from 'ionicons';
+import {
+  createOutline, cubeOutline, pricetagOutline, receiptOutline, trashOutline,
+} from 'ionicons/icons';
 
 @Component({
   selector: 'app-product-detail',
   templateUrl: './product-detail.page.html',
   styleUrls: ['./product-detail.page.scss'],
   standalone: true,
-  imports: [CommonModule, RouterModule, IonicModule]
+  imports: [
+    CommonModule, RouterModule, IonBackButton, IonButton, IonButtons, IonCard, IonCardContent,
+    IonCardHeader, IonCardTitle, IonContent, IonHeader, IonIcon, IonItem, IonLabel, IonList,
+    IonRouterLink, IonSpinner, IonTitle, IonToolbar,
+  ]
 })
 export class ProductDetailPage implements OnInit {
   product?: Product;
@@ -23,10 +35,17 @@ export class ProductDetailPage implements OnInit {
     private productService: ProductService,
     private alertCtrl: AlertController,
     private toastCtrl: ToastController
-  ) {}
+  ) {
+    addIcons({ createOutline, cubeOutline, pricetagOutline, receiptOutline, trashOutline });
+  }
 
   ngOnInit() {
     this.productId = Number(this.route.snapshot.paramMap.get('id'));
+  }
+
+  // Reloaded on every entry rather than once in ngOnInit: Ionic reuses this
+  // page when returning from Edit, which otherwise showed the old values.
+  ionViewWillEnter() {
     this.loadProduct();
   }
 

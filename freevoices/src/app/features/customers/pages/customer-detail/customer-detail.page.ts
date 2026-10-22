@@ -1,7 +1,11 @@
 import { Component, OnInit } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { RouterModule, ActivatedRoute, Router } from '@angular/router';
-import { IonicModule, AlertController, ToastController } from '@ionic/angular';
+import {
+  AlertController, ToastController, IonBackButton, IonButton, IonButtons, IonCard,
+  IonCardContent, IonCardHeader, IonCardTitle, IonContent, IonHeader, IonIcon, IonItem,
+  IonLabel, IonList, IonRouterLink, IonSpinner, IonTitle, IonToolbar,
+} from '@ionic/angular/standalone';
 import { CustomerService, CustomerWithDocuments } from '../../services/customer.service';
 import { addIcons } from 'ionicons';
 import {
@@ -14,7 +18,11 @@ import {
   templateUrl: './customer-detail.page.html',
   styleUrls: ['./customer-detail.page.scss'],
   standalone: true,
-  imports: [CommonModule, RouterModule, IonicModule]
+  imports: [
+    CommonModule, RouterModule, IonBackButton, IonButton, IonButtons, IonCard, IonCardContent,
+    IonCardHeader, IonCardTitle, IonContent, IonHeader, IonIcon, IonItem, IonLabel, IonList,
+    IonRouterLink, IonSpinner, IonTitle, IonToolbar,
+  ]
 })
 export class CustomerDetailPage implements OnInit {
   customer?: CustomerWithDocuments;
@@ -36,6 +44,11 @@ export class CustomerDetailPage implements OnInit {
 
   ngOnInit() {
     this.customerId = Number(this.route.snapshot.paramMap.get('id'));
+  }
+
+  // Reloaded on every entry rather than once in ngOnInit: Ionic reuses this
+  // page when returning from Edit, which otherwise showed the old values.
+  ionViewWillEnter() {
     this.loadCustomer();
   }
 

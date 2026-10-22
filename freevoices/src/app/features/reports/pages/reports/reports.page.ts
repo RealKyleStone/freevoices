@@ -1,11 +1,17 @@
 import { Component, OnInit, OnDestroy, ViewChild, ElementRef } from '@angular/core';
 import { CommonModule } from '@angular/common';
-import { IonicModule } from '@ionic/angular';
+import {
+  IonButtons, IonContent, IonHeader, IonIcon, IonMenuButton, IonSpinner, IonToolbar,
+} from '@ionic/angular/standalone';
 import { Chart, ChartConfiguration, registerables } from 'chart.js';
 import {
   ReportsService, RevenueByMonth, InvoiceStatusBreakdown, TopCustomer, VatSummaryRow
 } from '../../services/reports.service';
 import { forkJoin } from 'rxjs';
+import { addIcons } from 'ionicons';
+import {
+  alertCircleOutline,
+} from 'ionicons/icons';
 
 Chart.register(...registerables);
 
@@ -47,7 +53,10 @@ function formatMonth(ym: string): string {
   templateUrl: './reports.page.html',
   styleUrls: ['./reports.page.scss'],
   standalone: true,
-  imports: [CommonModule, IonicModule]
+  imports: [
+    CommonModule, IonButtons, IonContent, IonHeader, IonIcon, IonMenuButton, IonSpinner,
+    IonToolbar,
+  ]
 })
 export class ReportsPage implements OnInit, OnDestroy {
   @ViewChild('revenueCanvas')  revenueCanvas!:  ElementRef<HTMLCanvasElement>;
@@ -70,7 +79,9 @@ export class ReportsPage implements OnInit, OnDestroy {
   private vatData?:     VatSummaryRow[];
 
 
-  constructor(private reports: ReportsService) {}
+  constructor(private reports: ReportsService) {
+    addIcons({ alertCircleOutline });
+  }
 
   /** Resolve a CSS custom property against the document root. */
   private token(name: string, fallback: string): string {

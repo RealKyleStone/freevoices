@@ -1,7 +1,10 @@
 import { Component } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { RouterModule } from '@angular/router';
-import { IonicModule } from '@ionic/angular';
+import {
+  IonButtons, IonContent, IonHeader, IonIcon, IonItem, IonLabel, IonList, IonMenuButton,
+  IonRouterLink, IonTitle, IonToolbar,
+} from '@ionic/angular/standalone';
 import { addIcons } from 'ionicons';
 import {
   personOutline,
@@ -19,7 +22,10 @@ import {
   templateUrl: './settings-main.page.html',
   styleUrls: ['./settings-main.page.scss'],
   standalone: true,
-  imports: [CommonModule, IonicModule, RouterModule]
+  imports: [
+    CommonModule, IonButtons, IonContent, IonHeader, IonIcon, IonItem, IonLabel, IonList,
+    IonMenuButton, IonRouterLink, IonTitle, IonToolbar, RouterModule,
+  ]
 })
 export class SettingsMainPage {
   navItems = [

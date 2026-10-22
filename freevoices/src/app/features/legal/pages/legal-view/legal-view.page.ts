@@ -1,7 +1,10 @@
 import { Component, OnInit } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { ActivatedRoute, RouterModule } from '@angular/router';
-import { IonicModule } from '@ionic/angular';
+import {
+  IonBackButton, IonButton, IonButtons, IonCard, IonCardContent, IonContent, IonHeader,
+  IonIcon, IonNote, IonRouterLink, IonSpinner, IonTitle, IonToolbar,
+} from '@ionic/angular/standalone';
 import { addIcons } from 'ionicons';
 import { cloudOfflineOutline, documentTextOutline, timeOutline } from 'ionicons/icons';
 
@@ -20,7 +23,10 @@ import { LegalDocument, LegalSlug } from '../../models/legal.models';
   templateUrl: './legal-view.page.html',
   styleUrls: ['./legal-view.page.scss'],
   standalone: true,
-  imports: [CommonModule, IonicModule, RouterModule]
+  imports: [
+    CommonModule, IonBackButton, IonButton, IonButtons, IonCard, IonCardContent, IonContent,
+    IonHeader, IonIcon, IonNote, IonRouterLink, IonSpinner, IonTitle, IonToolbar, RouterModule,
+  ]
 })
 export class LegalViewPage implements OnInit {
   doc?: LegalDocument;

@@ -1,7 +1,10 @@
 import { Component, OnInit } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { ReactiveFormsModule, FormBuilder, FormGroup } from '@angular/forms';
-import { IonicModule, ToastController } from '@ionic/angular';
+import {
+  ToastController, IonButton, IonCard, IonCardContent, IonCardHeader, IonCardTitle, IonIcon,
+  IonInput, IonItem, IonLabel, IonSelect, IonSelectOption, IonSpinner, IonToggle,
+} from '@ionic/angular/standalone';
 import { addIcons } from 'ionicons';
 import { cardOutline, lockClosedOutline } from 'ionicons/icons';
 import { SettingsService } from '../../services/settings.service';
@@ -11,7 +14,11 @@ import { SettingsService } from '../../services/settings.service';
   templateUrl: './payment-settings.page.html',
   styleUrls: ['./payment-settings.page.scss'],
   standalone: true,
-  imports: [CommonModule, ReactiveFormsModule, IonicModule]
+  imports: [
+    CommonModule, ReactiveFormsModule, IonButton, IonCard, IonCardContent, IonCardHeader,
+    IonCardTitle, IonIcon, IonInput, IonItem, IonLabel, IonSelect, IonSelectOption, IonSpinner,
+    IonToggle,
+  ]
 })
 export class PaymentSettingsPage implements OnInit {
   form!: FormGroup;
