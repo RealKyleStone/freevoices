@@ -336,6 +336,13 @@
     font-size: var(--fv-text-sm);
   }
 
+  /* Ionic pulls a start icon left by a negative margin, meant to be absorbed
+     by the button's padding. With the padding zeroed above, the icon was
+     pushed past the button edge and clipped. */
+  ion-button ion-icon[slot="start"] {
+    margin-inline-start: 0;
+  }
+
   /* The destructive action sits at the far end of the row. */
   ion-button[color="danger"] { margin-left: auto; }
 }
