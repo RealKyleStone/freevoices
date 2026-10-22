@@ -1110,7 +1110,7 @@ app.put('/api/invoices/:id', authenticateToken, validate(invoiceRules), async (r
   try {
     const { id } = req.params;
     const { customer_id, issue_date, due_date: reqDueDate, payment_terms: reqTerms, notes, terms_conditions, items, currency_id: reqCurrencyId, is_recurring, recurrence_interval, recurrence_end_date, auto_send } = req.body;
-    const existing = await executeQuery(`SELECT id, status, currency_id, (SELECT COUNT(*) FROM payments p WHERE p.document_id = documents.id) AS payment_count FROM documents WHERE id = ? AND user_id = ? AND type = 'INVOICE'`, [id, req.user.id]);
+    const existing = await executeQuery(`SELECT id, status, currency_id, is_recurring, recurrence_interval, (SELECT COUNT(*) FROM payments p WHERE p.document_id = documents.id) AS payment_count FROM documents WHERE id = ? AND user_id = ? AND type = 'INVOICE'`, [id, req.user.id]);
     if (existing.length === 0) return res.status(404).json({ message: 'Invoice not found' });
     if (existing[0].status !== 'DRAFT') return res.status(400).json({ message: 'Only DRAFT invoices can be edited' });
     // A payment is evidence the customer was billed these amounts. Letting the
@@ -1127,12 +1127,27 @@ app.put('/api/invoices/:id', authenticateToken, validate(invoiceRules), async (r
       await new Promise((resolve, reject) => conn.beginTransaction(err => err ? reject(err) : resolve()));
       let newCurrencyId = existing[0].currency_id;
       if (reqCurrencyId) { const currRows = await executeQuery('SELECT id FROM currencies WHERE id = ? AND is_active = 1', [reqCurrencyId]); if (currRows.length > 0) newCurrencyId = reqCurrencyId; }
-      const recurringFlag = is_recurring ? 1 : 0, recurInterval = recurringFlag && recurrence_interval ? recurrence_interval : null;
-      const recurNextDate = recurringFlag && recurInterval ? advanceDate(issue_date, recurInterval) : null;
-      const recurEndDate = recurringFlag && recurrence_end_date ? recurrence_end_date : null, autoSendFlag = recurringFlag && auto_send ? 1 : 0;
+      // An edit that leaves out is_recurring is not touching the schedule, so the
+      // stored recurrence columns are kept rather than reset to a one-off.
+      let recurSql = '';
+      const recurParams = [];
+      if (is_recurring !== undefined) {
+        const recurringFlag = is_recurring ? 1 : 0, recurInterval = recurringFlag && recurrence_interval ? recurrence_interval : null;
+        const recurEndDate = recurringFlag && recurrence_end_date ? recurrence_end_date : null, autoSendFlag = recurringFlag && auto_send ? 1 : 0;
+        recurSql = ', is_recurring=?, recurrence_interval=?, recurrence_end_date=?, auto_send=?';
+        recurParams.push(recurringFlag, recurInterval, recurEndDate, autoSendFlag);
+        // A source invoice stays DRAFT while the cron generates copies from it, so
+        // its next run may already be past issue_date. Recomputing from issue_date
+        // when the schedule itself is unchanged would rewind it and duplicate a run.
+        const scheduleUnchanged = recurringFlag && existing[0].is_recurring && existing[0].recurrence_interval === recurInterval;
+        if (!scheduleUnchanged) {
+          recurSql += ', recurrence_next_date=?';
+          recurParams.push(recurringFlag && recurInterval ? advanceDate(issue_date, recurInterval) : null);
+        }
+      }
       await new Promise((resolve, reject) => conn.query(
-        `UPDATE documents SET customer_id=?, issue_date=?, due_date=?, payment_terms=?, currency_id=?, subtotal=?, vat_amount=?, total=?, notes=?, terms_conditions=?, is_recurring=?, recurrence_interval=?, recurrence_next_date=?, recurrence_end_date=?, auto_send=?, updated_at=NOW() WHERE id=? AND user_id=?`,
-        [customer_id, issue_date, due_date, payment_terms, newCurrencyId, subtotal.toFixed(2), vat_amount.toFixed(2), total.toFixed(2), notes || null, terms_conditions || null, recurringFlag, recurInterval, recurNextDate, recurEndDate, autoSendFlag, id, req.user.id],
+        `UPDATE documents SET customer_id=?, issue_date=?, due_date=?, payment_terms=?, currency_id=?, subtotal=?, vat_amount=?, total=?, notes=?, terms_conditions=?${recurSql}, updated_at=NOW() WHERE id=? AND user_id=?`,
+        [customer_id, issue_date, due_date, payment_terms, newCurrencyId, subtotal.toFixed(2), vat_amount.toFixed(2), total.toFixed(2), notes || null, terms_conditions || null, ...recurParams, id, req.user.id],
         (err, r) => err ? reject(err) : resolve(r)
       ));
       await new Promise((resolve, reject) => conn.query('DELETE FROM document_items WHERE document_id = ?', [id], (err, r) => err ? reject(err) : resolve(r)));

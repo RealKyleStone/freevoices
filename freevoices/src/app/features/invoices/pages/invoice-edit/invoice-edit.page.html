@@ -123,6 +123,41 @@
       </ion-card-content>
     </ion-card>
 
+    <!-- Recurring -->
+    <ion-card>
+      <ion-card-header><ion-card-title>Recurring schedule</ion-card-title></ion-card-header>
+      <ion-card-content>
+
+        <ion-item>
+          <ion-label>Recurring invoice</ion-label>
+          <ion-toggle formControlName="is_recurring" slot="end"></ion-toggle>
+        </ion-item>
+
+        <ng-container *ngIf="isRecurring">
+          <ion-item>
+            <ion-label position="stacked">Interval <ion-text color="danger">*</ion-text></ion-label>
+            <ion-select aria-label="Interval" formControlName="recurrence_interval" interface="popover" placeholder="Select interval">
+              <ion-select-option value="WEEKLY">Weekly</ion-select-option>
+              <ion-select-option value="MONTHLY">Monthly</ion-select-option>
+              <ion-select-option value="QUARTERLY">Quarterly</ion-select-option>
+              <ion-select-option value="YEARLY">Yearly</ion-select-option>
+            </ion-select>
+          </ion-item>
+
+          <ion-item>
+            <ion-label position="stacked">End date (optional)</ion-label>
+            <ion-input aria-label="End date (optional)" formControlName="recurrence_end_date" type="date"></ion-input>
+          </ion-item>
+
+          <ion-item>
+            <ion-label>Auto-send each generated invoice</ion-label>
+            <ion-toggle formControlName="auto_send" slot="end"></ion-toggle>
+          </ion-item>
+        </ng-container>
+
+      </ion-card-content>
+    </ion-card>
+
     <!-- Notes -->
     <ion-card>
       <ion-card-header><ion-card-title>Additional info</ion-card-title></ion-card-header>

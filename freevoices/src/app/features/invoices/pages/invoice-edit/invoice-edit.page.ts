@@ -6,12 +6,12 @@ import {
   ToastController,
   IonBackButton, IonButton, IonButtons, IonCard, IonCardContent, IonCardHeader, IonCardTitle,
   IonContent, IonHeader, IonIcon, IonInput, IonItem, IonLabel, IonNote, IonSelect,
-  IonSelectOption, IonSpinner, IonText, IonTextarea, IonTitle, IonToolbar,
+  IonSelectOption, IonSpinner, IonText, IonTextarea, IonTitle, IonToggle, IonToolbar,
 } from '@ionic/angular/standalone';
 import { forkJoin } from 'rxjs';
 import { addIcons } from 'ionicons';
 import { trashOutline, addOutline } from 'ionicons/icons';
-import { InvoiceService } from '../../services/invoice.service';
+import { InvoiceService, InvoicePayload } from '../../services/invoice.service';
 import { CustomerService } from '../../../customers/services/customer.service';
 import { ProductService } from '../../../products/services/product.service';
 import { Customer, Product } from '../../../../../models/database.models';
@@ -33,7 +33,7 @@ function dueNotBeforeIssue(ctrl: AbstractControl): ValidationErrors | null {
     CommonModule, ReactiveFormsModule,
     IonBackButton, IonButton, IonButtons, IonCard, IonCardContent, IonCardHeader, IonCardTitle,
     IonContent, IonHeader, IonIcon, IonInput, IonItem, IonLabel, IonNote, IonSelect,
-    IonSelectOption, IonSpinner, IonText, IonTextarea, IonTitle, IonToolbar,
+    IonSelectOption, IonSpinner, IonText, IonTextarea, IonTitle, IonToggle, IonToolbar,
   ]
 })
 export class InvoiceEditPage implements OnInit, HasUnsavedChanges {
@@ -49,6 +49,8 @@ export class InvoiceEditPage implements OnInit, HasUnsavedChanges {
   // See invoice-create: an untouched due date follows issue date + terms.
   private autoDueDate = '';
 
+  private readonly recurrenceFields = ['is_recurring', 'recurrence_interval', 'recurrence_end_date', 'auto_send'];
+
   constructor(
     private fb: FormBuilder,
     private route: ActivatedRoute,
@@ -60,13 +62,17 @@ export class InvoiceEditPage implements OnInit, HasUnsavedChanges {
   ) {
     addIcons({ trashOutline, addOutline });
     this.form = this.fb.group({
-      customer_id:      [null, Validators.required],
-      issue_date:       ['', Validators.required],
-      due_date:         ['', dueNotBeforeIssue],
-      payment_terms:    [30],
-      notes:            [''],
-      terms_conditions: [''],
-      items:            this.fb.array([])
+      customer_id:         [null, Validators.required],
+      issue_date:          ['', Validators.required],
+      due_date:            ['', dueNotBeforeIssue],
+      payment_terms:       [30],
+      notes:               [''],
+      terms_conditions:    [''],
+      items:               this.fb.array([]),
+      is_recurring:        [false],
+      recurrence_interval: [null],
+      recurrence_end_date: [''],
+      auto_send:           [false]
     });
 
     this.form.get('issue_date')!.valueChanges.subscribe(() => this.syncDueDate());
@@ -124,12 +130,16 @@ export class InvoiceEditPage implements OnInit, HasUnsavedChanges {
         // timestamp of local midnight ('2026-10-19T22:00:00Z' for the 20th),
         // and this split then loaded the day before into the form.
         this.form.patchValue({
-          customer_id:      invoice.customer_id,
-          issue_date:       invoice.issue_date?.toString().slice(0, 10),
-          due_date:         invoice.due_date?.toString().slice(0, 10) ?? '',
-          payment_terms:    invoice.payment_terms,
-          notes:            invoice.notes,
-          terms_conditions: invoice.terms_conditions
+          customer_id:         invoice.customer_id,
+          issue_date:          invoice.issue_date?.toString().slice(0, 10),
+          due_date:            invoice.due_date?.toString().slice(0, 10) ?? '',
+          payment_terms:       invoice.payment_terms,
+          notes:               invoice.notes,
+          terms_conditions:    invoice.terms_conditions,
+          is_recurring:        !!invoice.is_recurring,
+          recurrence_interval: invoice.recurrence_interval ?? null,
+          recurrence_end_date: invoice.recurrence_end_date?.toString().slice(0, 10) ?? '',
+          auto_send:           !!invoice.auto_send
         }, { emitEvent: false });
         // A stored due date that matches the terms is treated as calculated,
         // so changing the terms moves it.
@@ -158,6 +168,10 @@ export class InvoiceEditPage implements OnInit, HasUnsavedChanges {
         this.router.navigate(['/invoices']);
       }
     });
+  }
+
+  get isRecurring(): boolean {
+    return !!this.form.get('is_recurring')?.value;
   }
 
   get items(): FormArray {
@@ -225,8 +239,8 @@ export class InvoiceEditPage implements OnInit, HasUnsavedChanges {
     }
 
     this.isLoading = true;
-    const { items, ...rest } = this.form.value;
-    const payload = {
+    const { items, is_recurring, recurrence_interval, recurrence_end_date, auto_send, ...rest } = this.form.value;
+    const payload: InvoicePayload = {
       ...rest,
       items: items.map((item: any) => ({
         product_id:  item.product_id || null,
@@ -236,6 +250,16 @@ export class InvoiceEditPage implements OnInit, HasUnsavedChanges {
         vat_rate:    item.vat_rate
       }))
     };
+    // The server keeps the stored schedule when is_recurring is absent, so it
+    // is only sent when the user actually changed the recurring card.
+    if (this.recurrenceFields.some(f => this.form.get(f)?.dirty)) {
+      Object.assign(payload, {
+        is_recurring,
+        recurrence_interval: is_recurring ? recurrence_interval : null,
+        recurrence_end_date: is_recurring && recurrence_end_date ? recurrence_end_date : null,
+        auto_send: is_recurring ? auto_send : false
+      });
+    }
 
     this.invoiceService.updateInvoice(this.invoiceId, payload).subscribe({
       next: () => {
