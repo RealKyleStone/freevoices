@@ -20,7 +20,10 @@ const fs = require('fs');
 const path = require('path');
 
 const ROOT = path.join(__dirname, '..');
-const MIN_NODE_MAJOR = 18;
+// 22: google-auth-library@11 declares node >=22, and Node 20 reached end of
+// life in April 2026 — it gets no security fixes (it was left out of the
+// 21 October 2026 release, including the Brotli RCE, CVE-2026-111497).
+const MIN_NODE_MAJOR = 22;
 
 /**
  * Both module lists are READ FROM THE DEPLOYED CODE, never hardcoded.
@@ -86,7 +89,7 @@ const section = (t) => console.log(`\n${t}`);
   section('Node runtime');
   const major = parseInt(process.versions.node.split('.')[0], 10);
   if (major >= MIN_NODE_MAJOR) pass(`Node ${process.version} (needs >= ${MIN_NODE_MAJOR})`);
-  else fail(`Node ${process.version} is too old — helmet requires >= ${MIN_NODE_MAJOR}`);
+  else fail(`Node ${process.version} is too old or end-of-life — pick ${MIN_NODE_MAJOR} or newer in the cPanel Node.js selector`);
 
   // 2. Runtime modules. Done before anything else touches them, because a
   //    native module that failed to build is the most common deploy failure and

@@ -152,9 +152,10 @@ const serverPkg = {
   private: true,
   description: 'FreeVoices API and static host',
   main: 'server.js',
-  // helmet@8 requires >=18, and 16.x is end-of-life. cPanel defaults its
-  // Node.js selector to an old version, so state the floor explicitly.
-  engines: { node: '>=18.0.0' },
+  // google-auth-library@11 requires >=22, and 20.x is end-of-life (no security
+  // fixes after April 2026). cPanel defaults its Node.js selector to an old
+  // version, so state the floor explicitly.
+  engines: { node: '>=22.0.0' },
   scripts: {
     start: 'node server.js',
     doctor: 'node scripts/doctor.js',
