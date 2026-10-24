@@ -241,6 +241,9 @@ function buildInvoicePdf(invoice, items, user) {
 
     // ── FOOTER ────────────────────────────────────────────────────────────────
     const pageHeight = doc.page.height;
+    // The footer sits inside the 50pt bottom margin. Text placed there makes
+    // pdfkit start a new page, stranding the footer line alone on page 2.
+    doc.page.margins.bottom = 0;
     doc.rect(0, pageHeight - 36, doc.page.width, 36).fill(DARK);
     doc.fillColor('#aaaacc').fontSize(8).font('Helvetica')
        .text(
@@ -433,6 +436,9 @@ function buildQuotePdf(quote, items, user) {
 
     // ── FOOTER ────────────────────────────────────────────────────────────────
     const pageHeight = doc.page.height;
+    // The footer sits inside the 50pt bottom margin. Text placed there makes
+    // pdfkit start a new page, stranding the footer line alone on page 2.
+    doc.page.margins.bottom = 0;
     doc.rect(0, pageHeight - 36, doc.page.width, 36).fill(DARK);
     doc.fillColor('#aaaacc').fontSize(8).font('Helvetica')
        .text(
@@ -637,6 +643,9 @@ function buildReceiptPdf(invoice, items, user, payments) {
 
     // ── FOOTER ────────────────────────────────────────────────────────────────
     const pageHeight = doc.page.height;
+    // The footer sits inside the 50pt bottom margin. Text placed there makes
+    // pdfkit start a new page, stranding the footer line alone on page 2.
+    doc.page.margins.bottom = 0;
     doc.rect(0, pageHeight - 36, doc.page.width, 36).fill(DARK);
     doc.fillColor('#aaaacc').fontSize(8).font('Helvetica')
        .text(

@@ -3,7 +3,7 @@ const axios = require('axios');
 const cron = require('node-cron');
 
 const EmailService = require('./src/services/email.service');
-const { buildInvoicePdf, buildReceiptPdf } = require('./src/services/pdf.service');
+const { buildInvoicePdf, buildQuotePdf, buildReceiptPdf } = require('./src/services/pdf.service');
 // The pool, the logger and the query helpers live in db.service so that CLI
 // tooling can share them without booting an HTTP listener.
 const { logger, executeQuery, getConnection, withTransaction, closePool } = require('./src/services/db.service');
@@ -1329,6 +1329,25 @@ app.get('/api/quotes/:id', authenticateToken, async (req, res) => {
     if (quotes.length === 0) return res.status(404).json({ message: 'Quote not found' });
     res.json({ ...quotes[0], items, tracking, converted_invoices });
   } catch (error) { logger.error('Error fetching quote:', error); res.status(500).json({ message: 'Failed to fetch quote' }); }
+});
+
+app.get('/api/quotes/:id/pdf', authenticateToken, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const [quotes, items, users, logoRows] = await Promise.all([
+      queryDecrypted(decryptCustomerJoin, `SELECT d.*, c.name AS customer_name, c.email AS customer_email, c.billing_address AS customer_billing_address, c.vat_number AS customer_vat_number, cur.symbol AS currency_symbol, cur.code AS currency_code FROM documents d JOIN customers c ON c.id = d.customer_id LEFT JOIN currencies cur ON cur.id = d.currency_id WHERE d.id = ? AND d.user_id = ? AND d.type = 'QUOTE'`, [id, req.user.id]),
+      executeQuery('SELECT * FROM document_items WHERE document_id = ? ORDER BY id ASC', [id]),
+      queryDecrypted(decryptUserRow, 'SELECT * FROM users WHERE id = ?', [req.user.id]),
+      executeQuery("SELECT setting_value FROM settings WHERE user_id = ? AND setting_key = 'company_logo'", [req.user.id])
+    ]);
+    if (quotes.length === 0) return res.status(404).json({ message: 'Quote not found' });
+    const logoRelPath = logoRows[0]?.setting_value || null;
+    const user = { ...decryptUserRow(users[0]), logo_path: logoRelPath ? path.join(__dirname, logoRelPath) : null };
+    const pdfBuffer = await buildQuotePdf(quotes[0], items, user);
+    await executeQuery(`INSERT INTO document_tracking (document_id, event_type) VALUES (?, 'DOWNLOADED')`, [id]);
+    res.set({ 'Content-Type': 'application/pdf', 'Content-Disposition': `attachment; filename="${quotes[0].document_number}.pdf"`, 'Content-Length': pdfBuffer.length });
+    res.send(pdfBuffer);
+  } catch (error) { logger.error('Error generating quote PDF:', error); res.status(500).json({ message: 'Failed to generate PDF' }); }
 });
 
 app.put('/api/quotes/:id', authenticateToken, validate(quoteRules), async (req, res) => {
@@ -3040,6 +3059,12 @@ app.get('/robots.txt', (req, res) => {
     'Allow: /$',
     '',
   ].join('\n'));
+});
+
+// An unknown API path must fail loudly. Falling through to the Angular shell
+// answers 200 with HTML, which a download handler saves as a "corrupt" PDF.
+app.all('/api/*', (req, res) => {
+  res.status(404).json({ message: 'Not found' });
 });
 
 // Catch-all route for Angular app
