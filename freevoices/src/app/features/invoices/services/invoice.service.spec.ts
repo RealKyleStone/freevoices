@@ -23,6 +23,7 @@ const MOCK_LIST_ITEM = {
   subtotal: 19000,
   vat_amount: 2850,
   total: 21850,
+  amount_paid: '21850.00',
   created_at: new Date().toISOString()
 };
 
@@ -395,7 +396,7 @@ describe('InvoiceService', () => {
 
       service.shareInvoice(13).subscribe();
 
-      expect(dbSpy.create).toHaveBeenCalledWith('invoices/13/share', {});
+      expect(dbSpy.create).toHaveBeenCalledWith('invoices/13/share', { rotate: false });
     });
 
     it('should return a token and share URL', (done) => {

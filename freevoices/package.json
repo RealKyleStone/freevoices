@@ -12,7 +12,7 @@
     "bundle": "node scripts/build-deploy-bundle.js",
     "deploy:build": "ng build --configuration production && node scripts/build-deploy-bundle.js",
     "doctor": "node scripts/doctor.js",
-    "test:server": "node --test",
+    "test:server": "node --test test/*.test.js",
     "check:payfast": "node scripts/payfast-check.js",
     "encrypt:backfill": "node scripts/encrypt-backfill.js",
     "encrypt:verify": "node scripts/encrypt-backfill.js --verify",

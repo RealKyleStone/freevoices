@@ -194,7 +194,7 @@ function queryOn(connection, sql, params = []) {
  * throw. `fn` receives a `q(sql, params)` bound to the transaction's
  * connection. Replaces seven hand-rolled copies of this dance in server.js.
  */
-async function withTransaction(fn) {
+async function withTransaction(fn, attempt = 0) {
   const conn = await getConnection();
   try {
     await new Promise((resolve, reject) => conn.beginTransaction(err => (err ? reject(err) : resolve())));
@@ -210,6 +210,14 @@ async function withTransaction(fn) {
   } catch (err) {
     await new Promise(resolve => conn.rollback(resolve));
     conn.release();
+    // InnoDB can choose a victim even when callers follow a consistent row
+    // lock order (foreign-key and range locks also participate). A deadlock
+    // explicitly rolls the transaction back, so its database-only callback
+    // can safely be replayed. Never retry an ambiguous connection/commit error.
+    if (err.code === 'ER_LOCK_DEADLOCK' && attempt < 3) {
+      await new Promise(resolve => setTimeout(resolve, 20 * (attempt + 1)));
+      return withTransaction(fn, attempt + 1);
+    }
     throw err;
   }
 }

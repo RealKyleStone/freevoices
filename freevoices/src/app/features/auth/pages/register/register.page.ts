@@ -1,5 +1,5 @@
 // src/app/features/auth/pages/register/register.page.ts
-import { Component, ElementRef, OnInit, ViewChild, ChangeDetectorRef } from '@angular/core';
+import { Component, ElementRef, OnInit, AfterViewInit, ViewChild, ChangeDetectorRef } from '@angular/core';
 import { FormBuilder, FormGroup, Validators, ReactiveFormsModule, AbstractControl } from '@angular/forms';
 import { Router, RouterLink } from '@angular/router';
 import { IonContent, IonHeader, IonToolbar, IonTitle, IonButton, 
@@ -49,7 +49,7 @@ interface Bank {
   ]
 })
 
-export class RegisterPage implements OnInit {
+export class RegisterPage implements OnInit, AfterViewInit {
   @ViewChild('recaptcha') recaptchaElement?: ElementRef;
   @ViewChild('googleBtn') googleButtonElement?: ElementRef<HTMLElement>;
 

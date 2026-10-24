@@ -3,6 +3,7 @@ import { Observable } from 'rxjs';
 import { ApiService } from '../../../core/services/api.service';
 
 export interface DashboardSummary {
+  currency_code?: string;
   monthRevenue: number;
   totalCustomers: number;
   openInvoices: number;

@@ -46,6 +46,9 @@ export class InvoiceCreatePage implements OnInit, HasUnsavedChanges {
   isLoadingData = true;
   submitted = false;
   private saved = false;
+  private defaultVatRate = 15;
+  private defaultTerms = 30;
+  private requestKey = crypto.randomUUID();
   // The due date this page last filled in from the terms. While the field
   // still holds it, a change to the issue date or terms recalculates it; once
   // the user types their own date, it is left alone.
@@ -109,17 +112,23 @@ export class InvoiceCreatePage implements OnInit, HasUnsavedChanges {
 
   ngOnInit() {
     forkJoin({
-      customers:  this.customerService.getCustomers('', 1, 200),
-      products:   this.productService.getProducts('', 1, 200),
+      customers:  this.customerService.getAllCustomers(),
+      products:   this.productService.getAllProducts(),
       currencies: this.settingsService.getCurrencies(),
       settings:   this.settingsService.getSettings()
     }).subscribe({
       next: ({ customers, products, currencies, settings }) => {
-        this.customers  = customers.data;
-        this.products   = products.data;
+        this.customers  = customers;
+        this.products   = products;
         this.currencies = currencies;
         const defaultCurrencyId = parseInt(settings.default_currency_id || '1', 10);
-        this.form.patchValue({ currency_id: defaultCurrencyId });
+        this.defaultVatRate = Number(settings.invoice_vat_rate ?? 15);
+        this.defaultTerms = Number(settings.invoice_payment_terms ?? 30);
+        this.form.patchValue({ currency_id: defaultCurrencyId, payment_terms: this.defaultTerms, notes: settings.invoice_notes || '' });
+        this.form.get('customer_id')!.valueChanges.subscribe(id => {
+          const customer = this.customers.find(c => c.id === +id);
+          this.form.patchValue({ payment_terms: customer?.payment_terms ?? this.defaultTerms });
+        });
         this.addItem();
         this.isLoadingData = false;
       },
@@ -149,7 +158,8 @@ export class InvoiceCreatePage implements OnInit, HasUnsavedChanges {
       description: ['', Validators.required],
       quantity:    [1, [Validators.required, Validators.min(0.01)]],
       unit_price:  [0, [Validators.required, Validators.min(0)]],
-      vat_rate:    [15, [Validators.required, Validators.min(0), Validators.max(100)]]
+      vat_inclusive: [false],
+      vat_rate:    [this.defaultVatRate, [Validators.required, Validators.min(0), Validators.max(100)]]
     });
   }
 
@@ -170,7 +180,8 @@ export class InvoiceCreatePage implements OnInit, HasUnsavedChanges {
     this.items.at(index).patchValue({
       description: product.name,
       unit_price:  product.price,
-      vat_rate:    15
+      vat_inclusive: !!product.vat_inclusive,
+      vat_rate:    this.defaultVatRate
     });
   }
 
@@ -218,7 +229,8 @@ export class InvoiceCreatePage implements OnInit, HasUnsavedChanges {
         description: item.description,
         quantity:    item.quantity,
         unit_price:  item.unit_price,
-        vat_rate:    item.vat_rate
+        vat_rate:    item.vat_rate,
+        vat_inclusive: item.vat_inclusive
       })),
       is_recurring,
       recurrence_interval: is_recurring ? recurrence_interval : null,
@@ -226,7 +238,7 @@ export class InvoiceCreatePage implements OnInit, HasUnsavedChanges {
       auto_send: is_recurring ? auto_send : false
     };
 
-    this.invoiceService.createInvoice(payload).subscribe({
+    this.invoiceService.createInvoice({ ...payload, request_key: this.requestKey }).subscribe({
       next: (invoice) => {
         this.saved = true;
         this.router.navigate(['/invoices', invoice.id], { replaceUrl: true });

@@ -15,10 +15,14 @@ export function roundCents(value: unknown): number {
 
 export interface LineTotals { subtotal: number; vat: number; total: number; }
 
-export function lineTotals(item: { quantity?: unknown; unit_price?: unknown; vat_rate?: unknown }): LineTotals {
-  const subtotal = roundCents((Number(item.quantity) || 0) * (Number(item.unit_price) || 0));
-  const vat = roundCents(subtotal * (Number(item.vat_rate) || 0) / 100);
-  return { subtotal, vat, total: roundCents(subtotal + vat) };
+export function lineTotals(item: { quantity?: unknown; unit_price?: unknown; vat_rate?: unknown; vat_inclusive?: unknown }): LineTotals {
+  const inclusive = [true, 1, '1', 'true'].some(value => value === item.vat_inclusive);
+  const enteredAmount = roundCents((Number(item.quantity) || 0) * (Number(item.unit_price) || 0));
+  const rawRate = Number(item.vat_rate);
+  const rate = Number.isFinite(rawRate) ? rawRate : 15;
+  const subtotal = inclusive ? roundCents(enteredAmount / (1 + rate / 100)) : enteredAmount;
+  const vat = inclusive ? roundCents(enteredAmount - subtotal) : roundCents(subtotal * rate / 100);
+  return { subtotal, vat, total: inclusive ? enteredAmount : roundCents(subtotal + vat) };
 }
 
 /**

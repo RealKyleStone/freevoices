@@ -30,19 +30,21 @@ export interface VatSummaryRow {
 export class ReportsService {
   constructor(private api: ApiService) {}
 
-  getRevenueByMonth(): Observable<RevenueByMonth[]> {
-    return this.api.get<RevenueByMonth[]>('/reports/revenue-by-month');
+  getCurrencies(): Observable<{code:string;name:string;symbol:string}[]> { return this.api.get('/currencies'); }
+
+  getRevenueByMonth(currency = 'ZAR'): Observable<RevenueByMonth[]> {
+    return this.api.get<RevenueByMonth[]>(`/reports/revenue-by-month?currency=${encodeURIComponent(currency)}`);
   }
 
-  getInvoiceStatus(): Observable<InvoiceStatusBreakdown[]> {
-    return this.api.get<InvoiceStatusBreakdown[]>('/reports/invoice-status');
+  getInvoiceStatus(currency = 'ZAR'): Observable<InvoiceStatusBreakdown[]> {
+    return this.api.get<InvoiceStatusBreakdown[]>(`/reports/invoice-status?currency=${encodeURIComponent(currency)}`);
   }
 
-  getTopCustomers(): Observable<TopCustomer[]> {
-    return this.api.get<TopCustomer[]>('/reports/top-customers');
+  getTopCustomers(currency = 'ZAR'): Observable<TopCustomer[]> {
+    return this.api.get<TopCustomer[]>(`/reports/top-customers?currency=${encodeURIComponent(currency)}`);
   }
 
-  getVatSummary(): Observable<VatSummaryRow[]> {
-    return this.api.get<VatSummaryRow[]>('/reports/vat-summary');
+  getVatSummary(currency = 'ZAR'): Observable<VatSummaryRow[]> {
+    return this.api.get<VatSummaryRow[]>(`/reports/vat-summary?currency=${encodeURIComponent(currency)}`);
   }
 }

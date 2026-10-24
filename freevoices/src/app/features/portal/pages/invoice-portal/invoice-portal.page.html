@@ -27,7 +27,7 @@
       <div class="doc-badge">
         <span class="doc-type">INVOICE</span>
         <span class="doc-number">{{ invoice.document_number }}</span>
-        <ion-badge [color]="getStatusColor(invoice.status)">{{ invoice.status | titlecase }}</ion-badge>
+        <ion-badge [color]="getStatusColor(invoice.status)">{{ invoice.status === 'SENT' ? 'Issued' : (invoice.status | titlecase) }}</ion-badge>
       </div>
     </div>
 
@@ -49,7 +49,7 @@
           <span class="date-label">Due date</span>
           <span>{{ invoice.due_date | date:'mediumDate' }}</span>
         </div>
-        <div class="date-row" *ngIf="invoice.payment_terms != null">
+        <div class="date-row" *ngIf="invoice.payment_terms !== null && invoice.payment_terms !== undefined">
           <span class="date-label">Payment terms</span>
           <span>{{ invoice.payment_terms }} days</span>
         </div>
@@ -68,7 +68,7 @@
       <div class="item-row" *ngFor="let item of invoice.items; let even = even" [class.alt]="!even">
         <span class="col-desc">{{ item.description }}</span>
         <span class="col-qty">{{ item.quantity }}</span>
-        <span class="col-price">{{ currencySymbol }} {{ item.unit_price | number:'1.2-2' }}</span>
+        <span class="col-price">{{ currencySymbol }} {{ item.unit_price | number:'1.2-2' }} <small>{{ item.vat_inclusive ? 'incl. VAT' : 'excl. VAT' }}</small></span>
         <span class="col-vat">{{ item.vat_rate }}%</span>
         <span class="col-total">{{ currencySymbol }} {{ item.total | number:'1.2-2' }}</span>
       </div>

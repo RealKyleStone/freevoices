@@ -20,7 +20,7 @@
         <ion-item lines="full">
           <ion-label>
             <h3>Invoice sent</h3>
-            <p>Receive a confirmation when an invoice is sent to a client</p>
+            <p>Receive a confirmation when the email provider accepts an invoice</p>
           </ion-label>
           <ion-toggle formControlName="notify_invoice_sent" slot="end" color="primary"></ion-toggle>
         </ion-item>
@@ -39,6 +39,11 @@
             <p>Alert when an invoice passes its due date unpaid</p>
           </ion-label>
           <ion-toggle formControlName="notify_invoice_overdue" slot="end" color="primary"></ion-toggle>
+        </ion-item>
+        <ion-item lines="none">
+          <ion-label class="ion-text-wrap"><h3>Customer payment reminders</h3>
+            <p>Email unpaid customers 1, 7 and 14 days after the due date. Off by default. Muting an invoice stops its reminders.</p></ion-label>
+          <ion-toggle aria-label="Customer payment reminders" formControlName="customer_reminders_enabled" slot="end"></ion-toggle>
         </ion-item>
       </ion-card-content>
     </ion-card>

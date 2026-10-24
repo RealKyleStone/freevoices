@@ -50,6 +50,8 @@ export interface Document extends BaseModel {
   customer_id: number;
   type: 'INVOICE' | 'QUOTE';
   document_number: string;
+  delivery_status?: 'UNKNOWN' | 'NOT_SENT' | 'QUEUED' | 'SENDING' | 'ACCEPTED' | 'FAILED' | 'UNCERTAIN';
+  delivery_error?: string | null;
   currency_id: number;
   currency_symbol?: string;
   currency_code?: string;
@@ -76,6 +78,7 @@ export interface Document extends BaseModel {
 }
 
 export interface DocumentItem extends BaseModel {
+  vat_inclusive?: boolean;
   document_id: number;
   product_id?: number;
   description: string;

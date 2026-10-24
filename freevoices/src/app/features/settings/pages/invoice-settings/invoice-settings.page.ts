@@ -40,8 +40,8 @@ export class InvoiceSettingsPage implements OnInit {
 
   ngOnInit() {
     this.form = this.fb.group({
-      invoice_prefix: ['INV', Validators.required],
-      invoice_next_number: [1, [Validators.required, Validators.min(1)]],
+      invoice_prefix: ['INV', [Validators.required, Validators.pattern(/^[A-Za-z0-9]{1,12}$/)]],
+      invoice_next_number: [1, [Validators.required, Validators.min(1), Validators.max(999999999), Validators.pattern(/^[0-9]+$/)]],
       invoice_payment_terms: [30, [Validators.required, Validators.min(0)]],
       invoice_vat_rate: [15, [Validators.required, Validators.min(0), Validators.max(100)]],
       invoice_notes: [''],

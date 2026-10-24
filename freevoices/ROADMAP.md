@@ -1,5 +1,7 @@
 # Freevoices — System Overview & Development Roadmap
 
+> October 2026 update: this document preserves the March baseline below. Reports, settings, account lifecycle, inclusive pricing, archived party snapshots, reliable recurring generation, a persistent email queue and opt-in customer reminders now exist. See [the current product review](../PRODUCT_REVIEW.md) for tested fixes and remaining work. Profile settings use `/api/settings`; the older `/api/profile` reference below is historical.
+
 > **Purpose of this document:** Give future contributors (including future AI assistants) a complete picture of what the system currently does, what's been scaffolded but not built, and a prioritised plan for what to build next.
 
 ---

@@ -1,5 +1,5 @@
 import { Injectable } from '@angular/core';
-import { Observable } from 'rxjs';
+import { Observable, EMPTY, expand, reduce } from 'rxjs';
 import { DatabaseService } from '../../../../services/database.service';
 import { Product } from '../../../../models/database.models';
 
@@ -18,6 +18,14 @@ export class ProductService {
 
   getProducts(search = '', page = 1, limit = 20): Observable<ProductListResponse> {
     return this.db.query<ProductListResponse>('products', { params: { search, page, limit } });
+  }
+
+  getAllProducts(): Observable<Product[]> {
+    return this.getProducts('', 1, 100).pipe(
+      expand(page => page.data.length && page.page * page.limit < page.total
+        ? this.getProducts('', page.page + 1, 100) : EMPTY),
+      reduce((all: Product[], page) => all.concat(page.data), [])
+    );
   }
 
   getProduct(id: number): Observable<Product> {

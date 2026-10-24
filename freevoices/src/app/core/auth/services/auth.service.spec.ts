@@ -290,7 +290,7 @@ describe('AuthService', () => {
       await service.logout();
 
       // The second call to create() should be the logout endpoint
-      expect(dbSpy.create).toHaveBeenCalledWith('auth/logout', {});
+      expect(dbSpy.create).toHaveBeenCalledWith('logout', {});
     });
 
     it('should still clear local state even if the logout API call fails', async () => {

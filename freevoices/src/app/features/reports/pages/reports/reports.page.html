@@ -27,18 +27,19 @@
           <h1>Reports</h1>
           <p>What the business has been paid, and the VAT on what it has invoiced.</p>
         </div>
+        <label>Currency <select aria-label="Report currency" [value]="selectedCurrency" (change)="changeCurrency($event)"><option *ngFor="let c of currencies" [value]="c.code">{{ c.code }} - {{ c.name }}</option></select></label>
       </header>
 
       <!-- The two figures the rest of the page explains. -->
       <div class="summary-row">
         <div class="summary-chip">
           <span class="chip-label">Paid revenue</span>
-          <span class="chip-value">R {{ totalPaidRevenue | number:'1.2-2' }}</span>
+          <span class="chip-value">{{ selectedCurrency }} {{ totalPaidRevenue | number:'1.2-2' }}</span>
           <span class="chip-note">Payments received, last 12 months</span>
         </div>
         <div class="summary-chip">
           <span class="chip-label">Output VAT invoiced</span>
-          <span class="chip-value">R {{ totalVat | number:'1.2-2' }}</span>
+          <span class="chip-value">{{ selectedCurrency }} {{ totalVat | number:'1.2-2' }}</span>
           <span class="chip-note">Invoice basis, year to date</span>
         </div>
       </div>
@@ -118,17 +119,17 @@
                 <tbody>
                   <tr *ngFor="let row of vatRows">
                     <td>{{ row.month }}</td>
-                    <td class="num">R {{ row.subtotal | number:'1.2-2' }}</td>
-                    <td class="num">R {{ row.vat_amount | number:'1.2-2' }}</td>
-                    <td class="num">R {{ row.total | number:'1.2-2' }}</td>
+                    <td class="num">{{ selectedCurrency }} {{ row.subtotal | number:'1.2-2' }}</td>
+                    <td class="num">{{ selectedCurrency }} {{ row.vat_amount | number:'1.2-2' }}</td>
+                    <td class="num">{{ selectedCurrency }} {{ row.total | number:'1.2-2' }}</td>
                   </tr>
                 </tbody>
                 <tfoot>
                   <tr>
                     <td><strong>Total</strong></td>
-                    <td class="num"><strong>R {{ totalVatSubtotal | number:'1.2-2' }}</strong></td>
-                    <td class="num"><strong>R {{ totalVat | number:'1.2-2' }}</strong></td>
-                    <td class="num"><strong>R {{ totalVatTotal | number:'1.2-2' }}</strong></td>
+                    <td class="num"><strong>{{ selectedCurrency }} {{ totalVatSubtotal | number:'1.2-2' }}</strong></td>
+                    <td class="num"><strong>{{ selectedCurrency }} {{ totalVat | number:'1.2-2' }}</strong></td>
+                    <td class="num"><strong>{{ selectedCurrency }} {{ totalVatTotal | number:'1.2-2' }}</strong></td>
                   </tr>
                 </tfoot>
               </table>

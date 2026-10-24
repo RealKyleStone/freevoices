@@ -274,7 +274,7 @@ test('the registry covers exactly the POPIA phase 6 scope', () => {
   // without wiring its call sites, shows up as a failing test rather than as
   // truncated ciphertext in production.
   assert.deepStrictEqual(Object.keys(ef.REGISTRY).sort(),
-    ['customers', 'document_tracking', 'payments', 'users']);
+    ['customers', 'document_share_links', 'document_snapshots', 'document_tracking', 'email_outbox', 'payments', 'users']);
 
   assert.deepStrictEqual([...ef.REGISTRY.users], [
     'payfast_merchant_id', 'payfast_merchant_key', 'payfast_passphrase',
@@ -285,6 +285,7 @@ test('the registry covers exactly the POPIA phase 6 scope', () => {
     ['phone', 'vat_number', 'billing_address', 'shipping_address', 'notes']);
   assert.deepStrictEqual([...ef.REGISTRY.document_tracking], ['ip_address', 'user_agent']);
   assert.deepStrictEqual([...ef.REGISTRY.payments], ['transaction_reference']);
+  assert.deepStrictEqual([...ef.REGISTRY.document_snapshots], ['payload']);
 });
 
 test('identifying columns stay OUT of the registry', () => {

@@ -34,7 +34,7 @@
         <ion-segment [(ngModel)]="selectedStatus" (ionChange)="onStatusChange()">
           <ion-segment-button value="">All</ion-segment-button>
           <ion-segment-button value="DRAFT">Draft</ion-segment-button>
-          <ion-segment-button value="SENT">Sent</ion-segment-button>
+          <ion-segment-button value="SENT">Issued</ion-segment-button>
           <ion-segment-button value="PAID">Paid</ion-segment-button>
           <ion-segment-button value="OVERDUE">Overdue</ion-segment-button>
         </ion-segment>
@@ -59,9 +59,9 @@
           </p>
         </ion-label>
         <div slot="end" class="row-end">
-          <span class="row-status" [ngClass]="'badge-' + getStatusColor(invoice.status)">{{ invoice.status | titlecase }}</span>
+          <span class="row-status" [ngClass]="'badge-' + getStatusColor(invoice.status)">{{ invoice.status === 'SENT' ? 'Issued' : (invoice.status | titlecase) }}</span>
           <span class="row-status badge-warning" *ngIf="isPartlyPaid(invoice)">Partly paid</span>
-          <p class="row-amount">R {{ invoice.total | number:'1.2-2' }}</p>
+          <p class="row-amount">{{ invoice.currency_code || 'ZAR' }} {{ invoice.total | number:'1.2-2' }}</p>
         </div>
       </ion-item>
     </div>

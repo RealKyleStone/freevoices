@@ -172,6 +172,9 @@ async function verify(list) {
 
 /** Encrypt (or re-encrypt) one column, in batches, resumable. */
 async function processColumn(table, column) {
+  // Snapshots use the document itself as their primary key. Identifiers here
+  // come only from the frozen encryption registry, never from user input.
+  const primaryKey = ['document_snapshots', 'document_share_links'].includes(table) ? 'document_id' : 'id';
   const match = REKEY
     ? `${column} LIKE ${escapeLiteral(`fv1.${FROM_KEY}$%`)}`
     : `${column} NOT LIKE 'fv1.%'`;
@@ -191,7 +194,7 @@ async function processColumn(table, column) {
   // again. That is what makes an interrupted run safe to simply re-run.
   for (;;) {
     const rows = await executeQuery(
-      `SELECT id, ${column} AS v FROM ${table} WHERE ${where} ORDER BY id LIMIT ${BATCH}`
+      `SELECT ${primaryKey} AS id, ${column} AS v FROM ${table} WHERE ${where} ORDER BY ${primaryKey} LIMIT ${BATCH}`
     );
     if (rows.length === 0) break;
 
@@ -201,7 +204,7 @@ async function processColumn(table, column) {
       // covers both modes.
       const plaintext = ef.decryptField(table, column, row.v);
       const envelope = ef.encryptField(table, column, plaintext);
-      await executeQuery(`UPDATE ${table} SET ${column} = ? WHERE id = ?`, [envelope, row.id]);
+      await executeQuery(`UPDATE ${table} SET ${column} = ? WHERE ${primaryKey} = ?`, [envelope, row.id]);
       done += 1;
     }
     process.stdout.write(`  ${table}.${column}: ${done}/${pending}\r`);

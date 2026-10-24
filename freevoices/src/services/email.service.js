@@ -20,6 +20,9 @@ class EmailService {
       host: config.SMTP_HOST,
       port,
       secure,
+      connectionTimeout:30000,
+      greetingTimeout:30000,
+      socketTimeout:60000,
       auth: {
         user: config.SMTP_USER,
         pass: config.SMTP_PASS

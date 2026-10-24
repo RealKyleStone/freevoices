@@ -1,4 +1,5 @@
 const PDFDocument = require('pdfkit');
+const { createPdfLayout } = require('./pdf-layout');
 // formatDisplayDate keeps a 'YYYY-MM-DD' on its own calendar day whatever the
 // server's time zone; new Date('2026-10-20') is UTC midnight, which renders as
 // the 19th anywhere west of Greenwich.
@@ -9,7 +10,6 @@ const PRIMARY   = '#4a90e2';
 const DARK      = '#1a1a2e';
 const MEDIUM    = '#6b7280';
 const LIGHT_BG  = '#f3f4f6';
-const DIVIDER   = '#e5e7eb';
 const SUCCESS   = '#16a34a';
 const WARNING   = '#d97706'; // amber — used for quote badge
 
@@ -22,7 +22,8 @@ const WARNING   = '#d97706'; // amber — used for quote badge
  */
 function buildInvoicePdf(invoice, items, user) {
   return new Promise((resolve, reject) => {
-    const doc = new PDFDocument({ margin: 50, size: 'A4' });
+    const doc = new PDFDocument({ margin: 50, size: 'A4', bufferPages: true });
+    const layout = createPdfLayout(doc, user, 'Invoice', invoice.document_number);
     const chunks = [];
     doc.on('data', chunk => chunks.push(chunk));
     doc.on('end',  ()    => resolve(Buffer.concat(chunks)));
@@ -110,50 +111,10 @@ function buildInvoicePdf(invoice, items, user) {
     doc.y = Math.max(doc.y, metaY) + 20;
 
     // ── LINE ITEMS TABLE ──────────────────────────────────────────────────────
-    const tableTop = doc.y;
-    const PAD = 4;
-    const cols = {
-      desc:  { x: col.left,       w: 200 },
-      qty:   { x: col.left + 200, w: 50  },
-      price: { x: col.left + 250, w: 85  },
-      vat:   { x: col.left + 335, w: 55  },
-      total: { x: col.left + 390, w: 105 }
-    };
-
-    doc.rect(col.left, tableTop, pageWidth, 22).fill(DARK);
-    doc.fillColor('#ffffff').fontSize(9).font('Helvetica-Bold');
-    doc.text('DESCRIPTION', cols.desc.x  + PAD, tableTop + 7, { width: cols.desc.w - PAD * 2 });
-    doc.text('QTY',         cols.qty.x   + PAD, tableTop + 7, { width: cols.qty.w - PAD * 2,   align: 'right' });
-    doc.text('UNIT PRICE',  cols.price.x + PAD, tableTop + 7, { width: cols.price.w - PAD * 2, align: 'right' });
-    doc.text('VAT %',       cols.vat.x   + PAD, tableTop + 7, { width: cols.vat.w - PAD * 2,   align: 'right' });
-    doc.text('TOTAL',       cols.total.x + PAD, tableTop + 7, { width: cols.total.w - PAD * 2, align: 'right' });
-
-    let rowY = tableTop + 22;
     const currSym = invoice.currency_symbol || 'R';
     const fmt = (n) => `${currSym} ${parseFloat(n).toLocaleString('en-ZA', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+    let rowY = layout.table(items, doc.y, fmt);
 
-    for (let i = 0; i < items.length; i++) {
-      const item = items[i];
-      const bg = i % 2 === 0 ? '#ffffff' : LIGHT_BG;
-      doc.fontSize(9).font('Helvetica');
-      const descHeight = doc.heightOfString(item.description, { width: cols.desc.w - PAD * 2 });
-      const rowH = Math.max(20, descHeight + 12);
-      doc.rect(col.left, rowY, pageWidth, rowH).fill(bg);
-      doc.fillColor(DARK).fontSize(9).font('Helvetica');
-      doc.text(item.description,                  cols.desc.x  + PAD, rowY + 6, { width: cols.desc.w - PAD * 2 });
-      doc.font('Courier');
-      doc.text(String(parseFloat(item.quantity)), cols.qty.x   + PAD, rowY + 6, { width: cols.qty.w - PAD * 2,   align: 'right' });
-      doc.text(fmt(item.unit_price),              cols.price.x + PAD, rowY + 6, { width: cols.price.w - PAD * 2, align: 'right' });
-      doc.text(`${parseFloat(item.vat_rate)}%`,   cols.vat.x   + PAD, rowY + 6, { width: cols.vat.w - PAD * 2,   align: 'right' });
-      doc.text(fmt(item.total),                   cols.total.x + PAD, rowY + 6, { width: cols.total.w - PAD * 2, align: 'right' });
-      doc.font('Helvetica');
-      rowY += rowH;
-    }
-
-    doc.rect(col.left, tableTop, pageWidth, rowY - tableTop).stroke(DIVIDER);
-    rowY += 12;
-
-    // ── TOTALS ────────────────────────────────────────────────────────────────
     const totalsLabelX = col.right - 200;
     const totalsValueX = col.right - 100;
     const totalsW      = 95;
@@ -170,6 +131,7 @@ function buildInvoicePdf(invoice, items, user) {
       totalsRows.push(['Balance due', fmt(balanceDue(invoice.total, invoice.amount_paid)), DARK, false]);
     }
 
+    rowY = layout.ensureSpace(rowY, totalsRows.length * 24 + 16);
     for (const [label, value, color, bold] of totalsRows) {
       if (bold) {
         const bannerX = totalsLabelX - 8;
@@ -188,16 +150,10 @@ function buildInvoicePdf(invoice, items, user) {
 
     // ── NOTES & TERMS ─────────────────────────────────────────────────────────
     if (invoice.notes) {
-      doc.fillColor(MEDIUM).fontSize(8).font('Helvetica-Bold').text('NOTES', col.left, rowY);
-      rowY += 12;
-      doc.fillColor(DARK).fontSize(9).font('Helvetica').text(invoice.notes, col.left, rowY, { width: pageWidth });
-      rowY = doc.y + 12;
+      rowY = layout.section('NOTES', invoice.notes, rowY);
     }
     if (invoice.terms_conditions) {
-      doc.fillColor(MEDIUM).fontSize(8).font('Helvetica-Bold').text('TERMS & CONDITIONS', col.left, rowY);
-      rowY += 12;
-      doc.fillColor(DARK).fontSize(9).font('Helvetica').text(invoice.terms_conditions, col.left, rowY, { width: pageWidth });
-      rowY = doc.y + 12;
+      rowY = layout.section('TERMS & CONDITIONS', invoice.terms_conditions, rowY);
     }
 
     // ── PAY ONLINE ────────────────────────────────────────────────────────────
@@ -205,10 +161,9 @@ function buildInvoicePdf(invoice, items, user) {
     // text because link annotations do not survive printing, every PDF viewer,
     // or a screenshot forwarded to whoever actually settles the invoice.
     //
-    // Skipped low on the page: the footer is absolutely positioned at
-    // page.height - 36, and this layout positions everything by hand, so there
-    // is no reflow to save us — the button would simply print over the footer.
-    if (invoice.pay_url && rowY < doc.page.height - 120) {
+    // Reserve room before drawing the payment action and printable URL.
+    if (invoice.pay_url) {
+      rowY = layout.ensureSpace(rowY, 70);
       const btnW = 175;
       const btnH = 26;
       doc.roundedRect(col.left, rowY, btnW, btnH, 4).fill(PRIMARY);
@@ -226,7 +181,7 @@ function buildInvoicePdf(invoice, items, user) {
 
     // ── BANKING DETAILS ───────────────────────────────────────────────────────
     if (user.bank_name || user.bank_account_number) {
-      rowY += 4;
+      rowY = layout.ensureSpace(rowY + 4, 54);
       doc.rect(col.left, rowY, pageWidth, 16).fill(LIGHT_BG);
       doc.fillColor(MEDIUM).fontSize(8).font('Helvetica-Bold').text('BANKING DETAILS', col.left + 4, rowY + 4);
       rowY += 20;
@@ -238,22 +193,11 @@ function buildInvoicePdf(invoice, items, user) {
         user.bank_account_type   && `Account Type: ${user.bank_account_type}`,
       ].filter(Boolean);
 
-      doc.fillColor(DARK).fontSize(9).font('Helvetica').text(bankFields.join('   ·   '), col.left, rowY, { width: pageWidth });
-      rowY = doc.y + 16;
+      rowY = layout.text(bankFields.join('   |   '), rowY) + 16;
     }
 
     // ── FOOTER ────────────────────────────────────────────────────────────────
-    const pageHeight = doc.page.height;
-    // The footer sits inside the 50pt bottom margin. Text placed there makes
-    // pdfkit start a new page, stranding the footer line alone on page 2.
-    doc.page.margins.bottom = 0;
-    doc.rect(0, pageHeight - 36, doc.page.width, 36).fill(DARK);
-    doc.fillColor('#aaaacc').fontSize(8).font('Helvetica')
-       .text(
-         `Generated by FreeVoices  ·  ${user.company_name || ''}  ·  ${user.email || ''}`,
-         0, pageHeight - 23,
-         { width: doc.page.width, align: 'center' }
-       );
+    layout.finish();
 
     doc.end();
   });
@@ -268,7 +212,8 @@ function buildInvoicePdf(invoice, items, user) {
  */
 function buildQuotePdf(quote, items, user) {
   return new Promise((resolve, reject) => {
-    const doc = new PDFDocument({ margin: 50, size: 'A4' });
+    const doc = new PDFDocument({ margin: 50, size: 'A4', bufferPages: true });
+    const layout = createPdfLayout(doc, user, 'Quote', quote.document_number);
     const chunks = [];
     doc.on('data', chunk => chunks.push(chunk));
     doc.on('end',  ()    => resolve(Buffer.concat(chunks)));
@@ -358,48 +303,8 @@ function buildQuotePdf(quote, items, user) {
     doc.y = Math.max(doc.y, metaY) + 20;
 
     // ── LINE ITEMS TABLE ──────────────────────────────────────────────────────
-    const tableTop = doc.y;
-    const PAD = 4;
-    const cols = {
-      desc:  { x: col.left,       w: 200 },
-      qty:   { x: col.left + 200, w: 50  },
-      price: { x: col.left + 250, w: 85  },
-      vat:   { x: col.left + 335, w: 55  },
-      total: { x: col.left + 390, w: 105 }
-    };
+    let rowY = layout.table(items, doc.y, fmt);
 
-    doc.rect(col.left, tableTop, pageWidth, 22).fill(DARK);
-    doc.fillColor('#ffffff').fontSize(9).font('Helvetica-Bold');
-    doc.text('DESCRIPTION', cols.desc.x  + PAD, tableTop + 7, { width: cols.desc.w - PAD * 2 });
-    doc.text('QTY',         cols.qty.x   + PAD, tableTop + 7, { width: cols.qty.w - PAD * 2,   align: 'right' });
-    doc.text('UNIT PRICE',  cols.price.x + PAD, tableTop + 7, { width: cols.price.w - PAD * 2, align: 'right' });
-    doc.text('VAT %',       cols.vat.x   + PAD, tableTop + 7, { width: cols.vat.w - PAD * 2,   align: 'right' });
-    doc.text('TOTAL',       cols.total.x + PAD, tableTop + 7, { width: cols.total.w - PAD * 2, align: 'right' });
-
-    let rowY = tableTop + 22;
-
-    for (let i = 0; i < items.length; i++) {
-      const item = items[i];
-      const bg = i % 2 === 0 ? '#ffffff' : LIGHT_BG;
-      doc.fontSize(9).font('Helvetica');
-      const descHeight = doc.heightOfString(item.description, { width: cols.desc.w - PAD * 2 });
-      const rowH = Math.max(20, descHeight + 12);
-      doc.rect(col.left, rowY, pageWidth, rowH).fill(bg);
-      doc.fillColor(DARK).fontSize(9).font('Helvetica');
-      doc.text(item.description,                  cols.desc.x  + PAD, rowY + 6, { width: cols.desc.w - PAD * 2 });
-      doc.font('Courier');
-      doc.text(String(parseFloat(item.quantity)), cols.qty.x   + PAD, rowY + 6, { width: cols.qty.w - PAD * 2,   align: 'right' });
-      doc.text(fmt(item.unit_price),              cols.price.x + PAD, rowY + 6, { width: cols.price.w - PAD * 2, align: 'right' });
-      doc.text(`${parseFloat(item.vat_rate)}%`,   cols.vat.x   + PAD, rowY + 6, { width: cols.vat.w - PAD * 2,   align: 'right' });
-      doc.text(fmt(item.total),                   cols.total.x + PAD, rowY + 6, { width: cols.total.w - PAD * 2, align: 'right' });
-      doc.font('Helvetica');
-      rowY += rowH;
-    }
-
-    doc.rect(col.left, tableTop, pageWidth, rowY - tableTop).stroke(DIVIDER);
-    rowY += 12;
-
-    // ── TOTALS ────────────────────────────────────────────────────────────────
     const totalsLabelX = col.right - 200;
     const totalsValueX = col.right - 100;
     const totalsW      = 95;
@@ -410,6 +315,7 @@ function buildQuotePdf(quote, items, user) {
       ['TOTAL',    fmt(quote.total),      DARK, true ],
     ];
 
+    rowY = layout.ensureSpace(rowY, totalsRows.length * 24 + 16);
     for (const [label, value, color, bold] of totalsRows) {
       if (bold) {
         const bannerX = totalsLabelX - 8;
@@ -428,30 +334,14 @@ function buildQuotePdf(quote, items, user) {
 
     // ── NOTES & TERMS ─────────────────────────────────────────────────────────
     if (quote.notes) {
-      doc.fillColor(MEDIUM).fontSize(8).font('Helvetica-Bold').text('NOTES', col.left, rowY);
-      rowY += 12;
-      doc.fillColor(DARK).fontSize(9).font('Helvetica').text(quote.notes, col.left, rowY, { width: pageWidth });
-      rowY = doc.y + 12;
+      rowY = layout.section('NOTES', quote.notes, rowY);
     }
     if (quote.terms_conditions) {
-      doc.fillColor(MEDIUM).fontSize(8).font('Helvetica-Bold').text('TERMS & CONDITIONS', col.left, rowY);
-      rowY += 12;
-      doc.fillColor(DARK).fontSize(9).font('Helvetica').text(quote.terms_conditions, col.left, rowY, { width: pageWidth });
-      rowY = doc.y + 12;
+      rowY = layout.section('TERMS & CONDITIONS', quote.terms_conditions, rowY);
     }
 
     // ── FOOTER ────────────────────────────────────────────────────────────────
-    const pageHeight = doc.page.height;
-    // The footer sits inside the 50pt bottom margin. Text placed there makes
-    // pdfkit start a new page, stranding the footer line alone on page 2.
-    doc.page.margins.bottom = 0;
-    doc.rect(0, pageHeight - 36, doc.page.width, 36).fill(DARK);
-    doc.fillColor('#aaaacc').fontSize(8).font('Helvetica')
-       .text(
-         `Generated by FreeVoices  ·  ${user.company_name || ''}  ·  ${user.email || ''}`,
-         0, pageHeight - 23,
-         { width: doc.page.width, align: 'center' }
-       );
+    layout.finish();
 
     doc.end();
   });
@@ -467,7 +357,8 @@ function buildQuotePdf(quote, items, user) {
  */
 function buildReceiptPdf(invoice, items, user, payments) {
   return new Promise((resolve, reject) => {
-    const doc = new PDFDocument({ margin: 50, size: 'A4' });
+    const doc = new PDFDocument({ margin: 50, size: 'A4', bufferPages: true });
+    const layout = createPdfLayout(doc, user, 'Receipt', invoice.document_number);
     const chunks = [];
     doc.on('data', chunk => chunks.push(chunk));
     doc.on('end',  ()    => resolve(Buffer.concat(chunks)));
@@ -562,48 +453,8 @@ function buildReceiptPdf(invoice, items, user, payments) {
     doc.y = stampY;
 
     // ── LINE ITEMS TABLE ──────────────────────────────────────────────────────
-    const tableTop = doc.y;
-    const PAD = 4;
-    const cols = {
-      desc:  { x: col.left,       w: 200 },
-      qty:   { x: col.left + 200, w: 50  },
-      price: { x: col.left + 250, w: 85  },
-      vat:   { x: col.left + 335, w: 55  },
-      total: { x: col.left + 390, w: 105 }
-    };
+    let rowY = layout.table(items, doc.y, fmt);
 
-    doc.rect(col.left, tableTop, pageWidth, 22).fill(DARK);
-    doc.fillColor('#ffffff').fontSize(9).font('Helvetica-Bold');
-    doc.text('DESCRIPTION', cols.desc.x  + PAD, tableTop + 7, { width: cols.desc.w - PAD * 2 });
-    doc.text('QTY',         cols.qty.x   + PAD, tableTop + 7, { width: cols.qty.w - PAD * 2,   align: 'right' });
-    doc.text('UNIT PRICE',  cols.price.x + PAD, tableTop + 7, { width: cols.price.w - PAD * 2, align: 'right' });
-    doc.text('VAT %',       cols.vat.x   + PAD, tableTop + 7, { width: cols.vat.w - PAD * 2,   align: 'right' });
-    doc.text('TOTAL',       cols.total.x + PAD, tableTop + 7, { width: cols.total.w - PAD * 2, align: 'right' });
-
-    let rowY = tableTop + 22;
-
-    for (let i = 0; i < items.length; i++) {
-      const item = items[i];
-      const bg = i % 2 === 0 ? '#ffffff' : LIGHT_BG;
-      doc.fontSize(9).font('Helvetica');
-      const descHeight = doc.heightOfString(item.description, { width: cols.desc.w - PAD * 2 });
-      const rowH = Math.max(20, descHeight + 12);
-      doc.rect(col.left, rowY, pageWidth, rowH).fill(bg);
-      doc.fillColor(DARK).fontSize(9).font('Helvetica');
-      doc.text(item.description,                  cols.desc.x  + PAD, rowY + 6, { width: cols.desc.w - PAD * 2 });
-      doc.font('Courier');
-      doc.text(String(parseFloat(item.quantity)), cols.qty.x   + PAD, rowY + 6, { width: cols.qty.w - PAD * 2,   align: 'right' });
-      doc.text(fmt(item.unit_price),              cols.price.x + PAD, rowY + 6, { width: cols.price.w - PAD * 2, align: 'right' });
-      doc.text(`${parseFloat(item.vat_rate)}%`,   cols.vat.x   + PAD, rowY + 6, { width: cols.vat.w - PAD * 2,   align: 'right' });
-      doc.text(fmt(item.total),                   cols.total.x + PAD, rowY + 6, { width: cols.total.w - PAD * 2, align: 'right' });
-      doc.font('Helvetica');
-      rowY += rowH;
-    }
-
-    doc.rect(col.left, tableTop, pageWidth, rowY - tableTop).stroke(DIVIDER);
-    rowY += 12;
-
-    // ── TOTALS ────────────────────────────────────────────────────────────────
     const totalsLabelX = col.right - 200;
     const totalsValueX = col.right - 100;
     const totalsW      = 95;
@@ -614,6 +465,7 @@ function buildReceiptPdf(invoice, items, user, payments) {
       ['TOTAL',    fmt(invoice.total),      DARK, true ],
     ];
 
+    rowY = layout.ensureSpace(rowY, totalsRows.length * 24 + 16);
     for (const [label, value, color, bold] of totalsRows) {
       if (bold) {
         const bannerX = totalsLabelX - 8;
@@ -632,6 +484,7 @@ function buildReceiptPdf(invoice, items, user, payments) {
 
     // ── PAYMENT DETAILS ───────────────────────────────────────────────────────
     if (payments && payments.length > 0) {
+      rowY = layout.ensureSpace(rowY, 52);
       doc.rect(col.left, rowY, pageWidth, 16).fill(SUCCESS);
       doc.fillColor('#ffffff').fontSize(8).font('Helvetica-Bold').text('PAYMENT DETAILS', col.left + 4, rowY + 4);
       rowY += 20;
@@ -645,23 +498,12 @@ function buildReceiptPdf(invoice, items, user, payments) {
           payment.transaction_reference ? `Ref: ${payment.transaction_reference}` : null,
         ].filter(Boolean).join('   ·   ');
 
-        doc.fillColor(DARK).fontSize(9).font('Helvetica').text(fields, col.left, rowY, { width: pageWidth });
-        rowY = doc.y + 8;
+        rowY = layout.text(fields, rowY) + 8;
       }
     }
 
     // ── FOOTER ────────────────────────────────────────────────────────────────
-    const pageHeight = doc.page.height;
-    // The footer sits inside the 50pt bottom margin. Text placed there makes
-    // pdfkit start a new page, stranding the footer line alone on page 2.
-    doc.page.margins.bottom = 0;
-    doc.rect(0, pageHeight - 36, doc.page.width, 36).fill(DARK);
-    doc.fillColor('#aaaacc').fontSize(8).font('Helvetica')
-       .text(
-         `Generated by FreeVoices  ·  ${user.company_name || ''}  ·  ${user.email || ''}`,
-         0, pageHeight - 23,
-         { width: doc.page.width, align: 'center' }
-       );
+    layout.finish();
 
     doc.end();
   });

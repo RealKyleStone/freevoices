@@ -36,7 +36,8 @@ export class NotificationSettingsPage implements OnInit {
     this.form = this.fb.group({
       notify_invoice_sent: [true],
       notify_payment_received: [true],
-      notify_invoice_overdue: [true]
+      notify_invoice_overdue: [true],
+      customer_reminders_enabled: [false]
     });
 
     this.settingsService.getSettings().subscribe({
@@ -44,7 +45,8 @@ export class NotificationSettingsPage implements OnInit {
         this.form.patchValue({
           notify_invoice_sent: data.notify_invoice_sent !== '0',
           notify_payment_received: data.notify_payment_received !== '0',
-          notify_invoice_overdue: data.notify_invoice_overdue !== '0'
+          notify_invoice_overdue: data.notify_invoice_overdue !== '0',
+          customer_reminders_enabled: data.customer_reminders_enabled === '1'
         });
         this.isLoading = false;
       },

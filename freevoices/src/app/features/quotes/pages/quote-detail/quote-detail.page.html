@@ -27,7 +27,7 @@
           <p>{{ quote.customer_name }}</p>
         </div>
         <span class="doc-status" [ngClass]="'badge-' + getStatusColor(quote.status)">
-          {{ quote.status | titlecase }}
+          {{ quote.status === 'SENT' ? 'Issued' : (quote.status | titlecase) }}
         </span>
       </header>
 
@@ -46,7 +46,7 @@
           <dt>Valid until</dt>
           <dd>{{ quote.valid_until | date:'d MMM y' }}</dd>
         </div>
-        <div class="meta-cell" *ngIf="quote.payment_terms != null">
+        <div class="meta-cell" *ngIf="quote.payment_terms !== null && quote.payment_terms !== undefined">
           <dt>Payment terms</dt>
           <dd>{{ quote.payment_terms }} days</dd>
         </div>
@@ -76,10 +76,10 @@
                 <div class="item-row" *ngFor="let item of quote.items">
                   <span class="desc">
                     {{ item.description }}
-                    <small *ngIf="item.vat_rate > 0" class="vat-note">+{{ item.vat_rate }}% VAT</small>
+                    <small *ngIf="item.vat_rate > 0" class="vat-note">{{ item.vat_inclusive ? 'Includes ' : '+' }}{{ item.vat_rate }}% VAT</small>
                   </span>
                   <span class="qty">{{ item.quantity }}</span>
-                  <span class="price">{{ currencySymbol }} {{ item.unit_price | number:'1.2-2' }}</span>
+                  <span class="price">{{ currencySymbol }} {{ item.unit_price | number:'1.2-2' }} <small>{{ item.vat_inclusive ? 'incl. VAT' : 'excl. VAT' }}</small></span>
                   <span class="amount">{{ currencySymbol }} {{ item.total | number:'1.2-2' }}</span>
                 </div>
               </div>
