@@ -1,5 +1,7 @@
 ext {
-    minSdkVersion = 22
+    // 24 (Android 7.0) is the floor for Play automatic protection. Capacitor 6
+    // defaults to 22, but API 22-23 devices are a negligible share of installs.
+    minSdkVersion = 24
     // API 36 (Android 16) is required for Play submissions from Aug 31 2026
     // (see android/build.gradle for the matching AGP/Gradle bump). Edge-to-edge
     // was already enforced at API 35 and is handled by the safe-area padding in
