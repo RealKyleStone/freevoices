@@ -53,8 +53,10 @@ const logoUpload = multer({
   storage: logoStorage,
   limits: { fileSize: 5 * 1024 * 1024 },
   fileFilter: (req, file, cb) => {
-    if (!['image/jpeg', 'image/png', 'image/gif', 'image/webp'].includes(file.mimetype)) {
-      return cb(new Error('Only image files (JPEG, PNG, GIF, WebP) are allowed'));
+    // pdfkit can only embed PNG and JPEG. A GIF or WebP logo uploaded fine,
+    // showed in settings, then was silently missing from every PDF.
+    if (!['image/jpeg', 'image/png'].includes(file.mimetype)) {
+      return cb(new Error('Logo must be a PNG or JPEG image'));
     }
     cb(null, true);
   }
@@ -1512,7 +1514,7 @@ app.delete('/api/products/:id', authenticateToken, async (req, res) => {
 app.get('/api/dashboard/summary', authenticateToken, async (req, res) => {
   try {
     const userId = req.user.id;
-    const [revenueRows, customersRows, openRows, overdueRows, recentRows] = await Promise.all([
+    const [revenueRows, customersRows, openRows, overdueRows, recentRows, logoRows] = await Promise.all([
       // Money actually received this month, by payment date. Summing PAID
       // invoice totals counted a R1,150 invoice as R1,150 of revenue after
       // only R400 had come in, and ignored part payments entirely.
@@ -1521,9 +1523,12 @@ app.get('/api/dashboard/summary', authenticateToken, async (req, res) => {
       executeQuery(`SELECT COUNT(*) AS total FROM documents WHERE user_id = ? AND type = 'INVOICE' AND status = 'SENT'`, [userId]),
       executeQuery(`SELECT COUNT(*) AS total FROM documents WHERE user_id = ? AND type = 'INVOICE' AND status = 'OVERDUE' AND notifications_muted = 0`, [userId]),
       // FIX: changed c.company_name to c.name — customers table has 'name' not 'company_name'
-      executeQuery(`SELECT dt.event_type, dt.event_date, d.document_number, d.type AS document_type, c.name AS customer_name FROM document_tracking dt JOIN documents d ON dt.document_id = d.id JOIN customers c ON d.customer_id = c.id WHERE d.user_id = ? ORDER BY dt.event_date DESC LIMIT 5`, [userId])
+      executeQuery(`SELECT dt.event_type, dt.event_date, d.document_number, d.type AS document_type, c.name AS customer_name FROM document_tracking dt JOIN documents d ON dt.document_id = d.id JOIN customers c ON d.customer_id = c.id WHERE d.user_id = ? ORDER BY dt.event_date DESC LIMIT 5`, [userId]),
+      // Just the logo, not GET /api/settings: that also returns banking
+      // details, which the dashboard has no reason to load.
+      executeQuery("SELECT setting_value FROM settings WHERE user_id = ? AND setting_key = 'company_logo'", [userId])
     ]);
-    res.json({ monthRevenue: parseFloat(revenueRows[0].monthRevenue), totalCustomers: customersRows[0].total, openInvoices: openRows[0].total, overdueInvoices: overdueRows[0].total, recentActivity: recentRows });
+    res.json({ monthRevenue: parseFloat(revenueRows[0].monthRevenue), totalCustomers: customersRows[0].total, openInvoices: openRows[0].total, overdueInvoices: overdueRows[0].total, recentActivity: recentRows, companyLogo: logoRows[0]?.setting_value || null });
   } catch (error) { logger.error('Error fetching dashboard summary:', error); res.status(500).json({ message: 'Failed to fetch dashboard summary' }); }
 });
 

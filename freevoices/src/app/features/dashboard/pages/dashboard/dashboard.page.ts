@@ -8,6 +8,7 @@ import {
 import { CurrencyPipe } from '@angular/common';
 import { DashboardService, DashboardSummary } from '../../services/dashboard.service';
 import { AuthService } from 'src/app/core/auth/services/auth.service';
+import { environment } from '../../../../../environments/environment';
 import { addIcons } from 'ionicons';
 import {
   addCircleOutline, alertCircleOutline, checkmarkCircleOutline, closeCircleOutline, documentOutline,
@@ -31,6 +32,7 @@ export class DashboardPage implements OnInit, OnDestroy {
   today = new Date();
   companyName = '';
   userEmail = '';
+  logoUrl: string | null = null;
   private clockInterval: any;
 
   summary: DashboardSummary = {
@@ -66,7 +68,13 @@ export class DashboardPage implements OnInit, OnDestroy {
     }, 60000);
 
     this.dashboardService.getSummary().subscribe({
-      next: (data) => { this.summary = data; this.isLoading = false; },
+      next: (data) => {
+        this.summary = data;
+        // Uploads are served beside the API, not under it; same base URL as
+        // the company settings page uses.
+        this.logoUrl = data.companyLogo ? `${environment.apiUrl.replace('/api', '')}${data.companyLogo}` : null;
+        this.isLoading = false;
+      },
       error: () => { this.isLoading = false; }
     });
   }

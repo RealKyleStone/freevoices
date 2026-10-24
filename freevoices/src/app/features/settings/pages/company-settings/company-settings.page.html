@@ -18,7 +18,7 @@
         </ion-card-title>
       </ion-card-header>
       <ion-card-content>
-        <p class="hint">Max file size: 5 MB. Accepted formats: JPEG, PNG, GIF, WebP.</p>
+        <p class="hint">Max file size: 5 MB. Accepted formats: PNG, JPEG.</p>
 
         <!-- Current / preview logo -->
         <div class="logo-container" *ngIf="logoUrl || logoPreview">
@@ -55,7 +55,7 @@
           <input
             id="logoFileInput"
             type="file"
-            accept="image/*"
+            accept="image/png,image/jpeg"
             style="display:none"
             (change)="onFileSelected($event)"
           />
