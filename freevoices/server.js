@@ -3,7 +3,7 @@ const axios = require('axios');
 const cron = require('node-cron');
 
 const EmailService = require('./src/services/email.service');
-const { buildInvoicePdf, buildReceiptPdf } = require('./src/services/pdf.service');
+const { buildInvoicePdf, buildQuotePdf, buildReceiptPdf } = require('./src/services/pdf.service');
 // The pool, the logger and the query helpers live in db.service so that CLI
 // tooling can share them without booting an HTTP listener.
 const { logger, executeQuery, getConnection, withTransaction, closePool } = require('./src/services/db.service');
@@ -53,8 +53,10 @@ const logoUpload = multer({
   storage: logoStorage,
   limits: { fileSize: 5 * 1024 * 1024 },
   fileFilter: (req, file, cb) => {
-    if (!['image/jpeg', 'image/png', 'image/gif', 'image/webp'].includes(file.mimetype)) {
-      return cb(new Error('Only image files (JPEG, PNG, GIF, WebP) are allowed'));
+    // pdfkit can only embed PNG and JPEG. A GIF or WebP logo uploaded fine,
+    // showed in settings, then was silently missing from every PDF.
+    if (!['image/jpeg', 'image/png'].includes(file.mimetype)) {
+      return cb(new Error('Logo must be a PNG or JPEG image'));
     }
     cb(null, true);
   }
@@ -1331,6 +1333,25 @@ app.get('/api/quotes/:id', authenticateToken, async (req, res) => {
   } catch (error) { logger.error('Error fetching quote:', error); res.status(500).json({ message: 'Failed to fetch quote' }); }
 });
 
+app.get('/api/quotes/:id/pdf', authenticateToken, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const [quotes, items, users, logoRows] = await Promise.all([
+      queryDecrypted(decryptCustomerJoin, `SELECT d.*, c.name AS customer_name, c.email AS customer_email, c.billing_address AS customer_billing_address, c.vat_number AS customer_vat_number, cur.symbol AS currency_symbol, cur.code AS currency_code FROM documents d JOIN customers c ON c.id = d.customer_id LEFT JOIN currencies cur ON cur.id = d.currency_id WHERE d.id = ? AND d.user_id = ? AND d.type = 'QUOTE'`, [id, req.user.id]),
+      executeQuery('SELECT * FROM document_items WHERE document_id = ? ORDER BY id ASC', [id]),
+      queryDecrypted(decryptUserRow, 'SELECT * FROM users WHERE id = ?', [req.user.id]),
+      executeQuery("SELECT setting_value FROM settings WHERE user_id = ? AND setting_key = 'company_logo'", [req.user.id])
+    ]);
+    if (quotes.length === 0) return res.status(404).json({ message: 'Quote not found' });
+    const logoRelPath = logoRows[0]?.setting_value || null;
+    const user = { ...decryptUserRow(users[0]), logo_path: logoRelPath ? path.join(__dirname, logoRelPath) : null };
+    const pdfBuffer = await buildQuotePdf(quotes[0], items, user);
+    await executeQuery(`INSERT INTO document_tracking (document_id, event_type) VALUES (?, 'DOWNLOADED')`, [id]);
+    res.set({ 'Content-Type': 'application/pdf', 'Content-Disposition': `attachment; filename="${quotes[0].document_number}.pdf"`, 'Content-Length': pdfBuffer.length });
+    res.send(pdfBuffer);
+  } catch (error) { logger.error('Error generating quote PDF:', error); res.status(500).json({ message: 'Failed to generate PDF' }); }
+});
+
 app.put('/api/quotes/:id', authenticateToken, validate(quoteRules), async (req, res) => {
   try {
     const { id } = req.params;
@@ -1493,7 +1514,7 @@ app.delete('/api/products/:id', authenticateToken, async (req, res) => {
 app.get('/api/dashboard/summary', authenticateToken, async (req, res) => {
   try {
     const userId = req.user.id;
-    const [revenueRows, customersRows, openRows, overdueRows, recentRows] = await Promise.all([
+    const [revenueRows, customersRows, openRows, overdueRows, recentRows, logoRows] = await Promise.all([
       // Money actually received this month, by payment date. Summing PAID
       // invoice totals counted a R1,150 invoice as R1,150 of revenue after
       // only R400 had come in, and ignored part payments entirely.
@@ -1502,9 +1523,12 @@ app.get('/api/dashboard/summary', authenticateToken, async (req, res) => {
       executeQuery(`SELECT COUNT(*) AS total FROM documents WHERE user_id = ? AND type = 'INVOICE' AND status = 'SENT'`, [userId]),
       executeQuery(`SELECT COUNT(*) AS total FROM documents WHERE user_id = ? AND type = 'INVOICE' AND status = 'OVERDUE' AND notifications_muted = 0`, [userId]),
       // FIX: changed c.company_name to c.name — customers table has 'name' not 'company_name'
-      executeQuery(`SELECT dt.event_type, dt.event_date, d.document_number, d.type AS document_type, c.name AS customer_name FROM document_tracking dt JOIN documents d ON dt.document_id = d.id JOIN customers c ON d.customer_id = c.id WHERE d.user_id = ? ORDER BY dt.event_date DESC LIMIT 5`, [userId])
+      executeQuery(`SELECT dt.event_type, dt.event_date, d.document_number, d.type AS document_type, c.name AS customer_name FROM document_tracking dt JOIN documents d ON dt.document_id = d.id JOIN customers c ON d.customer_id = c.id WHERE d.user_id = ? ORDER BY dt.event_date DESC LIMIT 5`, [userId]),
+      // Just the logo, not GET /api/settings: that also returns banking
+      // details, which the dashboard has no reason to load.
+      executeQuery("SELECT setting_value FROM settings WHERE user_id = ? AND setting_key = 'company_logo'", [userId])
     ]);
-    res.json({ monthRevenue: parseFloat(revenueRows[0].monthRevenue), totalCustomers: customersRows[0].total, openInvoices: openRows[0].total, overdueInvoices: overdueRows[0].total, recentActivity: recentRows });
+    res.json({ monthRevenue: parseFloat(revenueRows[0].monthRevenue), totalCustomers: customersRows[0].total, openInvoices: openRows[0].total, overdueInvoices: overdueRows[0].total, recentActivity: recentRows, companyLogo: logoRows[0]?.setting_value || null });
   } catch (error) { logger.error('Error fetching dashboard summary:', error); res.status(500).json({ message: 'Failed to fetch dashboard summary' }); }
 });
 
@@ -3040,6 +3064,12 @@ app.get('/robots.txt', (req, res) => {
     'Allow: /$',
     '',
   ].join('\n'));
+});
+
+// An unknown API path must fail loudly. Falling through to the Angular shell
+// answers 200 with HTML, which a download handler saves as a "corrupt" PDF.
+app.all('/api/*', (req, res) => {
+  res.status(404).json({ message: 'Not found' });
 });
 
 // Catch-all route for Angular app

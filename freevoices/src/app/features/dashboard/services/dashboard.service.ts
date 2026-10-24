@@ -8,6 +8,8 @@ export interface DashboardSummary {
   openInvoices: number;
   overdueInvoices: number;
   recentActivity: RecentActivity[];
+  /** Server-relative path, e.g. /uploads/logos/logo_x.png, or null. */
+  companyLogo?: string | null;
 }
 
 export interface RecentActivity {

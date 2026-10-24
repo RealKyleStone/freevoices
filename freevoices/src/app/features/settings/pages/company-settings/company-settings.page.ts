@@ -150,8 +150,9 @@ export class CompanySettingsPage implements OnInit {
       return;
     }
 
-    if (!file.type.startsWith('image/')) {
-      this.showToast('Please select an image file (JPEG, PNG, GIF, WebP)', 'danger');
+    // PDFs can only embed PNG and JPEG; anything else would vanish from them.
+    if (!['image/png', 'image/jpeg'].includes(file.type)) {
+      this.showToast('Please select a PNG or JPEG image', 'danger');
       input.value = '';
       return;
     }

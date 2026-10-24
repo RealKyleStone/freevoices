@@ -22,9 +22,16 @@
 
     <!-- Page head: who and when on the left, what to do next on the right. -->
     <header class="page-head">
-      <div class="page-head-text">
-        <h1>{{ getGreeting() }}<span *ngIf="companyName">, {{ companyName }}</span> 👋</h1>
-        <p>{{ today | date:'EEEE, d MMMM y' }}</p>
+      <div class="page-head-identity">
+        <!-- (error) hides the tile if the file has gone, rather than showing
+             a broken-image icon on the first screen of the app. -->
+        <div class="company-logo" *ngIf="logoUrl">
+          <img [src]="logoUrl" [alt]="(companyName || 'Company') + ' logo'" (error)="logoUrl = null" />
+        </div>
+        <div class="page-head-text">
+          <h1>{{ getGreeting() }}<span *ngIf="companyName">, {{ companyName }}</span> 👋</h1>
+          <p>{{ today | date:'EEEE, d MMMM y' }}</p>
+        </div>
       </div>
       <div class="page-head-actions">
         <ion-button color="primary" routerLink="/invoices/new">

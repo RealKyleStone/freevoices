@@ -48,7 +48,10 @@ function buildInvoicePdf(invoice, items, user) {
       try {
         doc.image(user.logo_path, LOGO_X, LOGO_Y, { fit: [LOGO_MAX_W, LOGO_MAX_H] });
         textX = LOGO_X + LOGO_MAX_W + 14;
-      } catch (_) {}
+      } catch (err) {
+        // Still render the document without the logo, but leave a trace.
+        console.warn(`PDF logo skipped (${user.logo_path}): ${err.message}`);
+      }
     }
 
     const textW = 300 - (textX - col.left);
@@ -241,6 +244,9 @@ function buildInvoicePdf(invoice, items, user) {
 
     // ── FOOTER ────────────────────────────────────────────────────────────────
     const pageHeight = doc.page.height;
+    // The footer sits inside the 50pt bottom margin. Text placed there makes
+    // pdfkit start a new page, stranding the footer line alone on page 2.
+    doc.page.margins.bottom = 0;
     doc.rect(0, pageHeight - 36, doc.page.width, 36).fill(DARK);
     doc.fillColor('#aaaacc').fontSize(8).font('Helvetica')
        .text(
@@ -291,7 +297,10 @@ function buildQuotePdf(quote, items, user) {
       try {
         doc.image(user.logo_path, col.left, 10, { fit: [LOGO_MAX_W, LOGO_MAX_H] });
         textX = col.left + LOGO_MAX_W + 14;
-      } catch (_) {}
+      } catch (err) {
+        // Still render the document without the logo, but leave a trace.
+        console.warn(`PDF logo skipped (${user.logo_path}): ${err.message}`);
+      }
     }
 
     const textW = 300 - (textX - col.left);
@@ -433,6 +442,9 @@ function buildQuotePdf(quote, items, user) {
 
     // ── FOOTER ────────────────────────────────────────────────────────────────
     const pageHeight = doc.page.height;
+    // The footer sits inside the 50pt bottom margin. Text placed there makes
+    // pdfkit start a new page, stranding the footer line alone on page 2.
+    doc.page.margins.bottom = 0;
     doc.rect(0, pageHeight - 36, doc.page.width, 36).fill(DARK);
     doc.fillColor('#aaaacc').fontSize(8).font('Helvetica')
        .text(
@@ -484,7 +496,10 @@ function buildReceiptPdf(invoice, items, user, payments) {
       try {
         doc.image(user.logo_path, col.left, 10, { fit: [LOGO_MAX_W, LOGO_MAX_H] });
         textX = col.left + LOGO_MAX_W + 14;
-      } catch (_) {}
+      } catch (err) {
+        // Still render the document without the logo, but leave a trace.
+        console.warn(`PDF logo skipped (${user.logo_path}): ${err.message}`);
+      }
     }
 
     const textW = 300 - (textX - col.left);
@@ -637,6 +652,9 @@ function buildReceiptPdf(invoice, items, user, payments) {
 
     // ── FOOTER ────────────────────────────────────────────────────────────────
     const pageHeight = doc.page.height;
+    // The footer sits inside the 50pt bottom margin. Text placed there makes
+    // pdfkit start a new page, stranding the footer line alone on page 2.
+    doc.page.margins.bottom = 0;
     doc.rect(0, pageHeight - 36, doc.page.width, 36).fill(DARK);
     doc.fillColor('#aaaacc').fontSize(8).font('Helvetica')
        .text(
