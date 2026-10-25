@@ -70,6 +70,7 @@ export class DashboardPage implements OnInit, OnDestroy {
     this.dashboardService.getSummary().subscribe({
       next: (data) => {
         this.summary = data;
+        this.selectedCurrency = data.currency_code || 'ZAR';
         // Uploads are served beside the API, not under it; same base URL as
         // the company settings page uses.
         this.logoUrl = data.companyLogo ? `${environment.apiUrl.replace('/api', '')}${data.companyLogo}` : null;

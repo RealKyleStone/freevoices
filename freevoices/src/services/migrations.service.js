@@ -658,6 +658,101 @@ const MIGRATIONS = [
       return done.length ? `applied: ${done.join(', ')}` : 'already present';
     },
   },
+  {
+    id: '014_document_pricing_and_snapshots',
+    description: 'Preserve per-line VAT pricing mode and encrypted issued-document party snapshots',
+    async up(q) {
+      if (!(await columnExists(q, 'document_items', 'vat_inclusive'))) {
+        await q('ALTER TABLE document_items ADD COLUMN vat_inclusive TINYINT(1) NOT NULL DEFAULT 0 AFTER vat_rate');
+      }
+      await q(`CREATE TABLE IF NOT EXISTS document_snapshots (
+        document_id bigint(20) NOT NULL PRIMARY KEY,
+        payload longtext CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL,
+        created_at timestamp NOT NULL DEFAULT current_timestamp(),
+        CONSTRAINT fk_document_snapshots_document FOREIGN KEY (document_id) REFERENCES documents(id) ON DELETE CASCADE
+      ) ENGINE=InnoDB`);
+      // Old party versions cannot be reconstructed. Preserve the current known
+      // details explicitly as a migration baseline, never label them original.
+      const { captureDocumentSnapshot } = require('./document-snapshot.service');
+      let count = 0;
+      while (true) {
+        const rows = await q(`SELECT d.id FROM documents d LEFT JOIN document_snapshots s ON s.document_id = d.id
+          WHERE s.document_id IS NULL AND (d.status <> 'DRAFT' OR EXISTS
+            (SELECT 1 FROM payments p WHERE p.document_id = d.id)) ORDER BY d.id LIMIT 100`);
+        if (!rows.length) break;
+        for (const row of rows) {
+          await captureDocumentSnapshot(q, row.id, 'migration_baseline');
+          count++;
+        }
+      }
+      return `pricing mode added; ${count} issued document baselines captured`;
+    },
+  },
+  {
+    id: '015_reliable_billing_workflows',
+    description: 'Pending email changes, delivery outbox, stable share links, recurring occurrences and request deduplication',
+    async up(q) {
+      for (const [name, definition] of [
+        ['pending_email', 'varchar(255) DEFAULT NULL'],
+        ['pending_email_token', 'varchar(64) DEFAULT NULL'],
+        ['pending_email_expires', 'datetime DEFAULT NULL'],
+      ]) {
+        if (!(await columnExists(q, 'users', name))) await q(`ALTER TABLE users ADD COLUMN ${name} ${definition}`);
+      }
+      for (const [name, definition] of [
+        ['delivery_status', "enum('UNKNOWN','NOT_SENT','QUEUED','SENDING','ACCEPTED','FAILED','UNCERTAIN') NOT NULL DEFAULT 'UNKNOWN'"],
+        ['delivery_error', 'varchar(500) DEFAULT NULL'],
+        ['request_key', 'varchar(100) DEFAULT NULL'],
+        ['request_hash', 'char(64) DEFAULT NULL'],
+        ['recurrence_anchor_date', 'date DEFAULT NULL'],
+        ['source_recurring_id', 'bigint(20) DEFAULT NULL'],
+        ['recurrence_occurrence_date', 'date DEFAULT NULL'],
+      ]) {
+        if (!(await columnExists(q, 'documents', name))) await q(`ALTER TABLE documents ADD COLUMN ${name} ${definition}`);
+      }
+      if (!(await indexExists(q, 'documents', 'uniq_document_request'))) {
+        await q('ALTER TABLE documents ADD UNIQUE KEY uniq_document_request (user_id, type, request_key)');
+      }
+      if (!(await indexExists(q, 'documents', 'uniq_recurring_occurrence'))) {
+        await q('ALTER TABLE documents ADD UNIQUE KEY uniq_recurring_occurrence (source_recurring_id, recurrence_occurrence_date)');
+      }
+      await setForeignKeyDeleteRule(q, 'documents', 'source_recurring_id', 'documents', 'id', 'SET NULL');
+      await q('UPDATE documents SET recurrence_anchor_date=issue_date WHERE is_recurring=1 AND recurrence_anchor_date IS NULL');
+      await q(`CREATE TABLE IF NOT EXISTS document_share_links (
+        document_id bigint(20) NOT NULL PRIMARY KEY,
+        payload longtext CHARACTER SET utf8mb4 NOT NULL,
+        CONSTRAINT fk_document_share_link FOREIGN KEY (document_id) REFERENCES documents(id) ON DELETE CASCADE
+      ) ENGINE=InnoDB`);
+      await q(`CREATE TABLE IF NOT EXISTS email_outbox (
+        id bigint(20) NOT NULL AUTO_INCREMENT PRIMARY KEY,
+        user_id bigint(20) NOT NULL,
+        document_id bigint(20) DEFAULT NULL,
+        kind varchar(30) NOT NULL,
+        dedupe_key varchar(120) NOT NULL,
+        payload longtext CHARACTER SET utf8mb4 NOT NULL,
+        status enum('QUEUED','SENDING','ACCEPTED','FAILED','UNCERTAIN') NOT NULL DEFAULT 'QUEUED',
+        attempts int NOT NULL DEFAULT 0,
+        next_attempt_at datetime NOT NULL DEFAULT current_timestamp(),
+        lease_until datetime DEFAULT NULL,
+        last_error varchar(500) DEFAULT NULL,
+        accepted_at datetime DEFAULT NULL,
+        created_at timestamp NOT NULL DEFAULT current_timestamp(),
+        UNIQUE KEY uniq_email_request (user_id, dedupe_key),
+        KEY idx_email_due (status, next_attempt_at),
+        CONSTRAINT fk_outbox_document FOREIGN KEY (document_id) REFERENCES documents(id) ON DELETE CASCADE,
+        CONSTRAINT fk_outbox_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+      ) ENGINE=InnoDB`);
+      return 'workflow fields, stable links and encrypted outbox created';
+    },
+  },
+  {
+    id:'016_outbox_suppression',
+    description:'Suppress queued messages for closed accounts and settled reminders',
+    async up(q) {
+      await q("ALTER TABLE email_outbox MODIFY status ENUM('QUEUED','SENDING','ACCEPTED','FAILED','UNCERTAIN','CANCELLED') NOT NULL DEFAULT 'QUEUED'");
+      return 'outbox cancellation available';
+    },
+  },
 ];
 
 // ─── Runner ───────────────────────────────────────────────────────────────────

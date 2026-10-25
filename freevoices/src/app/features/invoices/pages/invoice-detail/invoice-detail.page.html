@@ -28,11 +28,21 @@
         </div>
         <div class="page-head-badges">
           <span class="doc-status" [ngClass]="'badge-' + getStatusColor(invoice.status)">
-            {{ invoice.status | titlecase }}
+            {{ invoice.status === 'SENT' ? 'Issued' : (invoice.status | titlecase) }}
           </span>
           <span class="doc-status badge-warning" *ngIf="isPartlyPaid">Partly paid</span>
         </div>
       </header>
+      <p *ngIf="invoice.delivery_status">Email: {{ invoice.delivery_status === 'ACCEPTED' ? 'Accepted by email provider' : (invoice.delivery_status | titlecase) }}</p>
+      <p *ngIf="invoice.delivery_error" role="status">{{ invoice.delivery_error }}</p>
+      <details *ngIf="invoice.email_deliveries?.length">
+        <summary>Email history</summary>
+        <ul><li *ngFor="let email of invoice.email_deliveries">
+          {{ email.kind | titlecase }} - {{ email.status === 'ACCEPTED' ? 'Accepted by provider' : (email.status | titlecase) }}
+          ({{ email.attempts }} attempts, {{ email.created_at | date:'medium' }})
+          <p *ngIf="email.last_error">{{ email.last_error }}</p>
+        </li></ul>
+      </details>
 
       <p class="source-link" *ngIf="invoice.source_quote_id && invoice.source_quote_number">
         Created from quote
@@ -50,7 +60,7 @@
           <dt>Due</dt>
           <dd>{{ invoice.due_date | date:'d MMM y' }}</dd>
         </div>
-        <div class="meta-cell" *ngIf="invoice.payment_terms != null">
+        <div class="meta-cell" *ngIf="invoice.payment_terms !== null && invoice.payment_terms !== undefined">
           <dt>Payment terms</dt>
           <dd>{{ invoice.payment_terms }} days</dd>
         </div>
@@ -84,10 +94,10 @@
                 <div class="item-row" *ngFor="let item of invoice.items">
                   <span class="desc">
                     {{ item.description }}
-                    <small *ngIf="item.vat_rate > 0" class="vat-note">+{{ item.vat_rate }}% VAT</small>
+                    <small *ngIf="item.vat_rate > 0" class="vat-note">{{ item.vat_inclusive ? 'Includes ' : '+' }}{{ item.vat_rate }}% VAT</small>
                   </span>
                   <span class="qty">{{ item.quantity }}</span>
-                  <span class="price">{{ currencySymbol }} {{ item.unit_price | number:'1.2-2' }}</span>
+                  <span class="price">{{ currencySymbol }} {{ item.unit_price | number:'1.2-2' }} <small>{{ item.vat_inclusive ? 'incl. VAT' : 'excl. VAT' }}</small></span>
                   <span class="amount">{{ currencySymbol }} {{ item.total | number:'1.2-2' }}</span>
                 </div>
               </div>
@@ -174,7 +184,7 @@
                 <ion-button expand="block" fill="outline" color="medium" (click)="generateShareLink()" [disabled]="isSharing">
                   <ion-spinner *ngIf="isSharing" slot="start" name="crescent"></ion-spinner>
                   <ion-icon *ngIf="!isSharing" slot="start" name="share-social-outline"></ion-icon>
-                  {{ isSharing ? 'Generating...' : 'Share with customer' }}
+                  {{ isSharing ? 'Generating...' : invoice.status === 'DRAFT' ? 'Issue and create share link' : 'Share with customer' }}
                 </ion-button>
               </div>
 
@@ -195,7 +205,9 @@
               </div>
 
               <div class="share-panel" *ngIf="shareLink">
-                <p class="share-label">Customer portal link (valid 30 days)</p>
+                <p class="share-label">Customer portal link (expires {{ shareExpiry | date:'medium' }})</p>
+                <ion-button size="small" fill="clear" (click)="manageShare(true)">Replace link</ion-button>
+                <ion-button size="small" fill="clear" color="danger" (click)="manageShare(false)">Revoke link</ion-button>
                 <div class="share-link-row">
                   <span class="share-url">{{ shareLink }}</span>
                   <ion-button fill="clear" size="small" aria-label="Copy portal link" (click)="copyShareLink()">

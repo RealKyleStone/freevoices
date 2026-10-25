@@ -6,7 +6,13 @@ const EmailService = require('./src/services/email.service');
 const { buildInvoicePdf, buildQuotePdf, buildReceiptPdf } = require('./src/services/pdf.service');
 // The pool, the logger and the query helpers live in db.service so that CLI
 // tooling can share them without booting an HTTP listener.
-const { logger, executeQuery, getConnection, withTransaction, closePool } = require('./src/services/db.service');
+const { logger, executeQuery, getConnection, queryOn, withTransaction, closePool } = require('./src/services/db.service');
+const { reportCurrency, report } = require('./src/services/reporting.service');
+const { shareDocument } = require('./src/services/document-share.service');
+const { createDocument } = require('./src/services/document-create.service');
+const { advanceDate, prepareDocument } = require('./src/services/billing-rules');
+const { captureDocumentSnapshot, hydrateDocumentSnapshots, documentSeller } = require('./src/services/document-snapshot.service');
+const { getNextDocumentNumber, lockDocumentOwner } = require('./src/services/document-number.service');
 const { runMigrations, tableExists } = require('./src/services/migrations.service');
 const { anonymiseExpiredAccounts } = require('./src/services/retention.service');
 const {
@@ -14,7 +20,7 @@ const {
   balanceDue, isSettled, SETTLED_TOLERANCE,
 } = require('./src/services/document-math');
 const {
-  decryptUserRow, encryptField, isEncryptionConfigured, verifyCanary,
+  decryptUserRow, encryptField, decryptField, isEncryptionConfigured, verifyCanary,
   decryptCustomerRow, decryptPaymentRow, decryptTrackingRow,
   decryptCustomerJoin, decryptAliasedRow, hashToken,
 } = require('./src/services/encrypted-fields');
@@ -188,6 +194,9 @@ app.use(express.static(WEB_ROOT));
 // The `tls` block that used to be passed here was silently discarded —
 // EmailService built its own, weaker one. TLS policy now lives entirely in
 // EmailService, so there is one place to look.
+const { queueEmail, deliverEmail, processOutbox, captureEmail } = require('./src/services/outbox.service');
+const { processBillingNotifications } = require('./src/services/billing-notifications.service');
+const { processRecurring } = require('./src/services/recurring.service');
 const emailService = new EmailService({
   SMTP_HOST: process.env.SMTP_HOST,
   SMTP_PORT: parseInt(process.env.SMTP_PORT),
@@ -210,7 +219,27 @@ const emailService = new EmailService({
  * binds the table name, so the wrong mapper throws rather than quietly
  * returning ciphertext.
  */
-const queryDecrypted = async (mapper, sql, params) => (await executeQuery(sql, params)).map(mapper);
+const queryDecrypted = async (mapper, sql, params) =>
+  hydrateDocumentSnapshots(executeQuery, (await executeQuery(sql, params)).map(mapper));
+
+async function issueDocument(id, userId, type, { requireEmail = false, allowFinal = false } = {}) {
+  return withTransaction(async (q) => {
+    const [document] = await q('SELECT * FROM documents WHERE id = ? AND user_id = ? AND type = ? FOR UPDATE', [id, userId, type]);
+    if (!document) throw Object.assign(new Error('Document not found'), { status: 404 });
+    if (!allowFinal && !['DRAFT', 'SENT', 'OVERDUE'].includes(document.status)) {
+      throw Object.assign(new Error(`Cannot issue a document with status ${document.status}`), { status: 400 });
+    }
+    const snapshot = await captureDocumentSnapshot(q, id);
+    if (requireEmail && !snapshot.buyer.email) {
+      throw Object.assign(new Error('This document has no customer email address'), { status: 400 });
+    }
+    if (document.status === 'DRAFT') {
+      await q("UPDATE documents SET status = 'SENT', updated_at = NOW() WHERE id = ?", [id]);
+      await q("INSERT INTO document_tracking (document_id, event_type) VALUES (?, 'SENT')", [id]);
+    }
+  });
+}
+
 
 /**
  * Encrypt one value on its way into the database.
@@ -795,11 +824,22 @@ app.post('/api/auth/google/register', registerLimiter, validate([
 
 app.get('/api/verify-email', passwordLimiter, async (req, res) => {
   try {
-    const { token } = req.query;
-    const result = await executeQuery('UPDATE users SET email_verified = true, email_verification_token = NULL, email_verification_expires = NULL WHERE email_verification_token = ? AND email_verification_expires > NOW()', [token]);
-    if (result.affectedRows === 0) return res.status(400).json({ message: 'Invalid or expired verification token' });
-    res.json({ message: 'Email verified successfully' });
-  } catch (error) { logger.error('Email verification error:', error); res.status(500).json({ message: 'Verification failed' }); }
+    const token = hashToken(String(req.query.token || ''));
+    const result = await withTransaction(async q => {
+      const [pending] = await q('SELECT id,pending_email FROM users WHERE pending_email_token=? AND pending_email_expires>NOW() FOR UPDATE', [token]);
+      if (pending) {
+        if ((await q('SELECT id FROM users WHERE email=? AND id<>?', [pending.pending_email,pending.id])).length) throw Object.assign(new Error('That email address is already registered'), { status:409 });
+        await q('UPDATE users SET email=pending_email,email_verified=1,pending_email=NULL,pending_email_token=NULL,pending_email_expires=NULL,email_verification_token=NULL,email_verification_expires=NULL WHERE id=?', [pending.id]);
+        await q('DELETE FROM sessions WHERE userId=?', [pending.id]);
+        await q('DELETE FROM password_reset_tokens WHERE user_id=?', [pending.id]);
+        return 'Email changed and verified. Sign in with your new address.';
+      }
+      const verified = await q('UPDATE users SET email_verified=1,email_verification_token=NULL,email_verification_expires=NULL WHERE email_verification_token=? AND email_verification_expires>NOW()', [token]);
+      if (!verified.affectedRows) throw Object.assign(new Error('Invalid or expired verification link'), { status:400 });
+      return 'Email verified successfully';
+    });
+    res.json({ message:result });
+  } catch(error) { res.status(error.status || (error.code==='ER_DUP_ENTRY' ? 409 : 500)).json({ message:error.status ? error.message : 'Verification failed' }); }
 });
 
 app.post('/api/auth/forgot-password', passwordLimiter, async (req, res) => {
@@ -823,14 +863,19 @@ app.post('/api/auth/reset-password', passwordLimiter, validate([
     const { token, password } = req.body;
     if (!token || !password) return res.status(400).json({ message: 'Token and new password are required' });
     if (password.length < 8) return res.status(400).json({ message: 'Password must be at least 8 characters' });
-    const tokens = await executeQuery('SELECT id, user_id FROM password_reset_tokens WHERE token = ? AND expires_at > NOW() AND used = 0', [hashToken(token)]);
-    if (tokens.length === 0) return res.status(400).json({ message: 'Invalid or expired reset token' });
-    const { id: tokenId, user_id } = tokens[0];
     const passwordHash = await argon2.hash(password);
-    await executeQuery('UPDATE users SET password_hash = ? WHERE id = ?', [passwordHash, user_id]);
-    await executeQuery('UPDATE password_reset_tokens SET used = 1 WHERE id = ?', [tokenId]);
+    await withTransaction(async q => {
+      const [candidate] = await executeQuery('SELECT user_id FROM password_reset_tokens WHERE token=?', [hashToken(token)]);
+      if (!candidate) throw Object.assign(new Error('Invalid or expired reset token'), { status:400 });
+      await q('SELECT id FROM users WHERE id=? FOR UPDATE', [candidate.user_id]);
+      const [saved] = await q('SELECT id,user_id FROM password_reset_tokens WHERE token=? AND expires_at>NOW() AND used=0 FOR UPDATE', [hashToken(token)]);
+      if (!saved) throw Object.assign(new Error('Invalid or expired reset token'), { status:400 });
+      await q('UPDATE users SET password_hash=? WHERE id=?', [passwordHash,saved.user_id]);
+      await q('UPDATE password_reset_tokens SET used=1 WHERE user_id=?', [saved.user_id]);
+      await q('DELETE FROM sessions WHERE userId=?', [saved.user_id]);
+    });
     res.json({ message: 'Password updated successfully' });
-  } catch (error) { logger.error('Reset password error:', error); res.status(500).json({ message: 'Failed to reset password' }); }
+  } catch (error) { logger.error('Reset password error:', error); res.status(error.status || 500).json({ message: error.status ? error.message : 'Failed to reset password' }); }
 });
 
 app.get('/api/banks', async (req, res) => {
@@ -847,7 +892,7 @@ app.get('/api/customers', authenticateToken, async (req, res) => {
   try {
     const search = req.query.search || '';
     const page = Math.max(1, parseInt(req.query.page) || 1);
-    const limit = Math.min(100, parseInt(req.query.limit) || 20);
+    const limit = Math.max(1, Math.min(100, parseInt(req.query.limit) || 20));
     const offset = (page - 1) * limit;
     let sql = 'SELECT * FROM customers WHERE user_id = ? AND active = 1';
     let cntSql = 'SELECT COUNT(*) AS total FROM customers WHERE user_id = ? AND active = 1';
@@ -870,7 +915,7 @@ app.post('/api/customers', authenticateToken, validate([
   try {
     const { name, email, phone, vat_number, billing_address, shipping_address, payment_terms, notes } = req.body;
     if (!name || !email || !billing_address) return res.status(400).json({ message: 'Name, email, and billing address are required' });
-    const result = await executeQuery('INSERT INTO customers (user_id, name, email, phone, vat_number, billing_address, shipping_address, payment_terms, notes) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)', [req.user.id, name, email, encCustomer('phone', phone || null), encCustomer('vat_number', vat_number || null), encCustomer('billing_address', billing_address), encCustomer('shipping_address', shipping_address || null), payment_terms || null, encCustomer('notes', notes || null)]);
+    const result = await executeQuery('INSERT INTO customers (user_id, name, email, phone, vat_number, billing_address, shipping_address, payment_terms, notes) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)', [req.user.id, name, email, encCustomer('phone', phone || null), encCustomer('vat_number', vat_number || null), encCustomer('billing_address', billing_address), encCustomer('shipping_address', shipping_address || null), payment_terms ?? null, encCustomer('notes', notes || null)]);
     res.status(201).json((await queryDecrypted(decryptCustomerRow, 'SELECT * FROM customers WHERE id = ?', [result.insertId]))[0]);
   } catch (error) { logger.error('Error creating customer:', error); res.status(500).json({ message: 'Failed to create customer' }); }
 });
@@ -880,7 +925,7 @@ app.get('/api/customers/:id', authenticateToken, async (req, res) => {
     const { id } = req.params;
     const customers = await queryDecrypted(decryptCustomerRow, 'SELECT * FROM customers WHERE id = ? AND user_id = ? AND active = 1', [id, req.user.id]);
     if (customers.length === 0) return res.status(404).json({ message: 'Customer not found' });
-    const documents = await executeQuery('SELECT * FROM documents WHERE customer_id = ? AND user_id = ? ORDER BY created_at DESC', [id, req.user.id]);
+    const documents = await executeQuery('SELECT d.*,cur.code AS currency_code FROM documents d LEFT JOIN currencies cur ON cur.id=d.currency_id WHERE d.customer_id=? AND d.user_id=? ORDER BY d.created_at DESC', [id, req.user.id]);
     res.json({ ...customers[0], documents });
   } catch (error) { logger.error('Error fetching customer:', error); res.status(500).json({ message: 'Failed to fetch customer' }); }
 });
@@ -899,7 +944,7 @@ app.put('/api/customers/:id', authenticateToken, validate([
     if (!name || !email || !billing_address) return res.status(400).json({ message: 'Name, email, and billing address are required' });
     const existing = await executeQuery('SELECT id FROM customers WHERE id = ? AND user_id = ? AND active = 1', [id, req.user.id]);
     if (existing.length === 0) return res.status(404).json({ message: 'Customer not found' });
-    await executeQuery('UPDATE customers SET name=?, email=?, phone=?, vat_number=?, billing_address=?, shipping_address=?, payment_terms=?, notes=?, updated_at=NOW() WHERE id = ? AND user_id = ?', [name, email, encCustomer('phone', phone || null), encCustomer('vat_number', vat_number || null), encCustomer('billing_address', billing_address), encCustomer('shipping_address', shipping_address || null), payment_terms || null, encCustomer('notes', notes || null), id, req.user.id]);
+    await executeQuery('UPDATE customers SET name=?, email=?, phone=?, vat_number=?, billing_address=?, shipping_address=?, payment_terms=?, notes=?, updated_at=NOW() WHERE id = ? AND user_id = ?', [name, email, encCustomer('phone', phone || null), encCustomer('vat_number', vat_number || null), encCustomer('billing_address', billing_address), encCustomer('shipping_address', shipping_address || null), payment_terms ?? null, encCustomer('notes', notes || null), id, req.user.id]);
     res.json((await queryDecrypted(decryptCustomerRow, 'SELECT * FROM customers WHERE id = ?', [id]))[0]);
   } catch (error) { logger.error('Error updating customer:', error); res.status(500).json({ message: 'Failed to update customer' }); }
 });
@@ -916,39 +961,18 @@ app.delete('/api/customers/:id', authenticateToken, async (req, res) => {
 
 // ─── Invoices ─────────────────────────────────────────────────────────────────
 
-async function getNextDocumentNumber(userId, type) {
-  const prefix = type === 'INVOICE' ? 'INV' : 'QUO';
-  const year = new Date().getFullYear();
-  const rows = await executeQuery('SELECT document_number FROM documents WHERE user_id = ? AND type = ? AND document_number LIKE ? ORDER BY id DESC LIMIT 1', [userId, type, `${prefix}-${year}-%`]);
-  if (rows.length === 0) return `${prefix}-${year}-0001`;
-  const seq = parseInt(rows[0].document_number.split('-')[2], 10) + 1;
-  return `${prefix}-${year}-${String(seq).padStart(4, '0')}`;
-}
-
-function advanceDate(dateStr, interval) {
-  const [year, month, day] = dateStr.split('-').map(Number);
-  const d = new Date(Date.UTC(year, month - 1, day));
-  switch (interval) {
-    case 'WEEKLY':    d.setUTCDate(d.getUTCDate() + 7); break;
-    case 'MONTHLY':   d.setUTCMonth(d.getUTCMonth() + 1); break;
-    case 'QUARTERLY': d.setUTCMonth(d.getUTCMonth() + 3); break;
-    case 'YEARLY':    d.setUTCFullYear(d.getUTCFullYear() + 1); break;
-  }
-  return d.toISOString().split('T')[0];
-}
-
 app.get('/api/invoices', authenticateToken, async (req, res) => {
   try {
     const search = req.query.search || '', status = req.query.status || '';
-    const page = Math.max(1, parseInt(req.query.page) || 1), limit = Math.min(100, parseInt(req.query.limit) || 20), offset = (page - 1) * limit;
-    let sql = `SELECT d.id, d.document_number, d.status, d.issue_date, d.due_date, d.subtotal, d.vat_amount, d.total, d.created_at, d.notifications_muted, c.name AS customer_name, (SELECT COALESCE(SUM(p.amount), 0) FROM payments p WHERE p.document_id = d.id) AS amount_paid FROM documents d JOIN customers c ON c.id = d.customer_id WHERE d.user_id = ? AND d.type = 'INVOICE'`;
+    const page = Math.max(1, parseInt(req.query.page) || 1), limit = Math.max(1, Math.min(100, parseInt(req.query.limit) || 20)), offset = (page - 1) * limit;
+    let sql = `SELECT d.id, d.document_number, d.status, d.issue_date, d.due_date, d.subtotal, d.vat_amount, d.total, d.created_at, d.notifications_muted, (SELECT code FROM currencies WHERE id=d.currency_id) AS currency_code, c.name AS customer_name, (SELECT COALESCE(SUM(p.amount), 0) FROM payments p WHERE p.document_id = d.id) AS amount_paid FROM documents d JOIN customers c ON c.id = d.customer_id WHERE d.user_id = ? AND d.type = 'INVOICE'`;
     let cntSql = `SELECT COUNT(*) AS total FROM documents d JOIN customers c ON c.id = d.customer_id WHERE d.user_id = ? AND d.type = 'INVOICE'`;
     const params = [req.user.id], cntParams = [req.user.id];
     if (status) { sql += ' AND d.status = ?'; cntSql += ' AND d.status = ?'; params.push(status); cntParams.push(status); }
     if (search) { const clause = ' AND (d.document_number LIKE ? OR c.name LIKE ?)'; sql += clause; cntSql += clause; params.push(`%${search}%`, `%${search}%`); cntParams.push(`%${search}%`, `%${search}%`); }
     sql += ' ORDER BY d.created_at DESC LIMIT ? OFFSET ?'; params.push(limit, offset);
     const [invoices, countResult] = await Promise.all([executeQuery(sql, params), executeQuery(cntSql, cntParams)]);
-    res.json({ data: invoices, total: countResult[0].total, page, limit });
+    res.json({ data: await hydrateDocumentSnapshots(executeQuery, invoices), total: countResult[0].total, page, limit });
   } catch (error) { logger.error('Error fetching invoices:', error); res.status(500).json({ message: 'Failed to fetch invoices' }); }
 });
 
@@ -966,10 +990,15 @@ const documentRules = [
   body('items.*.description').trim().notEmpty().withMessage('Each item must have a description'),
   body('items.*.quantity').isFloat({ min: 0.01 }).withMessage('Quantity must be greater than 0'),
   body('items.*.unit_price').isFloat({ min: 0 }).withMessage('Unit price must be a positive number'),
-  body('items.*.vat_rate').isFloat({ min: 0, max: 100 }).withMessage('VAT rate must be between 0 and 100'),
+  body('items.*.vat_inclusive').optional().isBoolean().withMessage('VAT-inclusive mode must be true or false').toBoolean(),
+  body('items.*.product_id').optional({ nullable: true }).isInt({ min: 1 }).withMessage('Invalid product'),
+  body('items.*.vat_rate').optional().isFloat({ min: 0, max: 100 }).withMessage('VAT rate must be between 0 and 100'),
 ];
 const invoiceRules = [
   ...documentRules,
+  body('is_recurring').optional().isBoolean().toBoolean(),
+  body('auto_send').optional().isBoolean().toBoolean(),
+  body('recurrence_end_date').optional({ values: 'falsy' }).isDate(),
   body('due_date').optional({ values: 'falsy' }).isDate().withMessage('Due date must be a valid date')
     .custom((value, { req }) => !req.body.issue_date || value >= req.body.issue_date)
     .withMessage('Due date cannot be before the issue date'),
@@ -981,55 +1010,26 @@ const quoteRules = [
 
 app.post('/api/invoices', authenticateToken, validate(invoiceRules), async (req, res) => {
   try {
-    const { customer_id, issue_date, due_date: reqDueDate, payment_terms: reqTerms, notes, terms_conditions, items, currency_id: reqCurrencyId, is_recurring, recurrence_interval, recurrence_end_date, auto_send } = req.body;
-    if (!customer_id || !issue_date || !items || items.length === 0) return res.status(400).json({ message: 'Customer, issue date, and at least one line item are required' });
-    const customers = await executeQuery('SELECT id FROM customers WHERE id = ? AND user_id = ? AND active = 1', [customer_id, req.user.id]);
-    if (customers.length === 0) return res.status(400).json({ message: 'Invalid customer' });
-    const { lines: lineItems, subtotal, vat_amount, total } = computeDocumentTotals(items);
-    const payment_terms = normaliseTerms(reqTerms);
-    const due_date = resolveDueDate(issue_date, reqDueDate, payment_terms);
-    const document_number = await getNextDocumentNumber(req.user.id, 'INVOICE');
-    let currency_id = 1;
-    if (reqCurrencyId) { const currRows = await executeQuery('SELECT id FROM currencies WHERE id = ? AND is_active = 1', [reqCurrencyId]); if (currRows.length > 0) currency_id = reqCurrencyId; }
-    else { const defRows = await executeQuery("SELECT setting_value FROM settings WHERE user_id = ? AND setting_key = 'default_currency_id'", [req.user.id]); if (defRows.length > 0 && defRows[0].setting_value) currency_id = parseInt(defRows[0].setting_value, 10) || 1; }
-    const conn = await getConnection();
-    try {
-      await new Promise((resolve, reject) => conn.beginTransaction(err => err ? reject(err) : resolve()));
-      const recurringFlag = is_recurring ? 1 : 0, recurInterval = recurringFlag && recurrence_interval ? recurrence_interval : null;
-      const recurNextDate = recurringFlag && recurInterval ? advanceDate(issue_date, recurInterval) : null;
-      const recurEndDate = recurringFlag && recurrence_end_date ? recurrence_end_date : null, autoSendFlag = recurringFlag && auto_send ? 1 : 0;
-      const docResult = await new Promise((resolve, reject) => conn.query(
-        `INSERT INTO documents (user_id, customer_id, type, document_number, currency_id, status, issue_date, due_date, payment_terms, subtotal, vat_amount, total, notes, terms_conditions, is_recurring, recurrence_interval, recurrence_next_date, recurrence_end_date, auto_send) VALUES (?, ?, 'INVOICE', ?, ?, 'DRAFT', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-        [req.user.id, customer_id, document_number, currency_id, issue_date, due_date, payment_terms, subtotal.toFixed(2), vat_amount.toFixed(2), total.toFixed(2), notes || null, terms_conditions || null, recurringFlag, recurInterval, recurNextDate, recurEndDate, autoSendFlag],
-        (err, result) => err ? reject(err) : resolve(result)
-      ));
-      const docId = docResult.insertId;
-      for (const item of lineItems) { await new Promise((resolve, reject) => conn.query('INSERT INTO document_items (document_id, product_id, description, quantity, unit_price, vat_rate, vat_amount, subtotal, total) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)', [docId, item.product_id || null, item.description, item.quantity, item.unit_price, item.vat_rate, item.vat_amount.toFixed(2), item.subtotal.toFixed(2), item.total.toFixed(2)], (err, r) => err ? reject(err) : resolve(r))); }
-      await new Promise((resolve, reject) => conn.query(`INSERT INTO document_tracking (document_id, event_type) VALUES (?, 'CREATED')`, [docId], (err, r) => err ? reject(err) : resolve(r)));
-      await new Promise((resolve, reject) => conn.commit(err => err ? reject(err) : resolve()));
-      conn.release();
-      const invoice = await executeQuery(`SELECT d.*, c.name AS customer_name FROM documents d JOIN customers c ON c.id = d.customer_id WHERE d.id = ?`, [docId]);
-      const itemsResult = await executeQuery('SELECT * FROM document_items WHERE document_id = ? ORDER BY id ASC', [docId]);
-      res.status(201).json({ ...invoice[0], items: itemsResult });
-    } catch (txError) { await new Promise(resolve => conn.rollback(resolve)); conn.release(); throw txError; }
-  } catch (error) { logger.error('Error creating invoice:', error); res.status(500).json({ message: 'Failed to create invoice' }); }
+    res.status(201).json(await createDocument(req.user.id, 'INVOICE', req.body));
+  } catch (error) { logger.error('Document creation failed:', error); res.status(error.status || 500).json({ message: error.status ? error.message : 'Failed to create document' }); }
 });
 
 app.get('/api/invoices/:id', authenticateToken, async (req, res) => {
   try {
     const { id } = req.params;
-    const [invoices, items, tracking, payments] = await Promise.all([
+    const [invoices, items, tracking, payments, deliveries] = await Promise.all([
       queryDecrypted(decryptCustomerJoin, `SELECT d.*, d.notifications_muted, c.name AS customer_name, c.email AS customer_email, c.billing_address AS customer_billing_address, c.vat_number AS customer_vat_number, cur.symbol AS currency_symbol, cur.code AS currency_code, q.document_number AS source_quote_number FROM documents d JOIN customers c ON c.id = d.customer_id LEFT JOIN currencies cur ON cur.id = d.currency_id LEFT JOIN documents q ON q.id = d.source_quote_id AND q.user_id = d.user_id WHERE d.id = ? AND d.user_id = ? AND d.type = 'INVOICE'`, [id, req.user.id]),
       executeQuery('SELECT * FROM document_items WHERE document_id = ? ORDER BY id ASC', [id]),
       executeQuery('SELECT id, document_id, event_type, event_date FROM document_tracking WHERE document_id = ? ORDER BY event_date ASC', [id]),
-      queryDecrypted(decryptPaymentRow, 'SELECT * FROM payments WHERE document_id = ? ORDER BY payment_date DESC', [id])
+      queryDecrypted(decryptPaymentRow, 'SELECT * FROM payments WHERE document_id = ? ORDER BY payment_date DESC', [id]),
+      executeQuery('SELECT id,kind,status,attempts,last_error,created_at,accepted_at FROM email_outbox WHERE document_id=? AND user_id=? ORDER BY id DESC LIMIT 30',[id,req.user.id])
     ]);
     if (invoices.length === 0) return res.status(404).json({ message: 'Invoice not found' });
     // Computed here rather than in the client so every screen agrees on what
     // is still owed.
     const amount_paid = payments.reduce((s, p) => s + Number(p.amount), 0);
     res.json({
-      ...invoices[0], notifications_muted: !!invoices[0].notifications_muted, items, tracking, payments,
+      ...invoices[0], notifications_muted: !!invoices[0].notifications_muted, items, tracking, payments, email_deliveries: deliveries,
       amount_paid: amount_paid.toFixed(2), balance_due: balanceDue(invoices[0].total, amount_paid).toFixed(2),
     });
   } catch (error) { logger.error('Error fetching invoice:', error); res.status(500).json({ message: 'Failed to fetch invoice' }); }
@@ -1039,6 +1039,7 @@ app.get('/api/invoices/:id/pdf', authenticateToken, async (req, res) => {
   try {
     const { id } = req.params;
     const markSent = req.query.markSent === 'true';
+    if (markSent) await issueDocument(id, req.user.id, 'INVOICE', { allowFinal: true });
     const [invoices, items, users, logoRows] = await Promise.all([
       queryDecrypted(decryptCustomerJoin, `SELECT d.*, (SELECT COALESCE(SUM(pp.amount), 0) FROM payments pp WHERE pp.document_id = d.id) AS amount_paid, c.name AS customer_name, c.email AS customer_email, c.billing_address AS customer_billing_address, c.vat_number AS customer_vat_number, cur.symbol AS currency_symbol, cur.code AS currency_code FROM documents d JOIN customers c ON c.id = d.customer_id LEFT JOIN currencies cur ON cur.id = d.currency_id WHERE d.id = ? AND d.user_id = ? AND d.type = 'INVOICE'`, [id, req.user.id]),
       executeQuery('SELECT * FROM document_items WHERE document_id = ? ORDER BY id ASC', [id]),
@@ -1047,20 +1048,17 @@ app.get('/api/invoices/:id/pdf', authenticateToken, async (req, res) => {
     ]);
     if (invoices.length === 0) return res.status(404).json({ message: 'Invoice not found' });
     const logoRelPath = logoRows[0]?.setting_value || null;
-    const user = { ...decryptUserRow(users[0]), logo_path: logoRelPath ? path.join(__dirname, logoRelPath) : null };
+    const user = await documentSeller(executeQuery, id, { ...decryptUserRow(users[0]), logo_path: logoRelPath ? path.join(__dirname, logoRelPath) : null });
     // markSent is about to promote a DRAFT, so judge eligibility on the status
     // this invoice will have by the time a customer reads the PDF.
     const effectiveStatus = markSent && invoices[0].status === 'DRAFT' ? 'SENT' : invoices[0].status;
     const pay_url = await resolvePayUrl({ ...invoices[0], status: effectiveStatus }, user);
     const pdfBuffer = await buildInvoicePdf({ ...invoices[0], pay_url }, items, user);
     await executeQuery(`INSERT INTO document_tracking (document_id, event_type) VALUES (?, 'DOWNLOADED')`, [id]);
-    if (markSent && invoices[0].status === 'DRAFT') {
-      await executeQuery(`UPDATE documents SET status = 'SENT', updated_at = NOW() WHERE id = ? AND user_id = ?`, [id, req.user.id]);
-      await executeQuery(`INSERT INTO document_tracking (document_id, event_type) VALUES (?, 'SENT')`, [id]);
-    }
+
     res.set({ 'Content-Type': 'application/pdf', 'Content-Disposition': `attachment; filename="${invoices[0].document_number}.pdf"`, 'Content-Length': pdfBuffer.length });
     res.send(pdfBuffer);
-  } catch (error) { logger.error('Error generating invoice PDF:', error); res.status(500).json({ message: 'Failed to generate PDF' }); }
+  } catch (error) { logger.error('Error generating invoice PDF:', error); res.status(error.status || 500).json({ message: error.status ? error.message : 'Failed to generate PDF' }); }
 });
 
 app.get('/api/invoices/:id/receipt', authenticateToken, async (req, res) => {
@@ -1076,14 +1074,14 @@ app.get('/api/invoices/:id/receipt', authenticateToken, async (req, res) => {
     if (invoices.length === 0) return res.status(404).json({ message: 'Invoice not found' });
     if (invoices[0].status !== 'PAID') return res.status(400).json({ message: 'Receipt is only available for paid invoices' });
     const logoRelPath = logoRows[0]?.setting_value || null;
-    const user = { ...decryptUserRow(users[0]), logo_path: logoRelPath ? path.join(__dirname, logoRelPath) : null };
+    const user = await documentSeller(executeQuery, id, { ...decryptUserRow(users[0]), logo_path: logoRelPath ? path.join(__dirname, logoRelPath) : null });
     const pdfBuffer = await buildReceiptPdf(invoices[0], items, user, payments);
     res.set({ 'Content-Type': 'application/pdf', 'Content-Disposition': `attachment; filename="RECEIPT-${invoices[0].document_number}.pdf"`, 'Content-Length': pdfBuffer.length });
     res.send(pdfBuffer);
   } catch (error) { logger.error('Error generating receipt PDF:', error); res.status(500).json({ message: 'Failed to generate receipt' }); }
 });
 
-app.post('/api/invoices/:id/send-receipt', authenticateToken, async (req, res) => {
+app.post('/api/invoices/:id/send-receipt', authenticateToken, validate([body('resend_key').optional().isUUID()]), async (req, res) => {
   try {
     const { id } = req.params;
     const [invoices, items, users, logoRows, payments] = await Promise.all([
@@ -1098,13 +1096,13 @@ app.post('/api/invoices/:id/send-receipt', authenticateToken, async (req, res) =
     if (invoice.status !== 'PAID') return res.status(400).json({ message: 'Receipt can only be sent for paid invoices' });
     if (!invoice.customer_email) return res.status(400).json({ message: 'This customer has no email address on file' });
     const logoRelPath = logoRows[0]?.setting_value || null;
-    const user = { ...decryptUserRow(users[0]), logo_path: logoRelPath ? path.join(__dirname, logoRelPath) : null };
+    const user = await documentSeller(executeQuery, id, { ...decryptUserRow(users[0]), logo_path: logoRelPath ? path.join(__dirname, logoRelPath) : null });
     const pdfBuffer = await buildReceiptPdf(invoice, items, user, payments);
-    let emailWarning = null;
-    try { await emailService.sendReceiptEmail(invoice.customer_email, { ...invoice, company_name: user.company_name }, pdfBuffer); }
-    catch (emailError) { logger.error('Receipt email delivery failed:', emailError); emailWarning = `Receipt could not be delivered: ${emailError.message}`; }
-    if (emailWarning) return res.status(207).json({ message: emailWarning, emailFailed: true });
-    res.json({ message: `Receipt emailed to ${invoice.customer_email}` });
+    const mail=await captureEmail(emailService,'sendReceiptEmail',invoice.customer_email,{...invoice,company_name:user.company_name},pdfBuffer);
+    const [previous]=await executeQuery("SELECT dedupe_key FROM email_outbox WHERE user_id=? AND document_id=? AND kind='RECEIPT' ORDER BY id DESC LIMIT 1",[req.user.id,id]);
+    const key=req.body.resend_key ? `receipt:${id}:resend:${req.body.resend_key}` : previous?.dedupe_key || `receipt:${id}:full`;
+    const job=await queueEmail({userId:req.user.id,documentId:id,kind:'RECEIPT',key,mail});
+    return emailResult(res,await deliverEmail(job.id,emailService.transporter,{retry:true}));
   } catch (error) { logger.error('Error sending receipt:', error); res.status(500).json({ message: 'Failed to send receipt' }); }
 });
 
@@ -1112,7 +1110,7 @@ app.put('/api/invoices/:id', authenticateToken, validate(invoiceRules), async (r
   try {
     const { id } = req.params;
     const { customer_id, issue_date, due_date: reqDueDate, payment_terms: reqTerms, notes, terms_conditions, items, currency_id: reqCurrencyId, is_recurring, recurrence_interval, recurrence_end_date, auto_send } = req.body;
-    const existing = await executeQuery(`SELECT id, status, currency_id, is_recurring, recurrence_interval, (SELECT COUNT(*) FROM payments p WHERE p.document_id = documents.id) AS payment_count FROM documents WHERE id = ? AND user_id = ? AND type = 'INVOICE'`, [id, req.user.id]);
+    const existing = await executeQuery(`SELECT id, status, currency_id, issue_date, is_recurring, recurrence_interval, (SELECT COUNT(*) FROM payments p WHERE p.document_id = documents.id) AS payment_count FROM documents WHERE id = ? AND user_id = ? AND type = 'INVOICE'`, [id, req.user.id]);
     if (existing.length === 0) return res.status(404).json({ message: 'Invoice not found' });
     if (existing[0].status !== 'DRAFT') return res.status(400).json({ message: 'Only DRAFT invoices can be edited' });
     // A payment is evidence the customer was billed these amounts. Letting the
@@ -1121,12 +1119,19 @@ app.put('/api/invoices/:id', authenticateToken, validate(invoiceRules), async (r
     if (!customer_id || !issue_date || !items || items.length === 0) return res.status(400).json({ message: 'Customer, issue date, and at least one line item are required' });
     const customers = await executeQuery('SELECT id FROM customers WHERE id = ? AND user_id = ? AND active = 1', [customer_id, req.user.id]);
     if (customers.length === 0) return res.status(400).json({ message: 'Invalid customer' });
-    const { lines: lineItems, subtotal, vat_amount, total } = computeDocumentTotals(items);
-    const payment_terms = normaliseTerms(reqTerms);
+    const prepared = await prepareDocument(executeQuery, req.user.id, 'INVOICE', { ...req.body, currency_id: reqCurrencyId ?? existing[0].currency_id });
+    const { lines: lineItems, subtotal, vat_amount, total, notes: effectiveNotes } = prepared;
+    const payment_terms = prepared.payment_terms;
     const due_date = resolveDueDate(issue_date, reqDueDate, payment_terms);
     const conn = await getConnection();
     try {
       await new Promise((resolve, reject) => conn.beginTransaction(err => err ? reject(err) : resolve()));
+      const locked = await queryOn(conn, `SELECT d.status, EXISTS(SELECT 1 FROM document_snapshots s WHERE s.document_id=d.id) AS frozen
+        FROM documents d WHERE d.id=? AND d.user_id=? FOR UPDATE`, [id, req.user.id]);
+      if (!locked.length || locked[0].status !== 'DRAFT' || locked[0].frozen) {
+        throw Object.assign(new Error('Issued documents can no longer be edited'), { status: 400 });
+      }
+
       let newCurrencyId = existing[0].currency_id;
       if (reqCurrencyId) { const currRows = await executeQuery('SELECT id FROM currencies WHERE id = ? AND is_active = 1', [reqCurrencyId]); if (currRows.length > 0) newCurrencyId = reqCurrencyId; }
       // An edit that leaves out is_recurring is not touching the schedule, so the
@@ -1141,61 +1146,75 @@ app.put('/api/invoices/:id', authenticateToken, validate(invoiceRules), async (r
         // A source invoice stays DRAFT while the cron generates copies from it, so
         // its next run may already be past issue_date. Recomputing from issue_date
         // when the schedule itself is unchanged would rewind it and duplicate a run.
-        const scheduleUnchanged = recurringFlag && existing[0].is_recurring && existing[0].recurrence_interval === recurInterval;
+        const scheduleUnchanged = recurringFlag && existing[0].is_recurring && existing[0].recurrence_interval === recurInterval && existing[0].issue_date === issue_date;
         if (!scheduleUnchanged) {
-          recurSql += ', recurrence_next_date=?';
-          recurParams.push(recurringFlag && recurInterval ? advanceDate(issue_date, recurInterval) : null);
+          recurSql += ', recurrence_anchor_date=?, recurrence_next_date=?';
+          recurParams.push(recurringFlag ? issue_date : null);
+          recurParams.push(recurringFlag && recurInterval ? advanceDate(issue_date, recurInterval, issue_date) : null);
         }
       }
       await new Promise((resolve, reject) => conn.query(
         `UPDATE documents SET customer_id=?, issue_date=?, due_date=?, payment_terms=?, currency_id=?, subtotal=?, vat_amount=?, total=?, notes=?, terms_conditions=?${recurSql}, updated_at=NOW() WHERE id=? AND user_id=?`,
-        [customer_id, issue_date, due_date, payment_terms, newCurrencyId, subtotal.toFixed(2), vat_amount.toFixed(2), total.toFixed(2), notes || null, terms_conditions || null, ...recurParams, id, req.user.id],
+        [customer_id, issue_date, due_date, payment_terms, newCurrencyId, subtotal.toFixed(2), vat_amount.toFixed(2), total.toFixed(2), effectiveNotes || null, terms_conditions || null, ...recurParams, id, req.user.id],
         (err, r) => err ? reject(err) : resolve(r)
       ));
       await new Promise((resolve, reject) => conn.query('DELETE FROM document_items WHERE document_id = ?', [id], (err, r) => err ? reject(err) : resolve(r)));
-      for (const item of lineItems) { await new Promise((resolve, reject) => conn.query('INSERT INTO document_items (document_id, product_id, description, quantity, unit_price, vat_rate, vat_amount, subtotal, total) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)', [id, item.product_id || null, item.description, item.quantity, item.unit_price, item.vat_rate, item.vat_amount.toFixed(2), item.subtotal.toFixed(2), item.total.toFixed(2)], (err, r) => err ? reject(err) : resolve(r))); }
+      for (const item of lineItems) { await new Promise((resolve, reject) => conn.query('INSERT INTO document_items (document_id, product_id, description, quantity, unit_price, vat_rate, vat_inclusive, vat_amount, subtotal, total) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)', [id, item.product_id || null, item.description, item.quantity, item.unit_price, item.vat_rate, item.vat_inclusive ? 1 : 0, item.vat_amount.toFixed(2), item.subtotal.toFixed(2), item.total.toFixed(2)], (err, r) => err ? reject(err) : resolve(r))); }
       await new Promise((resolve, reject) => conn.commit(err => err ? reject(err) : resolve()));
       conn.release();
       const invoice = await executeQuery(`SELECT d.*, c.name AS customer_name FROM documents d JOIN customers c ON c.id = d.customer_id WHERE d.id = ?`, [id]);
       const itemsResult = await executeQuery('SELECT * FROM document_items WHERE document_id = ? ORDER BY id ASC', [id]);
       res.json({ ...invoice[0], items: itemsResult });
     } catch (txError) { await new Promise(resolve => conn.rollback(resolve)); conn.release(); throw txError; }
-  } catch (error) { logger.error('Error updating invoice:', error); res.status(500).json({ message: 'Failed to update invoice' }); }
+  } catch (error) { logger.error('Error updating invoice:', error); res.status(error.status || 500).json({ message: error.status ? error.message : 'Failed to update invoice' }); }
 });
 
-app.post('/api/invoices/:id/send', authenticateToken, async (req, res) => {
-  try {
-    const { id } = req.params;
+async function queueInvoiceEmail(id,userId,key=`invoice:${id}:initial`) {
+    await issueDocument(id, userId, 'INVOICE', { requireEmail: true });
     const [invoices, items, users, logoRows] = await Promise.all([
-      queryDecrypted(decryptCustomerJoin, `SELECT d.*, (SELECT COALESCE(SUM(pp.amount), 0) FROM payments pp WHERE pp.document_id = d.id) AS amount_paid, c.name AS customer_name, c.email AS customer_email, c.billing_address AS customer_billing_address, c.vat_number AS customer_vat_number, cur.symbol AS currency_symbol, cur.code AS currency_code FROM documents d JOIN customers c ON c.id = d.customer_id LEFT JOIN currencies cur ON cur.id = d.currency_id WHERE d.id = ? AND d.user_id = ? AND d.type = 'INVOICE'`, [id, req.user.id]),
+      queryDecrypted(decryptCustomerJoin, `SELECT d.*, (SELECT COALESCE(SUM(pp.amount), 0) FROM payments pp WHERE pp.document_id = d.id) AS amount_paid, c.name AS customer_name, c.email AS customer_email, c.billing_address AS customer_billing_address, c.vat_number AS customer_vat_number, cur.symbol AS currency_symbol, cur.code AS currency_code FROM documents d JOIN customers c ON c.id = d.customer_id LEFT JOIN currencies cur ON cur.id = d.currency_id WHERE d.id = ? AND d.user_id = ? AND d.type = 'INVOICE'`, [id, userId]),
       executeQuery('SELECT * FROM document_items WHERE document_id = ? ORDER BY id ASC', [id]),
-      queryDecrypted(decryptUserRow, 'SELECT * FROM users WHERE id = ?', [req.user.id]),
-      executeQuery("SELECT setting_value FROM settings WHERE user_id = ? AND setting_key = 'company_logo'", [req.user.id])
+      queryDecrypted(decryptUserRow, 'SELECT * FROM users WHERE id = ?', [userId]),
+      executeQuery("SELECT setting_value FROM settings WHERE user_id = ? AND setting_key = 'company_logo'", [userId])
     ]);
-    if (invoices.length === 0) return res.status(404).json({ message: 'Invoice not found' });
+    if (invoices.length === 0) throw Object.assign(new Error('Invoice not found'),{status:404});
     const invoice = invoices[0];
     const logoRelPath = logoRows[0]?.setting_value || null;
-    const user = { ...decryptUserRow(users[0]), logo_path: logoRelPath ? path.join(__dirname, logoRelPath) : null };
-    if (!['DRAFT', 'SENT'].includes(invoice.status)) return res.status(400).json({ message: `Cannot send an invoice with status ${invoice.status}` });
-    if (!invoice.customer_email) return res.status(400).json({ message: 'This customer has no email address on file' });
+    const user = await documentSeller(executeQuery, id, { ...decryptUserRow(users[0]), logo_path: logoRelPath ? path.join(__dirname, logoRelPath) : null });
+    if (!['SENT','OVERDUE'].includes(invoice.status)) throw Object.assign(new Error('Only unpaid issued invoices can be emailed'),{status:400});
+    if (!invoice.customer_email) throw Object.assign(new Error('This customer has no email address on file'),{status:400});
     // The invoice is SENT by the end of this request, so eligibility is judged
     // on that rather than on the DRAFT it may still be right now.
     const pay_url = await resolvePayUrl({ ...invoice, status: 'SENT' }, user);
     const pdfBuffer = await buildInvoicePdf({ ...invoice, pay_url }, items, user);
-    let emailWarning = null;
-    try { await emailService.sendInvoiceEmail(invoice.customer_email, { ...invoice, pay_url, company_name: user.company_name, bank_name: user.bank_name, bank_account_number: user.bank_account_number, bank_branch_code: user.bank_branch_code }, pdfBuffer); }
-    catch (emailError) { logger.error('Email delivery failed:', emailError); emailWarning = `Invoice marked as sent, but the email could not be delivered: ${emailError.message}`; }
-    await executeQuery(`UPDATE documents SET status = 'SENT', updated_at = NOW() WHERE id = ? AND user_id = ?`, [id, req.user.id]);
-    await executeQuery(`INSERT INTO document_tracking (document_id, event_type) VALUES (?, 'SENT')`, [id]);
-    if (emailWarning) return res.status(207).json({ message: emailWarning, emailFailed: true });
-    res.json({ message: `Invoice emailed to ${invoice.customer_email}` });
-  } catch (error) { logger.error('Error sending invoice:', error); res.status(500).json({ message: 'Failed to send invoice' }); }
+    const mail=await captureEmail(emailService,'sendInvoiceEmail',invoice.customer_email,
+      {...invoice,pay_url,company_name:user.company_name,bank_name:user.bank_name,bank_account_number:user.bank_account_number,bank_branch_code:user.bank_branch_code},pdfBuffer);
+    return queueEmail({userId,documentId:id,kind:'INVOICE',key,mail});
+}
+
+function emailResult(res,result) {
+  const accepted=result.status==='ACCEPTED';
+  return res.status(accepted ? 200 : result.status==='SENDING' || result.status==='QUEUED' ? 202 : 207).json({
+    message:accepted ? 'Email accepted by the email provider.' : result.error || (result.status==='UNCERTAIN' ? 'Email acceptance is uncertain. Check your email provider before resending.' : 'Email queued for delivery.'),
+    delivery_status:result.status,emailFailed:['FAILED','UNCERTAIN'].includes(result.status)});
+}
+
+app.post('/api/invoices/:id/send',authenticateToken,validate([
+  body('resend_key').optional().isUUID(),
+]),async(req,res)=>{
+  try {
+    const id=req.params.id;
+    const [previous]=await executeQuery("SELECT dedupe_key FROM email_outbox WHERE user_id=? AND document_id=? AND kind='INVOICE' ORDER BY id DESC LIMIT 1",[req.user.id,id]);
+    const key=req.body.resend_key ? `invoice:${id}:resend:${req.body.resend_key}` : previous?.dedupe_key || `invoice:${id}:initial`;
+    const job=await queueInvoiceEmail(id,req.user.id,key);
+    return emailResult(res,await deliverEmail(job.id,emailService.transporter,{retry:true}));
+  } catch(error) {logger.error('Error queueing invoice email:',error);res.status(error.status || 500).json({message:error.status ? error.message : 'Failed to queue invoice email'});}
 });
 
 app.post('/api/invoices/:id/mark-paid', authenticateToken, validate([
   body('amount').isFloat({ min: 0.01 }).withMessage('Amount must be greater than 0'),
   body('payment_date').isDate().withMessage('A valid payment date is required'),
-  body('payment_method').trim().notEmpty().withMessage('Payment method is required'),
+  body('payment_method').isIn(['PAYFLEX','PAYFAST','CARDANO','BANK_TRANSFER','OTHER']).withMessage('Choose a valid payment method'),
   body('transaction_reference').optional().trim(),
   body('notes').optional().trim(),
 ]), async (req, res) => {
@@ -1229,21 +1248,22 @@ app.post('/api/invoices/:id/mark-paid', authenticateToken, validate([
       settled: outcome.settled,
       balance_due: outcome.balanceAfter.toFixed(2),
     });
-  } catch (error) { logger.error('Error recording payment:', error); res.status(500).json({ message: 'Failed to record payment' }); }
+  } catch (error) { logger.error('Error recording payment:', error); res.status(error.status || 500).json({ message: error.status ? error.message : 'Failed to record payment' }); }
 });
 
 app.post('/api/invoices/:id/cancel', authenticateToken, async (req, res) => {
   try {
-    const { id } = req.params;
-    const invoices = await executeQuery(`SELECT id, status FROM documents WHERE id = ? AND user_id = ? AND type = 'INVOICE'`, [id, req.user.id]);
-    if (invoices.length === 0) return res.status(404).json({ message: 'Invoice not found' });
-    const { status } = invoices[0];
-    if (status === 'CANCELLED') return res.status(400).json({ message: 'Invoice is already cancelled' });
-    if (status === 'PAID') return res.status(400).json({ message: 'Cannot cancel a paid invoice' });
-    await executeQuery(`UPDATE documents SET status = 'CANCELLED', is_recurring = 0, recurrence_next_date = NULL, updated_at = NOW() WHERE id = ? AND user_id = ?`, [id, req.user.id]);
-    await executeQuery(`INSERT INTO document_tracking (document_id, event_type) VALUES (?, 'CANCELLED')`, [id]);
+    await withTransaction(async q => {
+      const [invoice] = await q("SELECT id,status FROM documents WHERE id=? AND user_id=? AND type='INVOICE' FOR UPDATE", [req.params.id, req.user.id]);
+      if (!invoice) throw Object.assign(new Error('Invoice not found'), { status: 404 });
+      const [{ paid }] = await q('SELECT COALESCE(SUM(amount),0) AS paid FROM payments WHERE document_id=?', [invoice.id]);
+      if (Number(paid)>0 || invoice.status==='PAID') throw Object.assign(new Error('This invoice has payments. Resolve the payment with a credit/refund before cancellation.'), { status: 400 });
+      if (invoice.status==='CANCELLED') throw Object.assign(new Error('Invoice is already cancelled'), { status: 400 });
+      await q("UPDATE documents SET status='CANCELLED',is_recurring=0,recurrence_next_date=NULL,updated_at=NOW() WHERE id=?", [invoice.id]);
+      await q("INSERT INTO document_tracking(document_id,event_type) VALUES(?,'CANCELLED')", [invoice.id]);
+    });
     res.json({ message: 'Invoice cancelled successfully' });
-  } catch (error) { logger.error('Error cancelling invoice:', error); res.status(500).json({ message: 'Failed to cancel invoice' }); }
+  } catch(error) { res.status(error.status || 500).json({ message: error.status ? error.message : 'Cancellation failed' }); }
 });
 
 app.put('/api/invoices/:id/notifications', authenticateToken, async (req, res) => {
@@ -1258,65 +1278,38 @@ app.put('/api/invoices/:id/notifications', authenticateToken, async (req, res) =
   } catch (error) { logger.error('Error updating invoice notifications:', error); res.status(500).json({ message: 'Failed to update notification settings' }); }
 });
 
-app.post('/api/invoices/:id/share', authenticateToken, async (req, res) => {
+app.post('/api/invoices/:id/share', authenticateToken, validate([body('rotate').optional().isBoolean().toBoolean()]), async (req,res) => {
   try {
-    const { id } = req.params;
-    const existing = await executeQuery(`SELECT id FROM documents WHERE id = ? AND user_id = ? AND type = 'INVOICE'`, [id, req.user.id]);
-    if (existing.length === 0) return res.status(404).json({ message: 'Invoice not found' });
-    const token = randomUUID().replace(/-/g, '');
-    await executeQuery('UPDATE documents SET share_token = ?, share_token_expires_at = DATE_ADD(NOW(), INTERVAL 30 DAY) WHERE id = ?', [hashToken(token), id]);
-    const baseUrl = `${req.protocol}://${req.get('host')}`;
-    res.json({ token, share_url: `${baseUrl}/portal/invoice/${token}` });
-  } catch (error) { logger.error('Error generating share link:', error); res.status(500).json({ message: 'Failed to generate share link' }); }
+    await issueDocument(req.params.id,req.user.id,'INVOICE',{allowFinal:true});
+    const link = await shareDocument(req.user.id,req.params.id,{rotate:req.body.rotate===true});
+    const origin = (process.env.APP_URL || 'http://localhost:4200').replace(/\/$/,'');
+    res.json({...link,share_url:`${origin}/portal/invoice/${link.token}`});
+  } catch(error) { res.status(error.status || 500).json({message:error.status ? error.message : 'Failed to create share link'}); }
 });
-
-// ─── Quotes ───────────────────────────────────────────────────────────────────
+app.delete('/api/invoices/:id/share',authenticateToken,async(req,res)=>{
+  try { res.json(await shareDocument(req.user.id,req.params.id,{revoke:true})); }
+  catch(error) { res.status(error.status || 500).json({message:error.status ? error.message : 'Failed to revoke share link'}); }
+});
 
 app.get('/api/quotes', authenticateToken, async (req, res) => {
   try {
     const search = req.query.search || '', status = req.query.status || '';
-    const page = Math.max(1, parseInt(req.query.page) || 1), limit = Math.min(100, parseInt(req.query.limit) || 20), offset = (page - 1) * limit;
-    let sql = `SELECT d.id, d.document_number, d.status, d.issue_date, d.due_date, d.valid_until, d.subtotal, d.vat_amount, d.total, d.created_at, c.name AS customer_name FROM documents d JOIN customers c ON c.id = d.customer_id WHERE d.user_id = ? AND d.type = 'QUOTE'`;
+    const page = Math.max(1, parseInt(req.query.page) || 1), limit = Math.max(1, Math.min(100, parseInt(req.query.limit) || 20)), offset = (page - 1) * limit;
+    let sql = `SELECT d.id, d.document_number, d.status, d.issue_date, d.due_date, d.valid_until, d.subtotal, d.vat_amount, d.total, d.created_at, (SELECT code FROM currencies WHERE id=d.currency_id) AS currency_code, c.name AS customer_name FROM documents d JOIN customers c ON c.id = d.customer_id WHERE d.user_id = ? AND d.type = 'QUOTE'`;
     let cntSql = `SELECT COUNT(*) AS total FROM documents d JOIN customers c ON c.id = d.customer_id WHERE d.user_id = ? AND d.type = 'QUOTE'`;
     const params = [req.user.id], cntParams = [req.user.id];
     if (status) { sql += ' AND d.status = ?'; cntSql += ' AND d.status = ?'; params.push(status); cntParams.push(status); }
     if (search) { const clause = ' AND (d.document_number LIKE ? OR c.name LIKE ?)'; sql += clause; cntSql += clause; params.push(`%${search}%`, `%${search}%`); cntParams.push(`%${search}%`, `%${search}%`); }
     sql += ' ORDER BY d.created_at DESC LIMIT ? OFFSET ?'; params.push(limit, offset);
     const [quotes, countResult] = await Promise.all([executeQuery(sql, params), executeQuery(cntSql, cntParams)]);
-    res.json({ data: quotes, total: countResult[0].total, page, limit });
+    res.json({ data: await hydrateDocumentSnapshots(executeQuery, quotes), total: countResult[0].total, page, limit });
   } catch (error) { logger.error('Error fetching quotes:', error); res.status(500).json({ message: 'Failed to fetch quotes' }); }
 });
 
 app.post('/api/quotes', authenticateToken, validate(quoteRules), async (req, res) => {
   try {
-    const { customer_id, issue_date, valid_until, payment_terms: reqTerms, notes, terms_conditions, items, currency_id: reqCurrencyId } = req.body;
-    if (!customer_id || !issue_date || !items || items.length === 0) return res.status(400).json({ message: 'Customer, issue date, and at least one line item are required' });
-    const customers = await executeQuery('SELECT id FROM customers WHERE id = ? AND user_id = ? AND active = 1', [customer_id, req.user.id]);
-    if (customers.length === 0) return res.status(400).json({ message: 'Invalid customer' });
-    const { lines: lineItems, subtotal, vat_amount, total } = computeDocumentTotals(items);
-    const payment_terms = normaliseTerms(reqTerms);
-    const document_number = await getNextDocumentNumber(req.user.id, 'QUOTE');
-    let currency_id = 1;
-    if (reqCurrencyId) { const currRows = await executeQuery('SELECT id FROM currencies WHERE id = ? AND is_active = 1', [reqCurrencyId]); if (currRows.length > 0) currency_id = reqCurrencyId; }
-    else { const defRows = await executeQuery("SELECT setting_value FROM settings WHERE user_id = ? AND setting_key = 'default_currency_id'", [req.user.id]); if (defRows.length > 0 && defRows[0].setting_value) currency_id = parseInt(defRows[0].setting_value, 10) || 1; }
-    const conn = await getConnection();
-    try {
-      await new Promise((resolve, reject) => conn.beginTransaction(err => err ? reject(err) : resolve()));
-      const docResult = await new Promise((resolve, reject) => conn.query(
-        `INSERT INTO documents (user_id, customer_id, type, document_number, currency_id, status, issue_date, valid_until, payment_terms, subtotal, vat_amount, total, notes, terms_conditions) VALUES (?, ?, 'QUOTE', ?, ?, 'DRAFT', ?, ?, ?, ?, ?, ?, ?, ?)`,
-        [req.user.id, customer_id, document_number, currency_id, issue_date, valid_until || null, payment_terms, subtotal.toFixed(2), vat_amount.toFixed(2), total.toFixed(2), notes || null, terms_conditions || null],
-        (err, result) => err ? reject(err) : resolve(result)
-      ));
-      const docId = docResult.insertId;
-      for (const item of lineItems) { await new Promise((resolve, reject) => conn.query('INSERT INTO document_items (document_id, product_id, description, quantity, unit_price, vat_rate, vat_amount, subtotal, total) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)', [docId, item.product_id || null, item.description, item.quantity, item.unit_price, item.vat_rate, item.vat_amount.toFixed(2), item.subtotal.toFixed(2), item.total.toFixed(2)], (err, r) => err ? reject(err) : resolve(r))); }
-      await new Promise((resolve, reject) => conn.query(`INSERT INTO document_tracking (document_id, event_type) VALUES (?, 'CREATED')`, [docId], (err, r) => err ? reject(err) : resolve(r)));
-      await new Promise((resolve, reject) => conn.commit(err => err ? reject(err) : resolve()));
-      conn.release();
-      const quote = await executeQuery(`SELECT d.*, c.name AS customer_name FROM documents d JOIN customers c ON c.id = d.customer_id WHERE d.id = ?`, [docId]);
-      const itemsResult = await executeQuery('SELECT * FROM document_items WHERE document_id = ? ORDER BY id ASC', [docId]);
-      res.status(201).json({ ...quote[0], items: itemsResult });
-    } catch (txError) { await new Promise(resolve => conn.rollback(resolve)); conn.release(); throw txError; }
-  } catch (error) { logger.error('Error creating quote:', error); res.status(500).json({ message: 'Failed to create quote' }); }
+    res.status(201).json(await createDocument(req.user.id, 'QUOTE', req.body));
+  } catch (error) { logger.error('Document creation failed:', error); res.status(error.status || 500).json({ message: error.status ? error.message : 'Failed to create document' }); }
 });
 
 app.get('/api/quotes/:id', authenticateToken, async (req, res) => {
@@ -1344,7 +1337,7 @@ app.get('/api/quotes/:id/pdf', authenticateToken, async (req, res) => {
     ]);
     if (quotes.length === 0) return res.status(404).json({ message: 'Quote not found' });
     const logoRelPath = logoRows[0]?.setting_value || null;
-    const user = { ...decryptUserRow(users[0]), logo_path: logoRelPath ? path.join(__dirname, logoRelPath) : null };
+    const user = await documentSeller(executeQuery, id, { ...decryptUserRow(users[0]), logo_path: logoRelPath ? path.join(__dirname, logoRelPath) : null });
     const pdfBuffer = await buildQuotePdf(quotes[0], items, user);
     await executeQuery(`INSERT INTO document_tracking (document_id, event_type) VALUES (?, 'DOWNLOADED')`, [id]);
     res.set({ 'Content-Type': 'application/pdf', 'Content-Disposition': `attachment; filename="${quotes[0].document_number}.pdf"`, 'Content-Length': pdfBuffer.length });
@@ -1362,45 +1355,48 @@ app.put('/api/quotes/:id', authenticateToken, validate(quoteRules), async (req, 
     if (!customer_id || !issue_date || !items || items.length === 0) return res.status(400).json({ message: 'Customer, issue date, and at least one line item are required' });
     const customers = await executeQuery('SELECT id FROM customers WHERE id = ? AND user_id = ? AND active = 1', [customer_id, req.user.id]);
     if (customers.length === 0) return res.status(400).json({ message: 'Invalid customer' });
-    const { lines: lineItems, subtotal, vat_amount, total } = computeDocumentTotals(items);
-    const payment_terms = normaliseTerms(reqTerms);
+    const prepared = await prepareDocument(executeQuery, req.user.id, 'QUOTE', { ...req.body, currency_id: reqCurrencyId ?? existing[0].currency_id });
+    const { lines: lineItems, subtotal, vat_amount, total, notes: effectiveNotes } = prepared;
+    const payment_terms = prepared.payment_terms;
     const conn = await getConnection();
     try {
       await new Promise((resolve, reject) => conn.beginTransaction(err => err ? reject(err) : resolve()));
+      const locked = await queryOn(conn, `SELECT d.status, EXISTS(SELECT 1 FROM document_snapshots s WHERE s.document_id=d.id) AS frozen
+        FROM documents d WHERE d.id=? AND d.user_id=? FOR UPDATE`, [id, req.user.id]);
+      if (!locked.length || locked[0].status !== 'DRAFT' || locked[0].frozen) {
+        throw Object.assign(new Error('Issued documents can no longer be edited'), { status: 400 });
+      }
+
       let newCurrencyId = existing[0].currency_id;
       if (reqCurrencyId) { const currRows = await executeQuery('SELECT id FROM currencies WHERE id = ? AND is_active = 1', [reqCurrencyId]); if (currRows.length > 0) newCurrencyId = reqCurrencyId; }
       await new Promise((resolve, reject) => conn.query(
         `UPDATE documents SET customer_id=?, issue_date=?, valid_until=?, payment_terms=?, currency_id=?, subtotal=?, vat_amount=?, total=?, notes=?, terms_conditions=?, updated_at=NOW() WHERE id=? AND user_id=?`,
-        [customer_id, issue_date, valid_until || null, payment_terms, newCurrencyId, subtotal.toFixed(2), vat_amount.toFixed(2), total.toFixed(2), notes || null, terms_conditions || null, id, req.user.id],
+        [customer_id, issue_date, valid_until || null, payment_terms, newCurrencyId, subtotal.toFixed(2), vat_amount.toFixed(2), total.toFixed(2), effectiveNotes || null, terms_conditions || null, id, req.user.id],
         (err, r) => err ? reject(err) : resolve(r)
       ));
       await new Promise((resolve, reject) => conn.query('DELETE FROM document_items WHERE document_id = ?', [id], (err, r) => err ? reject(err) : resolve(r)));
-      for (const item of lineItems) { await new Promise((resolve, reject) => conn.query('INSERT INTO document_items (document_id, product_id, description, quantity, unit_price, vat_rate, vat_amount, subtotal, total) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)', [id, item.product_id || null, item.description, item.quantity, item.unit_price, item.vat_rate, item.vat_amount.toFixed(2), item.subtotal.toFixed(2), item.total.toFixed(2)], (err, r) => err ? reject(err) : resolve(r))); }
+      for (const item of lineItems) { await new Promise((resolve, reject) => conn.query('INSERT INTO document_items (document_id, product_id, description, quantity, unit_price, vat_rate, vat_inclusive, vat_amount, subtotal, total) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)', [id, item.product_id || null, item.description, item.quantity, item.unit_price, item.vat_rate, item.vat_inclusive ? 1 : 0, item.vat_amount.toFixed(2), item.subtotal.toFixed(2), item.total.toFixed(2)], (err, r) => err ? reject(err) : resolve(r))); }
       await new Promise((resolve, reject) => conn.commit(err => err ? reject(err) : resolve()));
       conn.release();
       const quote = await executeQuery(`SELECT d.*, c.name AS customer_name FROM documents d JOIN customers c ON c.id = d.customer_id WHERE d.id = ?`, [id]);
       const itemsResult = await executeQuery('SELECT * FROM document_items WHERE document_id = ? ORDER BY id ASC', [id]);
       res.json({ ...quote[0], items: itemsResult });
     } catch (txError) { await new Promise(resolve => conn.rollback(resolve)); conn.release(); throw txError; }
-  } catch (error) { logger.error('Error updating quote:', error); res.status(500).json({ message: 'Failed to update quote' }); }
+  } catch (error) { logger.error('Error updating quote:', error); res.status(error.status || 500).json({ message: error.status ? error.message : 'Failed to update quote' }); }
 });
 
 app.post('/api/quotes/:id/send', authenticateToken, async (req, res) => {
   try {
-    const { id } = req.params;
-    const existing = await executeQuery(`SELECT id, status FROM documents WHERE id = ? AND user_id = ? AND type = 'QUOTE'`, [id, req.user.id]);
-    if (existing.length === 0) return res.status(404).json({ message: 'Quote not found' });
-    if (!['DRAFT', 'SENT'].includes(existing[0].status)) return res.status(400).json({ message: `Cannot send a quote with status ${existing[0].status}` });
-    await executeQuery(`UPDATE documents SET status = 'SENT', updated_at = NOW() WHERE id = ? AND user_id = ?`, [id, req.user.id]);
-    await executeQuery(`INSERT INTO document_tracking (document_id, event_type) VALUES (?, 'SENT')`, [id]);
+    await issueDocument(req.params.id, req.user.id, 'QUOTE');
     res.json({ message: 'Quote marked as sent' });
-  } catch (error) { logger.error('Error sending quote:', error); res.status(500).json({ message: 'Failed to send quote' }); }
+  } catch (error) { logger.error('Error sending quote:', error); res.status(error.status || 500).json({ message: error.status ? error.message : 'Failed to send quote' }); }
 });
 
 app.post('/api/quotes/:id/convert-to-invoice', authenticateToken, async (req, res) => {
   try {
     const { id } = req.params;
     const outcome = await withTransaction(async (q) => {
+      await lockDocumentOwner(q, req.user.id);
       // Locked so a double-click, or a retry after a dropped connection, waits
       // for the first conversion to commit and then sees its invoice.
       const quotes = await q(`SELECT * FROM documents WHERE id = ? AND user_id = ? AND type = 'QUOTE' FOR UPDATE`, [id, req.user.id]);
@@ -1415,8 +1411,9 @@ app.post('/api/quotes/:id/convert-to-invoice', authenticateToken, async (req, re
         return { status: 409, body: { message: `This quote was already converted to invoice ${existing[0].document_number}`, invoice_id: existing[0].id, document_number: existing[0].document_number } };
       }
 
+      await captureDocumentSnapshot(q, id);
       const quoteItems = await q('SELECT * FROM document_items WHERE document_id = ? ORDER BY id ASC', [id]);
-      const invoice_number = await getNextDocumentNumber(req.user.id, 'INVOICE');
+      const invoice_number = await getNextDocumentNumber(q, req.user.id, 'INVOICE');
       const issue_date = todayIso();
       const due_date = resolveDueDate(issue_date, null, quote.payment_terms);
       const docResult = await q(
@@ -1424,8 +1421,9 @@ app.post('/api/quotes/:id/convert-to-invoice', authenticateToken, async (req, re
         [req.user.id, quote.customer_id, invoice_number, quote.currency_id, issue_date, due_date, quote.payment_terms, quote.subtotal, quote.vat_amount, quote.total, quote.notes || null, quote.terms_conditions || null, quote.id]
       );
       const invoiceId = docResult.insertId;
+      await q("UPDATE documents SET delivery_status='NOT_SENT' WHERE id=?",[invoiceId]);
       for (const item of quoteItems) {
-        await q('INSERT INTO document_items (document_id, product_id, description, quantity, unit_price, vat_rate, vat_amount, subtotal, total) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)', [invoiceId, item.product_id || null, item.description, item.quantity, item.unit_price, item.vat_rate, item.vat_amount, item.subtotal, item.total]);
+        await q('INSERT INTO document_items (document_id, product_id, description, quantity, unit_price, vat_rate, vat_inclusive, vat_amount, subtotal, total) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)', [invoiceId, item.product_id || null, item.description, item.quantity, item.unit_price, item.vat_rate, item.vat_inclusive ? 1 : 0, item.vat_amount, item.subtotal, item.total]);
       }
       await q(`INSERT INTO document_tracking (document_id, event_type) VALUES (?, 'CREATED')`, [invoiceId]);
       // CONVERTED, not SENT: conversion says nothing about whether the
@@ -1450,7 +1448,7 @@ app.get('/api/currencies', authenticateToken, async (req, res) => {
 app.get('/api/products', authenticateToken, async (req, res) => {
   try {
     const search = req.query.search || '';
-    const page = Math.max(1, parseInt(req.query.page) || 1), limit = Math.min(100, parseInt(req.query.limit) || 20), offset = (page - 1) * limit;
+    const page = Math.max(1, parseInt(req.query.page) || 1), limit = Math.max(1, Math.min(100, parseInt(req.query.limit) || 20)), offset = (page - 1) * limit;
     let sql = 'SELECT * FROM products WHERE user_id = ? AND is_active = 1', cntSql = 'SELECT COUNT(*) AS total FROM products WHERE user_id = ? AND is_active = 1';
     const params = [req.user.id], cntParams = [req.user.id];
     if (search) { const clause = ' AND (name LIKE ? OR description LIKE ?)'; sql += clause; cntSql += clause; params.push(`%${search}%`, `%${search}%`); cntParams.push(`%${search}%`, `%${search}%`); }
@@ -1464,7 +1462,7 @@ app.post('/api/products', authenticateToken, validate([
   body('name').trim().notEmpty().withMessage('Product name is required'),
   body('price').isFloat({ min: 0 }).withMessage('Price must be a positive number'),
   body('description').optional().trim(),
-  body('vat_inclusive').optional().isBoolean().withMessage('vat_inclusive must be true or false'),
+  body('vat_inclusive').optional().isBoolean().withMessage('vat_inclusive must be true or false').toBoolean(),
 ]), async (req, res) => {
   try {
     const { name, description, price, vat_inclusive } = req.body;
@@ -1486,7 +1484,7 @@ app.put('/api/products/:id', authenticateToken, validate([
   body('name').trim().notEmpty().withMessage('Product name is required'),
   body('price').isFloat({ min: 0 }).withMessage('Price must be a positive number'),
   body('description').optional().trim(),
-  body('vat_inclusive').optional().isBoolean().withMessage('vat_inclusive must be true or false'),
+  body('vat_inclusive').optional().isBoolean().withMessage('vat_inclusive must be true or false').toBoolean(),
 ]), async (req, res) => {
   try {
     const { id } = req.params;
@@ -1514,11 +1512,12 @@ app.delete('/api/products/:id', authenticateToken, async (req, res) => {
 app.get('/api/dashboard/summary', authenticateToken, async (req, res) => {
   try {
     const userId = req.user.id;
+    const currency = await reportCurrency(executeQuery,userId,req.query.currency,true);
     const [revenueRows, customersRows, openRows, overdueRows, recentRows, logoRows] = await Promise.all([
       // Money actually received this month, by payment date. Summing PAID
       // invoice totals counted a R1,150 invoice as R1,150 of revenue after
       // only R400 had come in, and ignored part payments entirely.
-      executeQuery(`SELECT COALESCE(SUM(p.amount), 0) AS monthRevenue FROM payments p JOIN documents d ON d.id = p.document_id WHERE d.user_id = ? AND d.type = 'INVOICE' AND p.payment_date >= DATE_FORMAT(CURDATE(), '%Y-%m-01') AND p.payment_date <= CURDATE()`, [userId]),
+      executeQuery(`SELECT COALESCE(SUM(p.amount), 0) AS monthRevenue FROM payments p JOIN documents d ON d.id = p.document_id WHERE d.user_id = ? AND d.type = 'INVOICE' AND d.currency_id=? AND p.payment_date >= DATE_FORMAT(?, '%Y-%m-01') AND p.payment_date <= ?`, [userId,currency.id,todayIso(),todayIso()]),
       executeQuery('SELECT COUNT(*) AS total FROM customers WHERE user_id = ? AND active = 1', [userId]),
       executeQuery(`SELECT COUNT(*) AS total FROM documents WHERE user_id = ? AND type = 'INVOICE' AND status = 'SENT'`, [userId]),
       executeQuery(`SELECT COUNT(*) AS total FROM documents WHERE user_id = ? AND type = 'INVOICE' AND status = 'OVERDUE' AND notifications_muted = 0`, [userId]),
@@ -1528,8 +1527,8 @@ app.get('/api/dashboard/summary', authenticateToken, async (req, res) => {
       // details, which the dashboard has no reason to load.
       executeQuery("SELECT setting_value FROM settings WHERE user_id = ? AND setting_key = 'company_logo'", [userId])
     ]);
-    res.json({ monthRevenue: parseFloat(revenueRows[0].monthRevenue), totalCustomers: customersRows[0].total, openInvoices: openRows[0].total, overdueInvoices: overdueRows[0].total, recentActivity: recentRows, companyLogo: logoRows[0]?.setting_value || null });
-  } catch (error) { logger.error('Error fetching dashboard summary:', error); res.status(500).json({ message: 'Failed to fetch dashboard summary' }); }
+    res.json({ currency_code:currency.code, monthRevenue: parseFloat(revenueRows[0].monthRevenue), totalCustomers: customersRows[0].total, openInvoices: openRows[0].total, overdueInvoices: overdueRows[0].total, recentActivity: recentRows, companyLogo: logoRows[0]?.setting_value || null });
+  } catch (error) { logger.error('Error fetching dashboard summary:', error); res.status(error.status || 500).json({ message: error.status ? error.message : 'Failed to fetch dashboard summary' }); }
 });
 
 // ─── Settings ─────────────────────────────────────────────────────────────────
@@ -1555,7 +1554,7 @@ app.get('/api/settings', authenticateToken, async (req, res) => {
       // the database for a boolean instead of fetching-then-deleting means the
       // ciphertext never enters this process at all, so it cannot be leaked by
       // a later refactor, an error handler, or a stray log line.
-      executeQuery(`SELECT email, company_name, company_registration, vat_number, contact_person, phone, address,
+      executeQuery(`SELECT email, pending_email, company_name, company_registration, vat_number, contact_person, phone, address,
                            bank_name, bank_account_number, bank_branch_code, bank_account_type,
                            payfast_enabled, payfast_merchant_id,
                            (payfast_merchant_key IS NOT NULL) AS payfast_merchant_key_set,
@@ -1567,6 +1566,8 @@ app.get('/api/settings', authenticateToken, async (req, res) => {
     const kvSettings = {};
     for (const row of settingRows) kvSettings[row.setting_key] = row.setting_value;
     const user = decryptUserRow(userRows[0]);
+    const nextNumber=await withTransaction(q=>getNextDocumentNumber(q,userId,'INVOICE'));
+    kvSettings.invoice_next_number=String(BigInt(nextNumber.split('-').at(-1)));
     res.json({
       ...user,
       ...kvSettings,
@@ -1579,37 +1580,36 @@ app.get('/api/settings', authenticateToken, async (req, res) => {
 });
 
 app.put('/api/settings/profile', authenticateToken, validate([
-  body('contact_person').trim().notEmpty().withMessage('Name is required'),
-  body('email').isEmail().normalizeEmail().withMessage('A valid email address is required'),
-  body('phone').optional().trim(),
-  body('new_password').optional().isLength({ min: 8 }).withMessage('Password must be at least 8 characters'),
+  body('contact_person').trim().notEmpty(), body('email').isEmail().normalizeEmail(),
+  body('phone').optional().trim(), body('new_password').optional().isLength({ min: 8 }),
 ]), async (req, res) => {
   try {
-    const userId = req.user.id;
     const { contact_person, email, phone, current_password, new_password } = req.body;
-    if (!contact_person || !email) return res.status(400).json({ message: 'Name and email are required' });
-    if (new_password) {
-      if (!current_password) return res.status(400).json({ message: 'Current password is required to set a new password' });
-      const userRows = await executeQuery('SELECT password_hash FROM users WHERE id = ?', [userId]);
-      if (userRows.length === 0) return res.status(404).json({ message: 'User not found' });
-      // No stored hash means a Google-only account. There is no current
-      // password to check, and argon2.verify(null) would throw — so say what is
-      // actually going on instead of returning a 500 on a legitimate request.
-      if (!userRows[0].password_hash) {
-        return res.status(400).json({
-          message: 'This account signs in with Google, so it has no password to change.',
-          code: 'USE_GOOGLE_SIGNIN',
-        });
+    const verificationToken = randomUUID();
+    const changed = await withTransaction(async q => {
+      const [user] = await q('SELECT email,password_hash FROM users WHERE id=? FOR UPDATE', [req.user.id]);
+      const changingEmail = email.toLowerCase() !== user.email.toLowerCase();
+      if (changingEmail || new_password) {
+        if (!user.password_hash) throw Object.assign(new Error('Google sign-in accounts must manage their sign-in email through Google.'), { status: 400 });
+        if (!current_password || !await argon2.verify(user.password_hash, current_password)) throw Object.assign(new Error('Confirm your current password to change email or password'), { status: 400 });
       }
-      const valid = await argon2.verify(userRows[0].password_hash, current_password);
-      if (!valid) return res.status(400).json({ message: 'Current password is incorrect' });
-      const newHash = await argon2.hash(new_password);
-      await executeQuery('UPDATE users SET contact_person = ?, email = ?, phone = ?, password_hash = ?, updated_at = NOW() WHERE id = ?', [contact_person, email, encUser('phone', phone || null), newHash, userId]);
-    } else {
-      await executeQuery('UPDATE users SET contact_person = ?, email = ?, phone = ?, updated_at = NOW() WHERE id = ?', [contact_person, email, encUser('phone', phone || null), userId]);
+      if (changingEmail && (await q('SELECT id FROM users WHERE email=? AND id<>?', [email, req.user.id])).length) throw Object.assign(new Error('That email address is already registered'), { status: 409 });
+      await q('UPDATE users SET contact_person=?, phone=? WHERE id=?', [contact_person, encUser('phone', phone || null), req.user.id]);
+      if (new_password) {
+        await q('UPDATE users SET password_hash=? WHERE id=?', [await argon2.hash(new_password), req.user.id]);
+        await q('DELETE FROM sessions WHERE userId=? AND token<>?', [req.user.id, hashToken(req.headers.authorization.split(' ')[1])]);
+        await q('DELETE FROM password_reset_tokens WHERE user_id=?', [req.user.id]);
+      }
+      if (changingEmail) await q(`UPDATE users SET pending_email=?,pending_email_token=?,pending_email_expires=DATE_ADD(NOW(),INTERVAL 24 HOUR) WHERE id=?`, [email, hashToken(verificationToken), req.user.id]);
+      return changingEmail;
+    });
+    if (changed) {
+      try { await emailService.sendVerificationEmail(email, verificationToken); }
+      catch (error) { return res.status(207).json({ message: 'Your sign-in email is unchanged. Verification email could not be sent; retry once email service is available.', pending_email: email, emailFailed: true }); }
+      return res.json({ message: 'Check the new address to confirm the change. Your current email works until verification.', pending_email: email });
     }
     res.json({ message: 'Profile updated successfully' });
-  } catch (error) { logger.error('Error updating profile:', error); res.status(500).json({ message: 'Failed to update profile' }); }
+  } catch(error) { logger.error('Profile update failed:', error); res.status(error.status || 500).json({ message: error.status ? error.message : 'Profile update failed' }); }
 });
 
 app.put('/api/settings/company', authenticateToken, validate([
@@ -1652,14 +1652,25 @@ app.delete('/api/settings/logo', authenticateToken, async (req, res) => {
   } catch (error) { logger.error('Error removing logo:', error); res.status(500).json({ message: 'Failed to remove logo' }); }
 });
 
-app.put('/api/settings/invoice', authenticateToken, async (req, res) => {
+app.put('/api/settings/invoice', authenticateToken, validate([
+  body('invoice_prefix').trim().toUpperCase().matches(/^[A-Z0-9]{1,12}$/).withMessage('Prefix must be 1 to 12 letters or digits'),
+  body('invoice_next_number').isInt({min:1,max:999999999}).withMessage('Next number must be a positive whole number'),
+  body('invoice_payment_terms').isInt({min:0,max:3650}),
+  body('invoice_vat_rate').isFloat({min:0,max:100}),
+  body('invoice_notes').optional().isString().isLength({max:10000}),
+  body('default_currency_id').isInt({min:1}),
+]), async (req, res) => {
   try {
-    const userId = req.user.id;
-    const { invoice_prefix, invoice_next_number, invoice_payment_terms, invoice_vat_rate, invoice_notes, default_currency_id } = req.body;
-    const pairs = [['invoice_prefix', invoice_prefix ?? 'INV'], ['invoice_next_number', String(invoice_next_number ?? 1)], ['invoice_payment_terms', String(invoice_payment_terms ?? 30)], ['invoice_vat_rate', String(invoice_vat_rate ?? 15)], ['invoice_notes', invoice_notes ?? ''], ['default_currency_id', String(default_currency_id ?? 1)]];
-    for (const [key, value] of pairs) await executeQuery(`INSERT INTO settings (user_id, setting_key, setting_value, updated_at) VALUES (?, ?, ?, NOW()) ON DUPLICATE KEY UPDATE setting_value = VALUES(setting_value), updated_at = NOW()`, [userId, key, value]);
-    res.json({ message: 'Invoice defaults updated successfully' });
-  } catch (error) { logger.error('Error updating invoice settings:', error); res.status(500).json({ message: 'Failed to update invoice defaults' }); }
+    const keys = ['invoice_prefix','invoice_next_number','invoice_payment_terms','invoice_vat_rate','invoice_notes','default_currency_id'];
+    await withTransaction(async q => {
+      await lockDocumentOwner(q, req.user.id);
+      if (!(await q('SELECT id FROM currencies WHERE id=? AND is_active=1',[req.body.default_currency_id])).length)
+        throw Object.assign(new Error('Select an active currency'),{status:422});
+      for (const key of keys) await q(`INSERT INTO settings(user_id,setting_key,setting_value) VALUES(?,?,?)
+        ON DUPLICATE KEY UPDATE setting_value=VALUES(setting_value),updated_at=NOW()`,[req.user.id,key,String(req.body[key] ?? '')]);
+    });
+    res.json({message:'Invoice defaults updated successfully'});
+  } catch(error) { logger.error('Error updating invoice settings:',error); res.status(error.status || 500).json({message:error.status ? error.message : 'Failed to update invoice defaults'}); }
 });
 
 app.put('/api/settings/payment', authenticateToken, async (req, res) => {
@@ -1782,8 +1793,8 @@ app.put('/api/settings/payfast', authenticateToken, validate([
 app.put('/api/settings/notifications', authenticateToken, async (req, res) => {
   try {
     const userId = req.user.id;
-    const { notify_invoice_sent, notify_payment_received, notify_invoice_overdue } = req.body;
-    const pairs = [['notify_invoice_sent', notify_invoice_sent ? '1' : '0'], ['notify_payment_received', notify_payment_received ? '1' : '0'], ['notify_invoice_overdue', notify_invoice_overdue ? '1' : '0']];
+    const { notify_invoice_sent, notify_payment_received, notify_invoice_overdue, customer_reminders_enabled } = req.body;
+    const pairs = [['notify_invoice_sent', notify_invoice_sent === true ? '1' : '0'], ['notify_payment_received', notify_payment_received === true ? '1' : '0'], ['notify_invoice_overdue', notify_invoice_overdue === true ? '1' : '0'], ['customer_reminders_enabled', customer_reminders_enabled === true ? '1' : '0']];
     for (const [key, value] of pairs) await executeQuery(`INSERT INTO settings (user_id, setting_key, setting_value, updated_at) VALUES (?, ?, ?, NOW()) ON DUPLICATE KEY UPDATE setting_value = VALUES(setting_value), updated_at = NOW()`, [userId, key, value]);
     res.json({ message: 'Notification preferences updated successfully' });
   } catch (error) { logger.error('Error updating notification settings:', error); res.status(500).json({ message: 'Failed to update notification preferences' }); }
@@ -1791,39 +1802,29 @@ app.put('/api/settings/notifications', authenticateToken, async (req, res) => {
 
 // ─── Reports ──────────────────────────────────────────────────────────────────
 
-app.get('/api/reports/revenue-by-month', authenticateToken, async (req, res) => {
-  // Paid revenue reconciles to the payments table: each payment lands in the
-  // month it was received, whatever the state of its invoice.
-  try { res.json(await executeQuery(`SELECT DATE_FORMAT(p.payment_date, '%Y-%m') AS month, SUM(p.amount) AS revenue FROM payments p JOIN documents d ON d.id = p.document_id WHERE d.user_id = ? AND d.type = 'INVOICE' AND p.payment_date >= DATE_SUB(CURDATE(), INTERVAL 12 MONTH) GROUP BY DATE_FORMAT(p.payment_date, '%Y-%m') ORDER BY month ASC`, [req.user.id])); }
-  catch (error) { logger.error('Error fetching revenue by month:', error); res.status(500).json({ message: 'Failed to fetch revenue report' }); }
+app.get('/api/reports/revenue-by-month',authenticateToken,async(req,res)=>{
+  try { res.json(await report(executeQuery,req.user.id,req.query.currency,'revenue')); }
+  catch(error) { res.status(error.status || 500).json({message:error.status ? error.message : 'Report could not be loaded'}); }
 });
-
-app.get('/api/reports/invoice-status', authenticateToken, async (req, res) => {
-  try { res.json(await executeQuery(`SELECT status, COUNT(*) AS count, COALESCE(SUM(total), 0) AS total FROM documents WHERE user_id = ? AND type = 'INVOICE' GROUP BY status`, [req.user.id])); }
-  catch (error) { logger.error('Error fetching invoice status:', error); res.status(500).json({ message: 'Failed to fetch invoice status report' }); }
+app.get('/api/reports/invoice-status',authenticateToken,async(req,res)=>{
+  try { res.json(await report(executeQuery,req.user.id,req.query.currency,'status')); }
+  catch(error) { res.status(error.status || 500).json({message:error.status ? error.message : 'Report could not be loaded'}); }
 });
-
-app.get('/api/reports/top-customers', authenticateToken, async (req, res) => {
-  try { res.json(await executeQuery(`SELECT c.name, SUM(p.amount) AS revenue, COUNT(DISTINCT d.id) AS invoice_count FROM payments p JOIN documents d ON d.id = p.document_id JOIN customers c ON d.customer_id = c.id WHERE d.user_id = ? AND d.type = 'INVOICE' GROUP BY c.id, c.name ORDER BY revenue DESC LIMIT 5`, [req.user.id])); }
-  catch (error) { logger.error('Error fetching top customers:', error); res.status(500).json({ message: 'Failed to fetch top customers report' }); }
+app.get('/api/reports/top-customers',authenticateToken,async(req,res)=>{
+  try { res.json(await report(executeQuery,req.user.id,req.query.currency,'customers')); }
+  catch(error) { res.status(error.status || 500).json({message:error.status ? error.message : 'Report could not be loaded'}); }
 });
-
-app.get('/api/reports/vat-summary', authenticateToken, async (req, res) => {
-  // Invoice basis: VAT on every invoice issued in the month, paid or not —
-  // the default basis for a SARS VAT201. OVERDUE used to be left out, so an
-  // invoice dropped off the VAT figure the day it passed its due date.
-  try { res.json(await executeQuery(`SELECT DATE_FORMAT(issue_date, '%Y-%m') AS month, SUM(subtotal) AS subtotal, SUM(vat_amount) AS vat_amount, SUM(total) AS total FROM documents WHERE user_id = ? AND type = 'INVOICE' AND status IN ('SENT', 'OVERDUE', 'PAID') AND YEAR(issue_date) = YEAR(CURDATE()) GROUP BY DATE_FORMAT(issue_date, '%Y-%m') ORDER BY month ASC`, [req.user.id])); }
-  catch (error) { logger.error('Error fetching VAT summary:', error); res.status(500).json({ message: 'Failed to fetch VAT summary report' }); }
+app.get('/api/reports/vat-summary',authenticateToken,async(req,res)=>{
+  try { res.json(await report(executeQuery,req.user.id,req.query.currency,'vat')); }
+  catch(error) { res.status(error.status || 500).json({message:error.status ? error.message : 'Report could not be loaded'}); }
 });
-
-// ─── Public Customer Portal ───────────────────────────────────────────────────
 
 app.get('/api/public/invoice/:token', portalLimiter, async (req, res) => {
   try {
     const { token } = req.params;
-    const docs = await executeQuery(`SELECT d.id, d.document_number, d.type, d.status, d.issue_date, d.due_date, d.payment_terms, d.subtotal, d.vat_amount, d.total, d.notes, d.terms_conditions, c.name AS customer_name, c.email AS customer_email, c.billing_address AS customer_billing_address, c.vat_number AS customer_vat_number, cur.symbol AS currency_symbol, cur.code AS currency_code, u.company_name, u.vat_number AS company_vat_number, u.address AS company_address, u.email AS company_email, u.bank_name, u.bank_account_number, u.bank_branch_code, u.bank_account_type, u.payfast_enabled, u.payfast_merchant_id, u.payfast_merchant_key, u.payfast_passphrase FROM documents d JOIN customers c ON c.id = d.customer_id LEFT JOIN currencies cur ON cur.id = d.currency_id JOIN users u ON u.id = d.user_id WHERE d.share_token = ? AND d.type = 'INVOICE' AND (d.share_token_expires_at IS NULL OR d.share_token_expires_at > NOW())`, [hashToken(token)]);
+    const docs = await executeQuery(`SELECT d.id, d.document_number, d.type, d.status, d.issue_date, d.due_date, d.payment_terms, d.subtotal, d.vat_amount, d.total, d.notes, d.terms_conditions, c.name AS customer_name, c.email AS customer_email, c.billing_address AS customer_billing_address, c.vat_number AS customer_vat_number, cur.symbol AS currency_symbol, cur.code AS currency_code, u.company_name, u.vat_number AS company_vat_number, u.address AS company_address, u.email AS company_email, u.bank_name, u.bank_account_number, u.bank_branch_code, u.bank_account_type, u.payfast_enabled, u.payfast_merchant_id, u.payfast_merchant_key, u.payfast_passphrase FROM documents d JOIN customers c ON c.id = d.customer_id LEFT JOIN currencies cur ON cur.id = d.currency_id JOIN users u ON u.id = d.user_id WHERE d.share_token = ? AND EXISTS(SELECT 1 FROM users owner WHERE owner.id=d.user_id AND owner.status='ACTIVE') AND d.type = 'INVOICE' AND (d.share_token_expires_at IS NULL OR d.share_token_expires_at > NOW())`, [hashToken(token)]);
     if (docs.length === 0) return res.status(404).json({ message: 'Invoice not found or link has expired' });
-    const items = await executeQuery('SELECT description, quantity, unit_price, vat_rate, vat_amount, subtotal, total FROM document_items WHERE document_id = ? ORDER BY id ASC', [docs[0].id]);
+    const items = await executeQuery('SELECT description, quantity, unit_price, vat_rate, vat_inclusive, vat_amount, subtotal, total FROM document_items WHERE document_id = ? ORDER BY id ASC', [docs[0].id]);
     const logoRows = await executeQuery("SELECT setting_value FROM settings WHERE user_id = (SELECT user_id FROM documents WHERE id = ?) AND setting_key = 'company_logo'", [docs[0].id]);
     const [{ paid }] = await executeQuery('SELECT COALESCE(SUM(amount), 0) AS paid FROM payments WHERE document_id = ?', [docs[0].id]);
     await executeQuery(`INSERT INTO document_tracking (document_id, event_type, ip_address, user_agent) VALUES (?, 'VIEWED', ?, ?)`, [docs[0].id, encTracking('ip_address', req.ip || null), encTracking('user_agent', req.get('user-agent') || null)]);
@@ -1834,15 +1835,15 @@ app.get('/api/public/invoice/:token', portalLimiter, async (req, res) => {
     // seller's vat_number and address under `company_`, and the customer's
     // under `customer_`. Each mapper only touches the names it owns, so they
     // compose; the AAD still uses the real table and column either way.
-    const seller = decryptCustomerJoin(
+    const [seller] = await hydrateDocumentSnapshots(executeQuery, [decryptCustomerJoin(
       decryptAliasedRow('users', decryptUserRow(docs[0]), 'company_')
-    );
+    )], { includeLogo: true });
     const pay_url = await resolvePayUrl(seller, seller);
     const {
       payfast_enabled, payfast_merchant_id, payfast_merchant_key, payfast_passphrase, ...publicFields
     } = seller;
     res.json({
-      ...publicFields, pay_url, company_logo: logoRows[0]?.setting_value || null, items,
+      ...publicFields, pay_url, company_logo: Object.hasOwn(seller, 'company_logo') ? seller.company_logo : logoRows[0]?.setting_value || null, items,
       amount_paid: Number(paid).toFixed(2), balance_due: balanceDue(seller.total, paid).toFixed(2),
     });
   } catch (error) { logger.error('Error fetching public invoice:', error); res.status(500).json({ message: 'Failed to fetch invoice' }); }
@@ -1851,7 +1852,7 @@ app.get('/api/public/invoice/:token', portalLimiter, async (req, res) => {
 app.get('/api/public/invoice/:token/pdf', portalLimiter, async (req, res) => {
   try {
     const { token } = req.params;
-    const docs = await queryDecrypted(decryptCustomerJoin, `SELECT d.*, (SELECT COALESCE(SUM(pp.amount), 0) FROM payments pp WHERE pp.document_id = d.id) AS amount_paid, c.name AS customer_name, c.email AS customer_email, c.billing_address AS customer_billing_address, c.vat_number AS customer_vat_number, cur.symbol AS currency_symbol, cur.code AS currency_code FROM documents d JOIN customers c ON c.id = d.customer_id LEFT JOIN currencies cur ON cur.id = d.currency_id WHERE d.share_token = ? AND d.type = 'INVOICE' AND (d.share_token_expires_at IS NULL OR d.share_token_expires_at > NOW())`, [hashToken(token)]);
+    const docs = await queryDecrypted(decryptCustomerJoin, `SELECT d.*, (SELECT COALESCE(SUM(pp.amount), 0) FROM payments pp WHERE pp.document_id = d.id) AS amount_paid, c.name AS customer_name, c.email AS customer_email, c.billing_address AS customer_billing_address, c.vat_number AS customer_vat_number, cur.symbol AS currency_symbol, cur.code AS currency_code FROM documents d JOIN customers c ON c.id = d.customer_id LEFT JOIN currencies cur ON cur.id = d.currency_id WHERE d.share_token = ? AND EXISTS(SELECT 1 FROM users owner WHERE owner.id=d.user_id AND owner.status='ACTIVE') AND d.type = 'INVOICE' AND (d.share_token_expires_at IS NULL OR d.share_token_expires_at > NOW())`, [hashToken(token)]);
     if (docs.length === 0) return res.status(404).json({ message: 'Invoice not found or link has expired' });
     const invoice = docs[0];
     const [items, users, logoRows] = await Promise.all([
@@ -1860,7 +1861,7 @@ app.get('/api/public/invoice/:token/pdf', portalLimiter, async (req, res) => {
       executeQuery("SELECT setting_value FROM settings WHERE user_id = ? AND setting_key = 'company_logo'", [invoice.user_id])
     ]);
     const logoRelPath = logoRows[0]?.setting_value || null;
-    const user = { ...decryptUserRow(users[0]), logo_path: logoRelPath ? path.join(__dirname, logoRelPath) : null };
+    const user = await documentSeller(executeQuery, invoice.id, { ...decryptUserRow(users[0]), logo_path: logoRelPath ? path.join(__dirname, logoRelPath) : null });
     const pay_url = await resolvePayUrl(invoice, user);
     const pdfBuffer = await buildInvoicePdf({ ...invoice, pay_url }, items, user);
     await executeQuery(`INSERT INTO document_tracking (document_id, event_type, ip_address, user_agent) VALUES (?, 'DOWNLOADED', ?, ?)`, [invoice.id, encTracking('ip_address', req.ip || null), encTracking('user_agent', req.get('user-agent') || null)]);
@@ -1872,80 +1873,29 @@ app.get('/api/public/invoice/:token/pdf', portalLimiter, async (req, res) => {
 // ─── Recurring invoice cron — runs daily at 00:05 ─────────────────────────────
 
 async function processRecurringInvoices() {
-  logger.info('Recurring invoice cron: starting');
-  try {
-    const due = await executeQuery(`SELECT * FROM documents WHERE is_recurring = 1 AND recurrence_next_date <= CURDATE() AND type = 'INVOICE' AND status != 'CANCELLED'`);
-    logger.info(`Recurring invoice cron: ${due.length} invoice(s) due`);
-    for (const source of due) {
-      try {
-        const sourceItems = await executeQuery('SELECT * FROM document_items WHERE document_id = ? ORDER BY id ASC', [source.id]);
-        const today = todayIso();
-        const document_number = await getNextDocumentNumber(source.user_id, 'INVOICE');
-        const due_date = resolveDueDate(today, null, source.payment_terms);
-        // DATE columns arrive as 'YYYY-MM-DD' strings (see db.service), so
-        // these compare as strings.
-        const nextDate = advanceDate(source.recurrence_next_date, source.recurrence_interval);
-        const endReached = !!source.recurrence_end_date && nextDate > source.recurrence_end_date;
-        const conn = await getConnection();
-        let newDocId;
-        try {
-          await new Promise((resolve, reject) => conn.beginTransaction(err => err ? reject(err) : resolve()));
-          const docResult = await new Promise((resolve, reject) => conn.query(
-            `INSERT INTO documents (user_id, customer_id, type, document_number, currency_id, status, issue_date, due_date, payment_terms, subtotal, vat_amount, total, notes, terms_conditions) VALUES (?, ?, 'INVOICE', ?, ?, 'DRAFT', ?, ?, ?, ?, ?, ?, ?, ?)`,
-            [source.user_id, source.customer_id, document_number, source.currency_id, today, due_date, source.payment_terms, source.subtotal, source.vat_amount, source.total, source.notes, source.terms_conditions],
-            (err, r) => err ? reject(err) : resolve(r)
-          ));
-          newDocId = docResult.insertId;
-          for (const item of sourceItems) { await new Promise((resolve, reject) => conn.query('INSERT INTO document_items (document_id, product_id, description, quantity, unit_price, vat_rate, vat_amount, subtotal, total) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)', [newDocId, item.product_id, item.description, item.quantity, item.unit_price, item.vat_rate, item.vat_amount, item.subtotal, item.total], (err, r) => err ? reject(err) : resolve(r))); }
-          await new Promise((resolve, reject) => conn.query(`INSERT INTO document_tracking (document_id, event_type) VALUES (?, 'CREATED')`, [newDocId], (err, r) => err ? reject(err) : resolve(r)));
-          await new Promise((resolve, reject) => conn.query('UPDATE documents SET recurrence_next_date = ?, is_recurring = ? WHERE id = ?', [endReached ? null : nextDate, endReached ? 0 : 1, source.id], (err, r) => err ? reject(err) : resolve(r)));
-          await new Promise((resolve, reject) => conn.commit(err => err ? reject(err) : resolve()));
-          conn.release();
-          logger.info(`Recurring invoice created: ${document_number} (from source #${source.id})`);
-        } catch (txError) { await new Promise(resolve => conn.rollback(resolve)); conn.release(); throw txError; }
-        if (source.auto_send && newDocId) {
-          try {
-            const [invoices, newItems, users, logoRows] = await Promise.all([
-              queryDecrypted(decryptCustomerJoin, `SELECT d.*, (SELECT COALESCE(SUM(pp.amount), 0) FROM payments pp WHERE pp.document_id = d.id) AS amount_paid, c.name AS customer_name, c.email AS customer_email, c.billing_address AS customer_billing_address, c.vat_number AS customer_vat_number, cur.symbol AS currency_symbol, cur.code AS currency_code FROM documents d JOIN customers c ON c.id = d.customer_id LEFT JOIN currencies cur ON cur.id = d.currency_id WHERE d.id = ?`, [newDocId]),
-              executeQuery('SELECT * FROM document_items WHERE document_id = ? ORDER BY id ASC', [newDocId]),
-              queryDecrypted(decryptUserRow, 'SELECT * FROM users WHERE id = ?', [source.user_id]),
-              executeQuery("SELECT setting_value FROM settings WHERE user_id = ? AND setting_key = 'company_logo'", [source.user_id])
-            ]);
-            const invoice = invoices[0];
-            if (!invoice.customer_email) { logger.warn(`Recurring invoice ${document_number}: auto-send skipped - customer has no email`); }
-            else {
-              const logoRelPath = logoRows[0]?.setting_value || null;
-              const user = { ...decryptUserRow(users[0]), logo_path: logoRelPath ? path.join(__dirname, logoRelPath) : null };
-              const pay_url = await resolvePayUrl({ ...invoice, status: 'SENT' }, user);
-              const pdfBuffer = await buildInvoicePdf({ ...invoice, pay_url }, newItems, user);
-              await emailService.sendInvoiceEmail(invoice.customer_email, { ...invoice, pay_url, company_name: user.company_name, bank_name: user.bank_name, bank_account_number: user.bank_account_number, bank_branch_code: user.bank_branch_code }, pdfBuffer);
-              await executeQuery(`UPDATE documents SET status = 'SENT', updated_at = NOW() WHERE id = ?`, [newDocId]);
-              await executeQuery(`INSERT INTO document_tracking (document_id, event_type) VALUES (?, 'SENT')`, [newDocId]);
-              await executeQuery(`INSERT INTO email_log (document_id, recipient_email, subject, email_type, status, sent_at) VALUES (?, ?, ?, 'INVOICE', 'SENT', NOW())`, [newDocId, invoice.customer_email, `Invoice ${invoice.document_number}`]);
-              logger.info(`Recurring invoice auto-sent: ${document_number} to ${invoice.customer_email}`);
-            }
-          } catch (sendError) {
-            logger.error(`Recurring invoice auto-send failed:`, sendError);
-            await executeQuery(`INSERT INTO email_log (document_id, recipient_email, subject, email_type, status, error_message) VALUES (?, '', ?, 'INVOICE', 'FAILED', ?)`, [newDocId, `Invoice ${document_number}`, sendError.message]).catch(() => {});
-          }
-        }
-      } catch (itemError) { logger.error(`Recurring invoice cron: failed to process source #${source.id}:`, itemError); }
-    }
-  } catch (error) { logger.error('Recurring invoice cron: fatal error:', error); }
+  await processRecurring({onCreated:async created=>{
+    if(created.autoSend) await queueInvoiceEmail(created.id,created.userId);
+  },onError:(error,id)=>logger.error(`Recurring source #${id} failed`,error)});
+  // Recover a crash between committing the occurrence and queueing its email.
+  const pending=await executeQuery(`SELECT d.id,d.user_id FROM documents d JOIN documents source ON source.id=d.source_recurring_id
+    JOIN users u ON u.id=d.user_id WHERE source.auto_send=1 AND u.status='ACTIVE' AND d.status IN ('DRAFT','SENT','OVERDUE')
+    AND d.delivery_status='NOT_SENT' ORDER BY d.id LIMIT 100`);
+  for(const row of pending) {
+    try {await queueInvoiceEmail(row.id,row.user_id);}catch(error){logger.error(`Recurring email #${row.id} could not be queued`,error);}
+  }
 }
-
-cron.schedule('5 0 * * *', processRecurringInvoices);
-
-// ─── Overdue invoice cron — runs daily at 00:10 ───────────────────────────────
+cron.schedule('5 * * * *',()=>processRecurringInvoices().catch(error=>logger.error('Recurring job failed',error)),{timezone:'Africa/Johannesburg'});
+cron.schedule('* * * * *',()=>processBillingNotifications().then(()=>processOutbox(emailService.transporter)).catch(error=>logger.error('Email queue failed',error)),{timezone:'Africa/Johannesburg'});
 
 async function processOverdueInvoices() {
   logger.info('Overdue invoice cron: starting');
   try {
-    const overdueInvoices = await executeQuery(`SELECT id, document_number, user_id FROM documents WHERE type = 'INVOICE' AND status = 'SENT' AND due_date IS NOT NULL AND due_date < CURDATE()`);
+    const overdueInvoices = await executeQuery(`SELECT id, document_number, user_id FROM documents WHERE type = 'INVOICE' AND status = 'SENT' AND due_date IS NOT NULL AND due_date < ?`,[todayIso()]);
     logger.info(`Overdue invoice cron: ${overdueInvoices.length} invoice(s) to mark overdue`);
     for (const invoice of overdueInvoices) {
       try {
-        await executeQuery(`UPDATE documents SET status = 'OVERDUE', updated_at = NOW() WHERE id = ?`, [invoice.id]);
+        const changed = await executeQuery(`UPDATE documents SET status='OVERDUE',updated_at=NOW() WHERE id=? AND status='SENT'`,[invoice.id]);
+        if (!changed.affectedRows) continue;
         await executeQuery(`INSERT INTO document_tracking (document_id, event_type) VALUES (?, 'OVERDUE')`, [invoice.id]);
         logger.info(`Overdue invoice cron: marked ${invoice.document_number} as OVERDUE`);
       } catch (itemError) { logger.error(`Overdue invoice cron: failed to process invoice #${invoice.id}:`, itemError); }
@@ -1954,7 +1904,7 @@ async function processOverdueInvoices() {
   } catch (error) { logger.error('Overdue invoice cron: fatal error:', error); }
 }
 
-cron.schedule('10 0 * * *', processOverdueInvoices);
+cron.schedule('10 * * * *', processOverdueInvoices, {timezone:'Africa/Johannesburg'});
 
 // ─── Account anonymisation cron — runs daily at 00:20 ─────────────────────────
 // The erasure that /api/account/close promises and, until now, nothing
@@ -2046,8 +1996,12 @@ app.get('/api/account/export', authenticateToken, exportLimiter, async (req, res
     // invoice and the seller's banking details without logging in. They must
     // not travel in an export file.
     const scrubbed = documents.map(({ share_token, ...rest }) => rest);
+    const snapshots = await executeQuery(`SELECT s.document_id, s.payload FROM document_snapshots s
+      JOIN documents d ON d.id=s.document_id WHERE d.user_id=?`, [uid]);
 
     const payload = {
+      document_snapshots: snapshots.map(row => ({ document_id: row.document_id,
+        ...JSON.parse(decryptField('document_snapshots', 'payload', row.payload)) })),
       export_format_version: 1,
       generated_at: new Date().toISOString(),
       about_this_export:
@@ -2118,6 +2072,10 @@ app.post('/api/account/close', authenticateToken, validate([
           WHERE user_id = ? AND is_recurring = 1`,
         [uid]
       );
+      await q('UPDATE users SET pending_email=NULL,pending_email_token=NULL,pending_email_expires=NULL WHERE id=?',[uid]);
+      await q('UPDATE documents SET share_token=NULL,share_token_expires_at=NULL WHERE user_id=?',[uid]);
+      await q('DELETE s FROM document_share_links s JOIN documents d ON d.id=s.document_id WHERE d.user_id=?',[uid]);
+      await q("UPDATE email_outbox SET status='CANCELLED',last_error='Account closed' WHERE user_id=? AND status IN ('QUEUED','FAILED')",[uid]);
       // Revoke every session everywhere, not just this one.
       await q('DELETE FROM sessions WHERE userId = ?', [uid]);
     });
@@ -2567,7 +2525,7 @@ app.get('/pay/:token', payLimiter, payPageCsp(true), async (req, res) => {
 
     // The joined row carries the three encrypted users columns under their own
     // names, and nothing in documents or customers collides with them.
-    const row = decryptUserRow(rows[0]);
+    const [row] = await hydrateDocumentSnapshots(executeQuery, [decryptUserRow(rows[0])]);
     const symbol = row.currency_symbol || 'R';
     const seller = row;
 
@@ -2766,11 +2724,14 @@ async function recordInvoicePayment({
     // checked against the balance one after the other, not both against the
     // same stale figure.
     const [invoice] = await q('SELECT total, status FROM documents WHERE id = ? FOR UPDATE', [invoiceId]);
+    if (rejectOverpayment && invoice.status === 'CANCELLED') throw Object.assign(new Error('Cannot record payment on a cancelled invoice'), { status: 400 });
     const [{ paid: paidBefore }] = await q('SELECT COALESCE(SUM(amount), 0) AS paid FROM payments WHERE document_id = ?', [invoiceId]);
     const balanceBefore = balanceDue(invoice.total, paidBefore);
     if (rejectOverpayment && Number(amount) > balanceBefore + SETTLED_TOLERANCE) {
       return { duplicate: false, settled: false, cancelled: false, overpayment: true, balanceBefore, balanceAfter: balanceBefore };
     }
+
+    await captureDocumentSnapshot(q, invoiceId);
 
     try {
       await q(
@@ -2825,8 +2786,8 @@ async function sendPayfastFollowUps(invoice, posted, outcome) {
   ]);
 
   const logoRelPath = logoRows[0] ? logoRows[0].setting_value : null;
-  const user = { ...decryptUserRow(users[0]), logo_path: logoRelPath ? path.join(__dirname, logoRelPath) : null };
-  const full = await executeQuery(
+  const user = await documentSeller(executeQuery, invoice.id, { ...decryptUserRow(users[0]), logo_path: logoRelPath ? path.join(__dirname, logoRelPath) : null });
+  const full = await queryDecrypted(decryptCustomerJoin,
     `SELECT d.*, c.name AS customer_name, c.email AS customer_email,
             c.billing_address AS customer_billing_address, c.vat_number AS customer_vat_number,
             cur.symbol AS currency_symbol, cur.code AS currency_code
@@ -2842,11 +2803,8 @@ async function sendPayfastFollowUps(invoice, posted, outcome) {
   // manually recorded payment lands here unsettled.
   if (outcome.settled && full.length && full[0].customer_email) {
     const pdf = await buildReceiptPdf(full[0], items, user, payments);
-    await emailService.sendReceiptEmail(
-      full[0].customer_email,
-      { ...full[0], company_name: user.company_name },
-      pdf
-    );
+    const mail=await captureEmail(emailService,'sendReceiptEmail',full[0].customer_email,{...full[0],company_name:user.company_name},pdf);
+    await queueEmail({userId:invoice.user_id,documentId:invoice.id,kind:'RECEIPT',key:`receipt:${invoice.id}:full`,mail});
   }
 
   // The two cases a seller genuinely has to act on. Rejecting either payment
@@ -2861,13 +2819,14 @@ async function sendPayfastFollowUps(invoice, posted, outcome) {
         : null));
 
   if (alert && user.email) {
-    await emailService.sendPaymentAlertEmail(user.email, {
+    const mail=await captureEmail(emailService,'sendPaymentAlertEmail',user.email, {
       contact_person: user.contact_person,
       document_number: invoice.document_number,
       amount: Number(posted.amount_gross).toFixed(2),
       reference: posted.pf_payment_id,
       reason: alert,
     });
+    await queueEmail({userId:invoice.user_id,documentId:invoice.id,kind:'ALERT',key:`payfast:alert:${posted.pf_payment_id}`,mail});
   }
 }
 
@@ -3113,6 +3072,7 @@ async function bootstrap(attempt = 1) {
     const canary = await verifyCanary();
     logger.info('Field encryption check', canary);
     startListening();
+    processRecurringInvoices().then(()=>processOverdueInvoices()).then(()=>processOutbox(emailService.transporter)).catch(error=>logger.error('Billing recovery failed',error));
   } catch (err) {
     const transient = TRANSIENT_DB_ERRORS.has(err.code);
 

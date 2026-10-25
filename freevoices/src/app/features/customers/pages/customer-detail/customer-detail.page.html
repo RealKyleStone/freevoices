@@ -75,7 +75,7 @@
                 <h3>{{ customer.shipping_address }}</h3>
               </ion-label>
             </ion-item>
-            <ion-item *ngIf="customer.payment_terms != null">
+            <ion-item *ngIf="customer.payment_terms !== null && customer.payment_terms !== undefined">
               <div slot="start" class="detail-icon-wrap">
                 <ion-icon name="time-outline"></ion-icon>
               </div>
@@ -110,8 +110,8 @@
                 <p>{{ doc.issue_date | date:'mediumDate' }} — Due {{ doc.due_date | date:'mediumDate' }}</p>
               </ion-label>
               <div slot="end" class="doc-end">
-                <span class="activity-badge" [ngClass]="'badge-' + getStatusColor(doc.status)">{{ doc.status | titlecase }}</span>
-                <p class="doc-amount">R {{ doc.total | number:'1.2-2' }}</p>
+                <span class="activity-badge" [ngClass]="'badge-' + getStatusColor(doc.status)">{{ doc.status === 'SENT' ? 'Issued' : (doc.status | titlecase) }}</span>
+                <p class="doc-amount">{{ doc.currency_code || 'ZAR' }} {{ doc.total | number:'1.2-2' }}</p>
               </div>
             </ion-item>
           </ion-list>

@@ -14,6 +14,7 @@ import { trashOutline, addOutline } from 'ionicons/icons';
 import { InvoiceService, InvoicePayload } from '../../services/invoice.service';
 import { CustomerService } from '../../../customers/services/customer.service';
 import { ProductService } from '../../../products/services/product.service';
+import { SettingsService } from '../../../settings/services/settings.service';
 import { Customer, Product } from '../../../../../models/database.models';
 import { lineTotals, roundCents, dueDateFromTerms } from '../../../../shared/utils/document-math';
 import { HasUnsavedChanges } from '../../../../shared/guards/unsaved-changes.guard';
@@ -46,6 +47,8 @@ export class InvoiceEditPage implements OnInit, HasUnsavedChanges {
   invoiceId!: number;
   currencySymbol = 'R';
   private saved = false;
+  private defaultVatRate = 15;
+  private defaultTerms = 30;
   // See invoice-create: an untouched due date follows issue date + terms.
   private autoDueDate = '';
 
@@ -58,6 +61,7 @@ export class InvoiceEditPage implements OnInit, HasUnsavedChanges {
     private invoiceService: InvoiceService,
     private customerService: CustomerService,
     private productService: ProductService,
+    private settingsService: SettingsService,
     private toastCtrl: ToastController
   ) {
     addIcons({ trashOutline, addOutline });
@@ -107,10 +111,11 @@ export class InvoiceEditPage implements OnInit, HasUnsavedChanges {
 
     forkJoin({
       invoice:   this.invoiceService.getInvoice(this.invoiceId),
-      customers: this.customerService.getCustomers('', 1, 200),
-      products:  this.productService.getProducts('', 1, 200)
+      customers: this.customerService.getAllCustomers(),
+      products:  this.productService.getAllProducts(),
+      settings: this.settingsService.getSettings()
     }).subscribe({
-      next: ({ invoice, customers, products }) => {
+      next: ({ invoice, customers, products, settings }) => {
         if (invoice.status !== 'DRAFT') {
           this.showToast('Only DRAFT invoices can be edited', 'warning');
           this.router.navigate(['/invoices', this.invoiceId]);
@@ -122,8 +127,10 @@ export class InvoiceEditPage implements OnInit, HasUnsavedChanges {
           return;
         }
 
-        this.customers = customers.data;
-        this.products  = products.data;
+        this.defaultVatRate = Number(settings.invoice_vat_rate ?? 15);
+        this.defaultTerms = Number(settings.invoice_payment_terms ?? 30);
+        this.customers = customers;
+        this.products  = products;
 
         this.currencySymbol = invoice.currency_symbol || 'R';
         // Dates arrive as 'YYYY-MM-DD'. They used to arrive as a UTC
@@ -155,11 +162,16 @@ export class InvoiceEditPage implements OnInit, HasUnsavedChanges {
             description: [item.description, Validators.required],
             quantity:    [item.quantity,    [Validators.required, Validators.min(0.01)]],
             unit_price:  [item.unit_price,  [Validators.required, Validators.min(0)]],
+            vat_inclusive: [!!item.vat_inclusive],
             vat_rate:    [item.vat_rate,    [Validators.required, Validators.min(0), Validators.max(100)]]
           }));
         });
 
         if (this.items.length === 0) this.addItem();
+        this.form.get('customer_id')!.valueChanges.subscribe(id => {
+          const customer = this.customers.find(c => c.id === +id);
+          this.form.patchValue({payment_terms:customer?.payment_terms ?? this.defaultTerms});
+        });
         this.isFetching = false;
       },
       error: async () => {
@@ -184,7 +196,8 @@ export class InvoiceEditPage implements OnInit, HasUnsavedChanges {
       description: ['', Validators.required],
       quantity:    [1,  [Validators.required, Validators.min(0.01)]],
       unit_price:  [0,  [Validators.required, Validators.min(0)]],
-      vat_rate:    [15, [Validators.required, Validators.min(0), Validators.max(100)]]
+      vat_inclusive: [false],
+      vat_rate:    [this.defaultVatRate, [Validators.required, Validators.min(0), Validators.max(100)]]
     }));
     this.form.markAsDirty();
   }
@@ -198,7 +211,7 @@ export class InvoiceEditPage implements OnInit, HasUnsavedChanges {
     if (!productId) return;
     const product = this.products.find(p => p.id === +productId);
     if (!product) return;
-    this.items.at(index).patchValue({ description: product.name, unit_price: product.price, vat_rate: 15 });
+    this.items.at(index).patchValue({ description: product.name, unit_price: product.price, vat_inclusive: !!product.vat_inclusive, vat_rate: this.items.at(index).get('vat_rate')?.value ?? this.defaultVatRate });
   }
 
   // Rounded per line, half-up, exactly as the server stores them.
@@ -247,7 +260,8 @@ export class InvoiceEditPage implements OnInit, HasUnsavedChanges {
         description: item.description,
         quantity:    item.quantity,
         unit_price:  item.unit_price,
-        vat_rate:    item.vat_rate
+        vat_rate:    item.vat_rate,
+        vat_inclusive: item.vat_inclusive
       }))
     };
     // The server keeps the stored schedule when is_recurring is absent, so it

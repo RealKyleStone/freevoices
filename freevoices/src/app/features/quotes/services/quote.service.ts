@@ -6,6 +6,7 @@ import { Document, DocumentItem, DocumentTracking } from '../../../../models/dat
 export interface QuoteListItem {
   id: number;
   document_number: string;
+  currency_code?: string;
   customer_name: string;
   status: string;
   issue_date: string;
@@ -37,6 +38,7 @@ export interface QuoteDetail extends Document {
 }
 
 export interface QuoteItemPayload {
+  vat_inclusive?: boolean;
   product_id?: number | null;
   description: string;
   quantity: number;
@@ -45,6 +47,7 @@ export interface QuoteItemPayload {
 }
 
 export interface QuotePayload {
+  request_key?: string;
   customer_id: number;
   issue_date: string;
   valid_until?: string | null;

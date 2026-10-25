@@ -21,6 +21,8 @@ import { SettingsService } from '../../services/settings.service';
 })
 export class ProfileSettingsPage implements OnInit {
   form!: FormGroup;
+  originalEmail = '';
+  pendingEmail: string | null = null;
   isLoading = true;
   isSaving = false;
   submitted = false;
@@ -47,6 +49,8 @@ export class ProfileSettingsPage implements OnInit {
 
     this.settingsService.getSettings().subscribe({
       next: (data) => {
+        this.originalEmail = data.email;
+        this.pendingEmail = data.pending_email || null;
         this.form.patchValue({
           contact_person: data.contact_person || '',
           email: data.email || '',
@@ -90,19 +94,23 @@ export class ProfileSettingsPage implements OnInit {
     const { contact_person, email, phone, current_password, new_password } = this.form.value;
 
     const payload: any = { contact_person, email, phone };
-    if (new_password) {
+    if (email.toLowerCase() !== this.originalEmail.toLowerCase() && !current_password) {
+      this.showToast('Enter your current password to change your email', 'warning'); return;
+    }
+    if (new_password || email.toLowerCase() !== this.originalEmail.toLowerCase()) {
       payload.current_password = current_password;
-      payload.new_password = new_password;
+      if (new_password) payload.new_password = new_password;
     }
 
     this.isSaving = true;
     this.settingsService.updateProfile(payload).subscribe({
-      next: () => {
+      next: (response) => {
+        if (response.pending_email) { this.pendingEmail = response.pending_email; this.form.patchValue({ email: this.originalEmail }); }
         this.isSaving = false;
         this.submitted = false;
         this.form.patchValue({ current_password: '', new_password: '', confirm_password: '' });
         this.form.markAsPristine();
-        this.showToast('Profile updated successfully', 'success');
+        this.showToast(response.message, response.emailFailed ? 'warning' : 'success');
       },
       error: (err) => {
         this.isSaving = false;

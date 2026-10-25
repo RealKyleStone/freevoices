@@ -4,7 +4,7 @@
 
 export const environment = {
   production: false,
-  apiUrl: 'https://freevoices.co.za/api',
+  apiUrl: 'http://localhost:3000/api',
   version: '1.0.0',
   recaptchaSiteKey: '6LecjacqAAAAAH-qxIbyNMeNnvU4fwYcuIxKNKnC',
   bypassCaptcha: true,
@@ -12,7 +12,7 @@ export const environment = {
   // design — it identifies the app, it does not authorise anything. The server
   // checks incoming ID tokens against GOOGLE_OAUTH_CLIENT_ID, so the two must
   // match. Empty disables the "Continue with Google" buttons entirely.
-  googleClientId: '280963257389-s87mhiv8a2bg8v52tchua06hds3psq93.apps.googleusercontent.com',
+  googleClientId: '',
 };
 /*
  * For easier debugging in development mode, you can import the following file

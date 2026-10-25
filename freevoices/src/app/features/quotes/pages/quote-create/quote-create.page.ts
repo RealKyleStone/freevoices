@@ -6,7 +6,7 @@ import {
   ToastController,
   IonBackButton, IonButton, IonButtons, IonCard, IonCardContent, IonCardHeader, IonCardTitle,
   IonContent, IonHeader, IonIcon, IonInput, IonItem, IonLabel, IonNote, IonSelect,
-  IonSelectOption, IonSpinner, IonText, IonTextarea, IonTitle, IonToolbar,
+  IonSelectOption, IonSpinner, IonText, IonTextarea, IonTitle, IonToggle, IonToolbar,
 } from '@ionic/angular/standalone';
 import { forkJoin } from 'rxjs';
 import { addIcons } from 'ionicons';
@@ -28,7 +28,7 @@ import { HasUnsavedChanges } from '../../../../shared/guards/unsaved-changes.gua
     CommonModule, ReactiveFormsModule,
     IonBackButton, IonButton, IonButtons, IonCard, IonCardContent, IonCardHeader, IonCardTitle,
     IonContent, IonHeader, IonIcon, IonInput, IonItem, IonLabel, IonNote, IonSelect,
-    IonSelectOption, IonSpinner, IonText, IonTextarea, IonTitle, IonToolbar,
+    IonSelectOption, IonSpinner, IonText, IonTextarea, IonTitle, IonToggle, IonToolbar,
   ]
 })
 export class QuoteCreatePage implements OnInit, HasUnsavedChanges {
@@ -40,6 +40,9 @@ export class QuoteCreatePage implements OnInit, HasUnsavedChanges {
   isLoadingData = true;
   submitted = false;
   private saved = false;
+  private defaultVatRate = 15;
+  private defaultTerms = 30;
+  private requestKey = crypto.randomUUID();
 
   constructor(
     private fb: FormBuilder,
@@ -75,17 +78,23 @@ export class QuoteCreatePage implements OnInit, HasUnsavedChanges {
 
   ngOnInit() {
     forkJoin({
-      customers:  this.customerService.getCustomers('', 1, 200),
-      products:   this.productService.getProducts('', 1, 200),
+      customers:  this.customerService.getAllCustomers(),
+      products:   this.productService.getAllProducts(),
       currencies: this.settingsService.getCurrencies(),
       settings:   this.settingsService.getSettings()
     }).subscribe({
       next: ({ customers, products, currencies, settings }) => {
-        this.customers  = customers.data;
-        this.products   = products.data;
+        this.customers  = customers;
+        this.products   = products;
         this.currencies = currencies;
         const defaultCurrencyId = parseInt(settings.default_currency_id || '1', 10);
-        this.form.patchValue({ currency_id: defaultCurrencyId });
+        this.defaultVatRate = Number(settings.invoice_vat_rate ?? 15);
+        this.defaultTerms = Number(settings.invoice_payment_terms ?? 30);
+        this.form.patchValue({ currency_id: defaultCurrencyId, payment_terms: this.defaultTerms, notes: settings.invoice_notes || '' });
+        this.form.get('customer_id')!.valueChanges.subscribe(id => {
+          const customer = this.customers.find(c => c.id === +id);
+          this.form.patchValue({ payment_terms: customer?.payment_terms ?? this.defaultTerms });
+        });
         this.addItem();
         this.isLoadingData = false;
       },
@@ -109,7 +118,8 @@ export class QuoteCreatePage implements OnInit, HasUnsavedChanges {
       description: ['', Validators.required],
       quantity:    [1,  [Validators.required, Validators.min(0.01)]],
       unit_price:  [0,  [Validators.required, Validators.min(0)]],
-      vat_rate:    [15, [Validators.required, Validators.min(0), Validators.max(100)]]
+      vat_inclusive: [false],
+      vat_rate:    [this.defaultVatRate, [Validators.required, Validators.min(0), Validators.max(100)]]
     }));
   }
 
@@ -120,7 +130,7 @@ export class QuoteCreatePage implements OnInit, HasUnsavedChanges {
     if (!productId) return;
     const product = this.products.find(p => p.id === +productId);
     if (!product) return;
-    this.items.at(index).patchValue({ description: product.name, unit_price: product.price, vat_rate: 15 });
+    this.items.at(index).patchValue({ description: product.name, unit_price: product.price, vat_inclusive: !!product.vat_inclusive, vat_rate: this.defaultVatRate });
   }
 
   // Rounded per line, half-up, exactly as the server stores them.
@@ -157,11 +167,12 @@ export class QuoteCreatePage implements OnInit, HasUnsavedChanges {
         description: item.description,
         quantity:    item.quantity,
         unit_price:  item.unit_price,
-        vat_rate:    item.vat_rate
+        vat_rate:    item.vat_rate,
+        vat_inclusive: item.vat_inclusive
       }))
     };
 
-    this.quoteService.createQuote(payload).subscribe({
+    this.quoteService.createQuote({ ...payload, request_key: this.requestKey }).subscribe({
       next: (quote) => { this.saved = true; this.router.navigate(['/quotes', quote.id], { replaceUrl: true }); },
       error: async (err) => {
         this.isLoading = false;

@@ -5,6 +5,7 @@ import { environment } from '../../../../environments/environment';
 import { Currency } from '../../../../models/database.models';
 
 export interface UserSettings {
+  pending_email?: string | null;
   // Profile
   contact_person: string;
   email: string;
@@ -40,6 +41,7 @@ export interface UserSettings {
   notify_invoice_sent: string;
   notify_payment_received: string;
   notify_invoice_overdue: string;
+  customer_reminders_enabled?: string;
 }
 
 @Injectable({ providedIn: 'root' })
@@ -79,8 +81,8 @@ export class SettingsService {
     phone: string;
     current_password?: string;
     new_password?: string;
-  }): Observable<{ message: string }> {
-    return this.http.put<{ message: string }>(`${this.apiUrl}/settings/profile`, data, {
+  }): Observable<{ message: string; pending_email?: string; emailFailed?: boolean }> {
+    return this.http.put<{ message: string; pending_email?: string; emailFailed?: boolean }>(`${this.apiUrl}/settings/profile`, data, {
       headers: this.getHeaders()
     });
   }
@@ -173,6 +175,7 @@ export class SettingsService {
     notify_invoice_sent: boolean;
     notify_payment_received: boolean;
     notify_invoice_overdue: boolean;
+    customer_reminders_enabled?: boolean;
   }): Observable<{ message: string }> {
     return this.http.put<{ message: string }>(`${this.apiUrl}/settings/notifications`, data, {
       headers: this.getHeaders()

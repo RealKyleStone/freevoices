@@ -44,10 +44,12 @@ function computeLine(item) {
   const unit_price = Number(item.unit_price) || 0;
   const rawRate = Number(item.vat_rate);
   const vat_rate = Number.isFinite(rawRate) ? rawRate : 15;
-  const subtotal = roundCents(quantity * unit_price);
-  const vat_amount = roundCents(subtotal * vat_rate / 100);
-  const total = roundCents(subtotal + vat_amount);
-  return { ...item, quantity, unit_price, vat_rate, subtotal, vat_amount, total };
+  const vat_inclusive = [true, 1, '1', 'true'].includes(item.vat_inclusive);
+  const enteredAmount = roundCents(quantity * unit_price);
+  const subtotal = vat_inclusive ? roundCents(enteredAmount / (1 + vat_rate / 100)) : enteredAmount;
+  const vat_amount = vat_inclusive ? roundCents(enteredAmount - subtotal) : roundCents(subtotal * vat_rate / 100);
+  const total = vat_inclusive ? enteredAmount : roundCents(subtotal + vat_amount);
+  return { ...item, quantity, unit_price, vat_rate, vat_inclusive, subtotal, vat_amount, total };
 }
 
 function computeDocumentTotals(items) {

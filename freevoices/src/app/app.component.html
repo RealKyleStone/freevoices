@@ -67,6 +67,6 @@
     </div>
   </ion-split-pane>
 
-  <ion-router-outlet *ngIf="!(isLoggedIn$ | async)"></ion-router-outlet>
+  <ion-router-outlet *ngIf="(isLoggedIn$ | async) !== true"></ion-router-outlet>
 
 </ion-app>

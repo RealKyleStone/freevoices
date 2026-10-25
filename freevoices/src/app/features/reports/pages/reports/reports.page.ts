@@ -33,7 +33,7 @@ const STATUS_TOKENS: Record<string, string> = {
 };
 
 const STATUS_LABELS: Record<string, string> = {
-  DRAFT: 'Draft', SENT: 'Sent', PAID: 'Paid',
+  DRAFT: 'Draft', SENT: 'Issued', PAID: 'Paid',
   OVERDUE: 'Overdue', CANCELLED: 'Cancelled'
 };
 
@@ -64,6 +64,8 @@ export class ReportsPage implements OnInit, OnDestroy {
   @ViewChild('customersCanvas') customersCanvas!: ElementRef<HTMLCanvasElement>;
   @ViewChild('vatCanvas')      vatCanvas!:      ElementRef<HTMLCanvasElement>;
 
+  selectedCurrency = 'ZAR';
+  currencies: {code:string;name:string;symbol:string}[] = [];
   isLoading = true;
   hasError  = false;
 
@@ -113,11 +115,24 @@ export class ReportsPage implements OnInit, OnDestroy {
   }
 
   ngOnInit() {
+    this.reports.getCurrencies().subscribe(rows => this.currencies = rows);
+    this.loadReports();
+  }
+
+  changeCurrency(event: Event) {
+    this.selectedCurrency = (event.target as HTMLSelectElement).value;
+    this.loadReports();
+  }
+
+  private loadReports() {
+    this.destroyCharts();
+    this.isLoading = true;
+    this.hasError = false;
     forkJoin({
-      revenue:   this.reports.getRevenueByMonth(),
-      status:    this.reports.getInvoiceStatus(),
-      customers: this.reports.getTopCustomers(),
-      vat:       this.reports.getVatSummary()
+      revenue:   this.reports.getRevenueByMonth(this.selectedCurrency),
+      status:    this.reports.getInvoiceStatus(this.selectedCurrency),
+      customers: this.reports.getTopCustomers(this.selectedCurrency),
+      vat:       this.reports.getVatSummary(this.selectedCurrency)
     }).subscribe({
       next: ({ revenue, status, customers, vat }) => {
         this.revenueData  = revenue;
@@ -194,7 +209,7 @@ export class ReportsPage implements OnInit, OnDestroy {
       data: {
         labels: data.map(r => formatMonth(r.month)),
         datasets: [{
-          label: 'Revenue (R)',
+          label: `Revenue (${this.selectedCurrency})`,
           data: data.map(r => +r.revenue),
           backgroundColor: this.themeColors().primary,
           borderRadius: 4
@@ -205,7 +220,7 @@ export class ReportsPage implements OnInit, OnDestroy {
         maintainAspectRatio: false,
         plugins: { legend: { display: false } },
         scales: {
-          y: { beginAtZero: true, ticks: { callback: v => `R ${v}` } }
+          y: { beginAtZero: true, ticks: { callback: v => `${this.selectedCurrency} ${v}` } }
         }
       }
     };
@@ -239,7 +254,7 @@ export class ReportsPage implements OnInit, OnDestroy {
       data: {
         labels: data.map(r => r.name),
         datasets: [{
-          label: 'Revenue (R)',
+          label: `Revenue (${this.selectedCurrency})`,
           data: data.map(r => +r.revenue),
           backgroundColor: this.themeColors().primary,
           borderRadius: 4
@@ -251,7 +266,7 @@ export class ReportsPage implements OnInit, OnDestroy {
         maintainAspectRatio: false,
         plugins: { legend: { display: false } },
         scales: {
-          x: { beginAtZero: true, ticks: { callback: v => `R ${v}` } }
+          x: { beginAtZero: true, ticks: { callback: v => `${this.selectedCurrency} ${v}` } }
         }
       }
     };
@@ -286,7 +301,7 @@ export class ReportsPage implements OnInit, OnDestroy {
         maintainAspectRatio: false,
         plugins: { legend: { position: 'bottom' } },
         scales: {
-          y: { beginAtZero: true, stacked: true, ticks: { callback: v => `R ${v}` } },
+          y: { beginAtZero: true, stacked: true, ticks: { callback: v => `${this.selectedCurrency} ${v}` } },
           x: { stacked: true }
         }
       }

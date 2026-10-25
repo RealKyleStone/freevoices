@@ -87,6 +87,11 @@
           </ion-item>
           <p class="field-error" *ngIf="isItemInvalid(i, 'description')">Description is required</p>
 
+          <ion-item>
+            <ion-label>Unit price includes VAT</ion-label>
+            <ion-toggle formControlName="vat_inclusive" aria-label="Unit price includes VAT" slot="end"></ion-toggle>
+          </ion-item>
+
           <div class="item-row">
             <ion-item [class.ion-invalid]="isItemInvalid(i, 'quantity')" [class.ion-touched]="isItemInvalid(i, 'quantity')" class="flex-1">
               <ion-label position="stacked">Qty <ion-text color="danger">*</ion-text></ion-label>

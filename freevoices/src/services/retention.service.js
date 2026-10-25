@@ -99,6 +99,9 @@ async function anonymiseExpiredAccounts() {
              bank_account_number = NULL,
              bank_branch_code = NULL,
              bank_account_type = NULL,
+             pending_email = NULL,
+             pending_email_token = NULL,
+             pending_email_expires = NULL,
              email_verified = 0,
              email_verification_token = NULL,
              email_verification_expires = NULL,
@@ -117,6 +120,8 @@ async function anonymiseExpiredAccounts() {
         // created since, and the reset tokens it never touched.
         await q('DELETE FROM sessions WHERE userId = ?', [id]);
         await q('DELETE FROM password_reset_tokens WHERE user_id = ?', [id]);
+        await q('DELETE FROM email_outbox WHERE user_id = ?', [id]);
+        await q('DELETE s FROM document_share_links s JOIN documents d ON d.id=s.document_id WHERE d.user_id=?',[id]);
         return true;
       });
 

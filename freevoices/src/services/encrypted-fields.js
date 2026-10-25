@@ -90,6 +90,9 @@ const REGISTRY = Object.freeze({
   customers: Object.freeze(['phone', 'vat_number', 'billing_address', 'shipping_address', 'notes']),
   document_tracking: Object.freeze(['ip_address', 'user_agent']),
   payments: Object.freeze(['transaction_reference']),
+  document_snapshots: Object.freeze(['payload']),
+  document_share_links: Object.freeze(['payload']),
+  email_outbox: Object.freeze(['payload']),
 });
 
 /**

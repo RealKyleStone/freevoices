@@ -48,6 +48,9 @@ export class InvoiceDetailPage implements OnInit {
   isTogglingMute = false;
   isSharing = false;
   shareLink: string | null = null;
+  shareExpiry: string | null = null;
+  private resendKey?: string;
+  private receiptResendKey?: string;
 
   readonly paymentMethods = [
     { value: 'BANK_TRANSFER', label: 'Bank Transfer' },
@@ -154,7 +157,7 @@ export class InvoiceDetailPage implements OnInit {
   async confirmSend() {
     const alert = await this.alertCtrl.create({
       header: 'Email Invoice',
-      message: `Send this invoice as a PDF to ${this.invoice?.customer_email || 'the customer'}?`,
+      message: `${this.invoice?.delivery_status === 'UNCERTAIN' ? 'Check your email provider before resending: a previous attempt may have been accepted. ' : ''}Send this invoice as a PDF to ${this.invoice?.customer_email || 'the customer'}?`,
       buttons: [
         { text: 'Cancel', role: 'cancel' },
         { text: 'Send Email', handler: () => this.sendInvoice() }
@@ -165,15 +168,15 @@ export class InvoiceDetailPage implements OnInit {
 
   async sendInvoice() {
     this.isSending = true;
-    this.invoiceService.sendInvoice(this.invoiceId).subscribe({
+    this.invoiceService.sendInvoice(this.invoiceId, this.resendKey ||= ['ACCEPTED','UNCERTAIN'].includes(this.invoice?.delivery_status || '') ? crypto.randomUUID() : undefined).subscribe({
       next: async (res: any) => {
         this.isSending = false;
         const color = res.emailFailed ? 'warning' : 'success';
         const toast = await this.toastCtrl.create({ message: res.message || 'Invoice sent', duration: 4000, color, position: 'bottom' });
         await toast.present();
         // Browser notification — fires even if tab is minimized
-        this.browserNotifications.notify(
-          'Invoice Sent',
+        if (res.delivery_status === 'ACCEPTED') this.browserNotifications.notify(
+          'Invoice email accepted',
           `Invoice ${this.invoice?.document_number} has been sent to ${this.invoice?.customer_email}.`
         );
         this.loadInvoice();
@@ -250,14 +253,15 @@ export class InvoiceDetailPage implements OnInit {
 
   async sendReceipt() {
     this.isSendingReceipt = true;
-    this.invoiceService.sendReceipt(this.invoiceId).subscribe({
+    this.invoiceService.sendReceipt(this.invoiceId, this.receiptResendKey ||= ['ACCEPTED','UNCERTAIN'].includes(this.invoice?.email_deliveries?.find(e => e.kind === 'RECEIPT')?.status || '') ? crypto.randomUUID() : undefined).subscribe({
       next: async (res: any) => {
         this.isSendingReceipt = false;
         const color = res.emailFailed ? 'warning' : 'success';
         const toast = await this.toastCtrl.create({ message: res.message || 'Receipt sent', duration: 4000, color, position: 'bottom' });
         await toast.present();
-        this.browserNotifications.notify(
-          'Receipt Sent',
+        if (res.delivery_status === 'ACCEPTED') { this.receiptResendKey = undefined; this.loadInvoice(); }
+        if (res.delivery_status === 'ACCEPTED') this.browserNotifications.notify(
+          'Receipt email accepted',
           `Receipt for invoice ${this.invoice?.document_number} has been sent to ${this.invoice?.customer_email}.`
         );
       },
@@ -325,17 +329,30 @@ export class InvoiceDetailPage implements OnInit {
 
   // Once a payment is recorded the lines are evidence of what was billed.
   get canEdit(): boolean { return this.invoice?.status === 'DRAFT' && (this.invoice?.payments || []).length === 0; }
-  get canSend(): boolean { return ['DRAFT', 'SENT'].includes(this.invoice?.status ?? ''); }
+  get canSend(): boolean { return ['DRAFT', 'SENT', 'OVERDUE'].includes(this.invoice?.status ?? ''); }
   get canMarkPaid(): boolean { return !['PAID', 'CANCELLED'].includes(this.invoice?.status ?? ''); }
-  get canCancel(): boolean { return !['PAID', 'CANCELLED'].includes(this.invoice?.status ?? ''); }
+  get canCancel(): boolean { return !['PAID', 'CANCELLED'].includes(this.invoice?.status ?? '') && Number(this.invoice?.amount_paid || 0) === 0; }
   get currencySymbol(): string { return this.invoice?.currency_symbol || 'R'; }
 
-  async generateShareLink() {
+  async manageShare(rotate: boolean) {
+    const alert = await this.alertCtrl.create({header:rotate ? 'Replace share link?' : 'Revoke share link?',
+      message:'The current link will stop working.',buttons:[{text:'Keep link',role:'cancel'},
+        {text:rotate ? 'Replace link' : 'Revoke link',role:'destructive',handler:()=>{
+          if(rotate) this.generateShareLink(true);
+          else this.invoiceService.revokeShare(this.invoiceId).subscribe({next:()=>{this.shareLink=null;this.shareExpiry=null;},error:async()=>{
+            const toast=await this.toastCtrl.create({message:'Could not revoke link',duration:3000,color:'danger'});await toast.present();
+          }});
+        }}]});
+    await alert.present();
+  }
+
+  async generateShareLink(rotate = false) {
     this.isSharing = true;
-    this.invoiceService.shareInvoice(this.invoiceId).subscribe({
+    this.invoiceService.shareInvoice(this.invoiceId, rotate).subscribe({
       next: async (res) => {
         this.isSharing = false;
         this.shareLink = res.share_url;
+        this.shareExpiry = res.expires_at;
       },
       error: async () => {
         this.isSharing = false;

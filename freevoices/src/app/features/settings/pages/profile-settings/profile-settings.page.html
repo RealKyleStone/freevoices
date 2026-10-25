@@ -1,6 +1,7 @@
 <div class="settings-page">
   <div class="settings-page-header">
     <h1>Profile</h1>
+    <p *ngIf="pendingEmail">Pending email verification: {{ pendingEmail }}. Your current address remains active.</p>
     <p>Update your personal information and password.</p>
   </div>
 
@@ -40,11 +41,11 @@
       <ion-card-header>
         <ion-card-title>
           <ion-icon name="lock-closed-outline"></ion-icon>
-          Change password
+          Email and password
         </ion-card-title>
       </ion-card-header>
       <ion-card-content>
-        <p class="hint">Leave these fields blank to keep your current password.</p>
+        <p class="hint">Enter your current password to change email or password. Leave the new password blank to keep it.</p>
 
         <ion-item>
           <ion-label position="stacked">Current password</ion-label>

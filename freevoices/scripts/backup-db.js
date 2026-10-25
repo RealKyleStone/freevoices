@@ -14,7 +14,7 @@
 
 const fs = require('fs');
 const path = require('path');
-const { executeQuery, closePool } = require('../src/services/db.service');
+const { getConnection, queryOn, closePool } = require('../src/services/db.service');
 
 const args = process.argv.slice(2);
 const outIndex = args.indexOf('--out');
@@ -24,18 +24,23 @@ function timestamp() {
 }
 
 (async () => {
+  let connection;
   try {
-    const [{ db }] = await executeQuery('SELECT DATABASE() AS db');
-    const tables = (await executeQuery(
+    connection = await getConnection();
+    const q = (sql, params) => queryOn(connection, {sql, dateStrings:true}, params);
+    await q('SET TRANSACTION ISOLATION LEVEL REPEATABLE READ');
+    await q('START TRANSACTION WITH CONSISTENT SNAPSHOT');
+    const [{ db }] = await q('SELECT DATABASE() AS db');
+    const tables = (await q(
       'SELECT TABLE_NAME FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_SCHEMA = DATABASE() AND TABLE_TYPE = \'BASE TABLE\' ORDER BY TABLE_NAME'
     )).map(r => r.TABLE_NAME);
 
-    const snapshot = { database: db, taken_at: new Date().toISOString(), tables: {} };
+    const snapshot = { format_version: 2, database: db, taken_at: new Date().toISOString(), tables: {} };
     let totalRows = 0;
 
     for (const table of tables) {
-      const create = await executeQuery(`SHOW CREATE TABLE \`${table}\``);
-      const rows = await executeQuery(`SELECT * FROM \`${table}\``);
+      const create = await q(`SHOW CREATE TABLE \`${table}\``);
+      const rows = await q(`SELECT * FROM \`${table}\``);
       snapshot.tables[table] = {
         ddl: create[0]['Create Table'] || create[0]['Create View'],
         row_count: rows.length,
@@ -57,10 +62,17 @@ function timestamp() {
     console.log(`Written to: ${outPath}`);
     console.log('\nUNENCRYPTED and contains personal information — delete when no longer needed.\n');
 
+    await q('COMMIT');
+    connection.release();
+    connection = null;
     await closePool();
     process.exit(0);
   } catch (err) {
     console.error(`\nBackup failed: ${err.message}\n`);
+    if (connection) {
+      await queryOn(connection, 'ROLLBACK').catch(() => {});
+      connection.release();
+    }
     await closePool();
     process.exit(1);
   }
