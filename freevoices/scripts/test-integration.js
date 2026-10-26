@@ -47,7 +47,7 @@ function runTests(env) {
 async function main() {
   validateDatabase(process.env);
   const port = await unusedPort();
-  const env = { ...process.env, NODE_ENV: 'test', DB_SSL: 'disabled',
+  const env = { ...process.env, NODE_ENV: 'test', INVOICE_ADJUSTMENTS_ENABLED:'true', DB_SSL: 'disabled',
     DATA_ENCRYPTION_KEYS: `ci:${randomBytes(32).toString('base64')}`, DATA_ENCRYPTION_KEY_ACTIVE: 'ci',
     PORT: String(port), APP_URL: `http://127.0.0.1:${port}`, FREEVOICES_TEST_API_URL: `http://127.0.0.1:${port}/api`,
     SMTP_HOST: '127.0.0.1', SMTP_PORT: '1', SMTP_SECURE: 'false', SMTP_USER: 'test@example.test', SMTP_PASS: 'test-only',

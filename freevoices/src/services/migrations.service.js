@@ -829,6 +829,54 @@ const MIGRATIONS = [
       return 'bank import review rows available';
     },
   },
+  {
+    id:'021_invoice_adjustments',
+    description:'Immutable invoice credit notes and payment refunds',
+    async up(q) {
+      const status=await columnDefinition(q,'documents','status');
+      if (!status.COLUMN_TYPE.includes("'CREDITED'")) await q("ALTER TABLE documents MODIFY status ENUM('DRAFT','SENT','PAID','OVERDUE','CANCELLED','CONVERTED','ACCEPTED','DECLINED','CREDITED') NOT NULL DEFAULT 'DRAFT'");
+      const event=await columnDefinition(q,'document_tracking','event_type');
+      if (!event.COLUMN_TYPE.includes("'CREDIT_NOTE'") || !event.COLUMN_TYPE.includes("'REFUND'")) await q("ALTER TABLE document_tracking MODIFY event_type ENUM('CREATED','SENT','VIEWED','DOWNLOADED','PAID','CANCELLED','OVERDUE','PAYMENT','CONVERTED','ACCEPTED','DECLINED','CREDIT_NOTE','REFUND') NOT NULL");
+      if (!(await tableExists(q,'credit_notes'))) await q(`CREATE TABLE credit_notes (
+        id bigint NOT NULL AUTO_INCREMENT PRIMARY KEY,
+        user_id bigint NOT NULL,
+        invoice_id bigint NOT NULL,
+        request_key char(36) NOT NULL,
+        document_number varchar(40) DEFAULT NULL,
+        issue_date date NOT NULL,
+        reason varchar(500) NOT NULL,
+        description varchar(1000) NOT NULL,
+        subtotal decimal(15,2) NOT NULL,
+        vat_amount decimal(15,2) NOT NULL,
+        total decimal(15,2) NOT NULL,
+        created_at timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        UNIQUE KEY uq_credit_note_number(document_number),
+        UNIQUE KEY uq_credit_request(user_id,request_key),
+        KEY idx_credit_invoice(invoice_id,issue_date),
+        CONSTRAINT fk_credit_owner FOREIGN KEY(user_id) REFERENCES users(id),
+        CONSTRAINT fk_credit_invoice FOREIGN KEY(invoice_id) REFERENCES documents(id)
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`);
+      if (!(await tableExists(q,'payment_refunds'))) await q(`CREATE TABLE payment_refunds (
+        id bigint NOT NULL AUTO_INCREMENT PRIMARY KEY,
+        user_id bigint NOT NULL,
+        invoice_id bigint NOT NULL,
+        payment_id bigint NOT NULL,
+        request_key char(36) NOT NULL,
+        amount decimal(15,2) NOT NULL,
+        refund_date date NOT NULL,
+        method varchar(40) NOT NULL,
+        reference text DEFAULT NULL,
+        reason varchar(500) NOT NULL,
+        created_at timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        KEY idx_refund_invoice(invoice_id,refund_date),
+        UNIQUE KEY uq_refund_request(user_id,request_key),
+        CONSTRAINT fk_refund_owner FOREIGN KEY(user_id) REFERENCES users(id),
+        CONSTRAINT fk_refund_invoice FOREIGN KEY(invoice_id) REFERENCES documents(id),
+        CONSTRAINT fk_refund_payment FOREIGN KEY(payment_id) REFERENCES payments(id)
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`);
+      return 'credit notes and refunds available';
+    },
+  },
 ];
 
 // ─── Runner ───────────────────────────────────────────────────────────────────

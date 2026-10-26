@@ -30,7 +30,9 @@ async function processBillingNotifications({today=todayIso(),userId=null}={}) {
     }
     const overdue=await executeQuery(`SELECT d.*,c.code AS currency_code FROM documents d JOIN currencies c ON c.id=d.currency_id
       WHERE d.user_id=? AND d.type='INVOICE' AND d.status IN ('SENT','OVERDUE') AND d.due_date<? AND d.notifications_muted=0
-      AND d.total>(SELECT COALESCE(SUM(p.amount),0) FROM payments p WHERE p.document_id=d.id)`,[user.id,today]);
+      AND d.total-(SELECT COALESCE(SUM(cn.total),0) FROM credit_notes cn WHERE cn.invoice_id=d.id)
+        >(SELECT COALESCE(SUM(p.amount),0) FROM payments p WHERE p.document_id=d.id)
+         -(SELECT COALESCE(SUM(r.amount),0) FROM payment_refunds r WHERE r.invoice_id=d.id)`,[user.id,today]);
     for(const doc of overdue) {
       if(settings.notify_invoice_overdue!=='0') await own('ALERT',`alert:overdue:${doc.id}`,`Invoice overdue: ${doc.document_number}`,`Invoice ${doc.document_number} was due on ${doc.due_date}. Review it in Freevoices.`,doc.id);
       if(settings.customer_reminders_enabled!=='1') continue;

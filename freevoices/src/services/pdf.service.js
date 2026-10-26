@@ -126,11 +126,13 @@ function buildInvoicePdf(invoice, items, user) {
       ['VAT',      fmt(invoice.vat_amount), DARK, false],
       ['TOTAL',    fmt(invoice.total),      DARK, true ],
     ];
+    if (Number(invoice.credit_total)>0) totalsRows.push(['Credit notes',fmt(-Number(invoice.credit_total)),DARK,false]);
+    if (Number(invoice.refund_total)>0) totalsRows.push(['Refunded',fmt(invoice.refund_total),DARK,false]);
     // A part-paid invoice shows what is still owed, so a re-sent copy does not
     // ask the customer for money they have already paid.
-    if (Number(invoice.amount_paid) > 0) {
-      totalsRows.push(['Paid',        fmt(invoice.amount_paid), SUCCESS, false]);
-      totalsRows.push(['Balance due', fmt(balanceDue(invoice.total, invoice.amount_paid)), DARK, false]);
+    if (Number(invoice.amount_paid) > 0 || Number(invoice.credit_total)>0 || Number(invoice.refund_total)>0) {
+      totalsRows.push(['Net paid',fmt(invoice.amount_paid || 0), SUCCESS, false]);
+      totalsRows.push(['Balance due',fmt(invoice.balance_due ?? balanceDue(Number(invoice.total)-Number(invoice.credit_total || 0),invoice.amount_paid)), DARK, false]);
     }
 
     rowY = layout.ensureSpace(rowY, totalsRows.length * 24 + 16);
@@ -471,6 +473,9 @@ function buildReceiptPdf(invoice, items, user, payments) {
       ['TOTAL',    fmt(invoice.total),      DARK, true ],
     ];
 
+    if (Number(invoice.credit_total)>0) totalsRows.push(['Credit notes',fmt(-Number(invoice.credit_total)),DARK,false]);
+    if (Number(invoice.refund_total)>0) totalsRows.push(['Refunded',fmt(invoice.refund_total),DARK,false]);
+    if (invoice.amount_paid!==undefined) totalsRows.push(['Net paid',fmt(invoice.amount_paid),DARK,false]);
     rowY = layout.ensureSpace(rowY, totalsRows.length * 24 + 16);
     for (const [label, value, color, bold] of totalsRows) {
       if (bold) {
@@ -515,4 +520,58 @@ function buildReceiptPdf(invoice, items, user, payments) {
   });
 }
 
-module.exports = { buildInvoicePdf, buildQuotePdf, buildReceiptPdf };
+function buildCreditNotePdf(note, invoice, seller) {
+  return new Promise((resolve,reject) => {
+    const doc=new PDFDocument({margin:50,size:'A4',bufferPages:true});
+    const layout=createPdfLayout(doc,seller,'Credit note',note.document_number);
+    const chunks=[];
+    doc.on('data',chunk=>chunks.push(chunk));
+    doc.on('end',()=>resolve(Buffer.concat(chunks)));
+    doc.on('error',reject);
+    const fmt=value=>`${invoice.currency_symbol || 'R'} ${Number(value).toLocaleString('en-ZA',{minimumFractionDigits:2,maximumFractionDigits:2})}`;
+    doc.rect(0,0,doc.page.width,90).fill(DARK);
+    doc.fillColor('#ffffff').font('Helvetica-Bold').fontSize(22).text(seller.company_name || 'Your Company',50,25,{width:320});
+    doc.fontSize(11).text('CREDIT NOTE',doc.page.width-180,28,{width:130,align:'right'});
+    doc.fontSize(10).text(note.document_number,doc.page.width-180,47,{width:130,align:'right'});
+    let y=115;
+    y=layout.section('SELLER',`${seller.company_name || ''}\n${seller.address || ''}\nVAT registration: ${seller.vat_number || 'Not supplied'}`,y);
+    y=layout.section('CUSTOMER',`${invoice.customer_name || ''}\n${invoice.customer_billing_address || ''}`,y);
+    y=layout.section('ISSUED',formatDisplayDate(note.issue_date),y);
+    y=layout.section('ORIGINAL TAX INVOICE',`${invoice.document_number} · ${formatDisplayDate(invoice.issue_date)}`,y);
+    y=layout.section('REASON',note.reason,y);
+    y=layout.section('DESCRIPTION OF ADJUSTMENT',note.description,y);
+    y=layout.section('VALUE REDUCED',fmt(note.subtotal),y);
+    y=layout.section('VAT REDUCED',fmt(note.vat_amount),y);
+    y=layout.section('TOTAL CREDIT',fmt(note.total),y);
+    layout.finish();
+    doc.end();
+  });
+}
+
+function buildPaymentReceiptPdf(payment, invoice, seller) {
+  return new Promise((resolve,reject)=>{
+    const doc=new PDFDocument({margin:50,size:'A4',bufferPages:true});
+    const layout=createPdfLayout(doc,seller,'Payment receipt',`RCPT-${payment.id}`);
+    const chunks=[];
+    doc.on('data',chunk=>chunks.push(chunk));
+    doc.on('end',()=>resolve(Buffer.concat(chunks)));
+    doc.on('error',reject);
+    const fmt=value=>`${invoice.currency_symbol || 'R'} ${Number(value).toLocaleString('en-ZA',{minimumFractionDigits:2,maximumFractionDigits:2})}`;
+    doc.rect(0,0,doc.page.width,90).fill(DARK);
+    doc.fillColor('#ffffff').font('Helvetica-Bold').fontSize(22).text(seller.company_name || 'Your Company',50,25,{width:320});
+    doc.fontSize(11).text('PAYMENT RECEIPT',doc.page.width-200,28,{width:150,align:'right'});
+    doc.fontSize(10).text(`RCPT-${payment.id}`,doc.page.width-200,47,{width:150,align:'right'});
+    let y=115;
+    y=layout.section('RECEIVED FROM',`${invoice.customer_name || ''}\n${invoice.customer_billing_address || ''}`,y);
+    y=layout.section('FOR INVOICE',`${invoice.document_number} · ${formatDisplayDate(invoice.issue_date)}`,y);
+    y=layout.section('PAYMENT DATE',formatDisplayDate(payment.payment_date),y);
+    y=layout.section('METHOD',String(payment.payment_method || '').replace(/_/g,' '),y);
+    if (payment.transaction_reference) y=layout.section('REFERENCE',payment.transaction_reference,y);
+    y=layout.section('AMOUNT RECEIVED',fmt(payment.amount),y);
+    layout.section('NOTE','This confirms the recorded payment only. The invoice and any later credits or refunds remain separate records.',y);
+    layout.finish();
+    doc.end();
+  });
+}
+
+module.exports = { buildInvoicePdf, buildQuotePdf, buildReceiptPdf, buildCreditNotePdf, buildPaymentReceiptPdf };

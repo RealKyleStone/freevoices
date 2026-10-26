@@ -14,7 +14,7 @@ import { addIcons } from 'ionicons';
 import {
   addCircleOutline, alertCircleOutline, checkmarkCircleOutline, closeCircleOutline, documentOutline,
   documentTextOutline, downloadOutline, eyeOutline, notificationsOutline, peopleOutline,
-  personAddOutline, personCircleOutline, sendOutline, walletOutline,
+  personAddOutline, personCircleOutline, sendOutline, walletOutline, cashOutline,
 } from 'ionicons/icons';
 
 @Component({
@@ -60,7 +60,7 @@ export class DashboardPage implements OnInit, OnDestroy {
     addIcons({
       addCircleOutline, alertCircleOutline, checkmarkCircleOutline, closeCircleOutline, documentOutline,
       documentTextOutline, downloadOutline, eyeOutline, notificationsOutline, peopleOutline,
-      personAddOutline, personCircleOutline, sendOutline, walletOutline,
+      personAddOutline, personCircleOutline, sendOutline, walletOutline, cashOutline,
     });
   }
 
@@ -137,7 +137,7 @@ export class DashboardPage implements OnInit, OnDestroy {
 
   getActivityIcon(eventType: string): string {
     const icons: Record<string, string> = {
-      PAID: 'checkmark-circle-outline', SENT: 'send-outline',
+      PAID: 'checkmark-circle-outline', CREDIT_NOTE:'document-outline', REFUND:'cash-outline', SENT: 'send-outline',
       CANCELLED: 'close-circle-outline', OVERDUE: 'alert-circle-outline',
       VIEWED: 'eye-outline', DOWNLOADED: 'download-outline', CREATED: 'document-outline'
     };
@@ -146,7 +146,7 @@ export class DashboardPage implements OnInit, OnDestroy {
 
   getActivityColor(eventType: string): string {
     const colors: Record<string, string> = {
-      PAID: 'success', OVERDUE: 'danger', CANCELLED: 'medium',
+      PAID: 'success', CREDIT_NOTE:'success', REFUND:'medium', OVERDUE: 'danger', CANCELLED: 'medium',
       SENT: 'primary', VIEWED: 'primary', DOWNLOADED: 'primary', CREATED: 'medium'
     };
     return colors[eventType] ?? 'medium';
@@ -155,14 +155,14 @@ export class DashboardPage implements OnInit, OnDestroy {
   formatEventType(eventType: string): string {
     const labels: Record<string, string> = {
       CREATED: 'Created', SENT: 'Sent', VIEWED: 'Viewed',
-      DOWNLOADED: 'Downloaded', PAID: 'Paid', CANCELLED: 'Cancelled', OVERDUE: 'Overdue'
+      DOWNLOADED: 'Downloaded', PAID: 'Paid', CREDIT_NOTE:'Credit note issued', REFUND:'Refund recorded', CANCELLED: 'Cancelled', OVERDUE: 'Overdue'
     };
     return labels[eventType] ?? eventType;
   }
 
   getActivityBadgeClass(eventType: string): string {
     const classes: Record<string, string> = {
-      PAID: 'badge-success', OVERDUE: 'badge-danger', CANCELLED: 'badge-medium',
+      PAID: 'badge-success', CREDIT_NOTE:'badge-success', REFUND:'badge-medium', OVERDUE: 'badge-danger', CANCELLED: 'badge-medium',
       SENT: 'badge-info', VIEWED: 'badge-info', DOWNLOADED: 'badge-info', CREATED: 'badge-medium'
     };
     return classes[eventType] ?? 'badge-medium';

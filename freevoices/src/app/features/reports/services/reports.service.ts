@@ -28,6 +28,7 @@ export interface VatSummaryRow {
 
 export interface PaymentLedgerRow {
   id: number;
+  kind: 'PAYMENT' | 'REFUND';
   payment_date: string;
   amount: number;
   payment_method: string;

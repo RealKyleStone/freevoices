@@ -107,13 +107,16 @@
                 <div class="totals-row"><span>Subtotal</span><span>{{ currencySymbol }} {{ invoice.subtotal | number:'1.2-2' }}</span></div>
                 <div class="totals-row"><span>VAT</span><span>{{ currencySymbol }} {{ invoice.vat_amount | number:'1.2-2' }}</span></div>
                 <div class="totals-row total-row"><strong>Total</strong><strong>{{ currencySymbol }} {{ invoice.total | number:'1.2-2' }}</strong></div>
-                <ng-container *ngIf="amountPaid > 0">
+                <div class="totals-row" *ngIf="creditTotal > 0"><span>Credit notes</span><span>-{{ currencySymbol }} {{ invoice.credit_total | number:'1.2-2' }}</span></div>
+                <div class="totals-row" *ngIf="refundTotal > 0"><span>Refunded</span><span>{{ currencySymbol }} {{ invoice.refund_total | number:'1.2-2' }}</span></div>
+                <ng-container *ngIf="amountPaid > 0 || creditTotal > 0 || refundTotal > 0">
                   <div class="totals-row paid-row">
-                    <span>Paid</span><span>{{ currencySymbol }} {{ amountPaid | number:'1.2-2' }}</span>
+                    <span>Net paid</span><span>{{ currencySymbol }} {{ amountPaid | number:'1.2-2' }}</span>
                   </div>
                   <div class="totals-row total-row">
                     <strong>Balance due</strong><strong>{{ currencySymbol }} {{ balanceDue | number:'1.2-2' }}</strong>
                   </div>
+                  <div class="totals-row" *ngIf="refundDue > 0"><strong>Refund due</strong><strong>{{ currencySymbol }} {{ invoice.refund_due | number:'1.2-2' }}</strong></div>
                 </ng-container>
               </div>
             </div>
@@ -170,6 +173,7 @@
 
               <!-- Documents and sharing: always available, never the main event. -->
               <div class="actions actions-secondary">
+                <ion-button *ngIf="canIssueCredit" expand="block" fill="outline" color="medium" (click)="showCreditForm = !showCreditForm">{{ showCreditForm ? 'Close credit form' : 'Issue credit note' }}</ion-button>
                 <ion-button expand="block" fill="outline" color="medium" [routerLink]="['/invoices/new']" [queryParams]="{ copyFrom: invoice.id }">
                   <ion-icon slot="start" name="copy-outline"></ion-icon>
                   Copy as new draft
@@ -254,6 +258,16 @@
                   {{ isSubmittingPayment ? 'Saving...' : 'Save payment' }}
                 </ion-button>
               </div>
+
+              <div class="payment-form" *ngIf="showCreditForm && canIssueCredit" [formGroup]="creditForm">
+                <p class="field-hint">Credit the value of goods or services reduced. Remaining invoice value: {{ currencySymbol }} {{ creditRemaining | number:'1.2-2' }}. Enter net and VAT separately; check them against the original invoice.</p>
+                <ion-item><ion-label position="stacked">Net amount reduced</ion-label><ion-input aria-label="Net amount reduced" formControlName="subtotal" type="number" min="0" step="0.01"></ion-input></ion-item>
+                <ion-item><ion-label position="stacked">VAT reduced</ion-label><ion-input aria-label="VAT reduced" formControlName="vat_amount" type="number" min="0" step="0.01"></ion-input></ion-item>
+                <p class="field-hint">Total credit: {{ currencySymbol }} {{ creditFormTotal | number:'1.2-2' }}</p>
+                <ion-item><ion-label position="stacked">Reason</ion-label><ion-input aria-label="Reason for credit" formControlName="reason" maxlength="500"></ion-input></ion-item>
+                <ion-item><ion-label position="stacked">Description of adjustment</ion-label><ion-textarea aria-label="Description of credit" formControlName="description" maxlength="1000" rows="2"></ion-textarea></ion-item>
+                <ion-button expand="block" (click)="submitCreditNote()" [disabled]="isSavingAdjustment || creditForm.invalid || creditFormTotal <= 0 || creditFormTotal > creditRemaining">{{ isSavingAdjustment ? 'Issuing...' : 'Review and issue credit note' }}</ion-button>
+              </div>
             </div>
           </section>
 
@@ -269,9 +283,36 @@
                     <p>{{ payment.payment_date | date:'d MMM y' }} · {{ paymentMethodLabel(payment.payment_method) }}</p>
                     <p *ngIf="payment.transaction_reference">Ref {{ payment.transaction_reference }}</p>
                   </ion-label>
+                  <ion-button slot="end" fill="clear" size="small" [disabled]="isDownloadingReceipt" (click)="downloadPaymentReceipt(payment.id)" [attr.aria-label]="'Download receipt for payment ' + payment.id">Receipt</ion-button>
+                  <ion-button slot="end" fill="clear" size="small" *ngIf="invoice.adjustments_available && unrefundedAmount(payment.id) > 0" (click)="openRefund(payment.id)" [attr.aria-label]="'Record refund for payment ' + payment.id">Refund</ion-button>
                 </ion-item>
               </ion-list>
+              <div class="payment-form" *ngIf="showRefundForm && invoice.adjustments_available" [formGroup]="refundForm">
+                <p class="field-hint">Record a refund only after money has been returned. Unrefunded amount on this payment: {{ currencySymbol }} {{ unrefundedAmount(refundForm.value.payment_id) | number:'1.2-2' }}.</p>
+                <ion-item><ion-label position="stacked">Amount refunded</ion-label><ion-input aria-label="Amount refunded" formControlName="amount" type="number" min="0.01" step="0.01"></ion-input></ion-item>
+                <ion-item><ion-label position="stacked">Refund date</ion-label><ion-input aria-label="Refund date" formControlName="refund_date" type="date"></ion-input></ion-item>
+                <ion-item><ion-label position="stacked">Method</ion-label><ion-select aria-label="Refund method" formControlName="method" interface="popover"><ion-select-option value="BANK_TRANSFER">Bank transfer</ion-select-option><ion-select-option value="PAYFAST">PayFast</ion-select-option><ion-select-option value="CARD">Card</ion-select-option><ion-select-option value="CASH">Cash</ion-select-option><ion-select-option value="OTHER">Other</ion-select-option></ion-select></ion-item>
+                <ion-item><ion-label position="stacked">Reference</ion-label><ion-input aria-label="Refund reference" formControlName="reference" maxlength="255"></ion-input></ion-item>
+                <ion-item><ion-label position="stacked">Reason</ion-label><ion-textarea aria-label="Reason for refund" formControlName="reason" maxlength="500" rows="2"></ion-textarea></ion-item>
+                <ion-button expand="block" (click)="submitRefund()" [disabled]="isSavingAdjustment || refundForm.invalid || +refundForm.value.amount > unrefundedAmount(refundForm.value.payment_id)">{{ isSavingAdjustment ? 'Saving...' : 'Review and record refund' }}</ion-button>
+                <ion-button expand="block" fill="clear" (click)="showRefundForm = false">Cancel</ion-button>
+              </div>
             </div>
+          </section>
+
+          <section *ngIf="invoice.credits?.length">
+            <div class="section-head"><h2 class="fv-section-label">Credit notes</h2></div>
+            <div class="panel"><ion-list lines="none"><ion-item *ngFor="let note of invoice.credits">
+              <ion-label><h3>{{ note.document_number }} · -{{ currencySymbol }} {{ note.total | number:'1.2-2' }}</h3><p>{{ note.issue_date | date:'d MMM y' }} · {{ note.reason }}</p></ion-label>
+              <ion-button slot="end" fill="clear" size="small" (click)="downloadCreditNote(note.id,note.document_number)">PDF</ion-button>
+            </ion-item></ion-list></div>
+          </section>
+
+          <section *ngIf="invoice.refunds?.length">
+            <div class="section-head"><h2 class="fv-section-label">Refunds</h2></div>
+            <div class="panel"><ion-list lines="none"><ion-item *ngFor="let refund of invoice.refunds">
+              <ion-label><h3>{{ currencySymbol }} {{ refund.amount | number:'1.2-2' }} returned</h3><p>{{ refund.refund_date | date:'d MMM y' }} · {{ refund.reason }}</p></ion-label>
+            </ion-item></ion-list></div>
           </section>
 
           <section *ngIf="invoice.tracking && invoice.tracking.length > 0">

@@ -20,6 +20,8 @@ interface PortalInvoice {
   vat_amount: number;
   total: number;
   amount_paid: string;
+  credit_total?: string;
+  refund_due?: string;
   balance_due: string;
   notes: string;
   terms_conditions: string;
@@ -97,10 +99,12 @@ export class InvoicePortalPage implements OnInit {
   get currencySymbol(): string {
     return this.invoice?.currency_symbol || 'R';
   }
+  get creditTotal(): number { return +(this.invoice?.credit_total ?? 0); }
+  get refundDue(): number { return +(this.invoice?.refund_due ?? 0); }
 
   getStatusColor(status: string): string {
     const map: Record<string, string> = {
-      DRAFT: 'medium', SENT: 'primary', PAID: 'success', OVERDUE: 'warning', CANCELLED: 'danger'
+      DRAFT: 'medium', SENT: 'primary', PAID: 'success', CREDITED:'success', OVERDUE: 'warning', CANCELLED: 'danger'
     };
     return map[status] ?? 'medium';
   }

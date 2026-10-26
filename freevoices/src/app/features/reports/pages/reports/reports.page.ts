@@ -383,7 +383,7 @@ export class ReportsPage implements OnInit, OnDestroy, AfterViewChecked {
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
     link.href = url;
-    link.download = `freevoices-payments-${this.selectedCurrency}.csv`;
+      link.download = `freevoices-cash-movements-${this.selectedCurrency}.csv`;
     document.body.appendChild(link);
     link.click();
     link.remove();

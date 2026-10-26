@@ -53,7 +53,7 @@
       <div class="reports-grid">
 
         <section class="report report-wide">
-          <div class="section-head"><h2 class="fv-section-label">Payment transactions</h2><p class="section-note">Recorded payments by payment date. Filter by period, customer and the selected currency; each row links to its invoice.</p></div>
+          <div class="section-head"><h2 class="fv-section-label">Cash movements</h2><p class="section-note">Recorded payments and refunds by date. Refunds appear as negative amounts. Filter by period, customer and currency.</p></div>
           <div class="panel panel-pad">
             <div class="ledger-filters">
               <label>From <input type="date" [value]="ledgerFrom" (change)="ledgerFrom = $any($event.target).value"></label>
@@ -63,10 +63,10 @@
               <ion-button fill="outline" (click)="exportLedgerCsv()" [disabled]="!ledger || ledger.rows.length === 0">Export CSV</ion-button>
             </div>
             <p role="alert" *ngIf="ledgerError">{{ ledgerError }}</p>
-            <p class="empty-msg" *ngIf="ledger && ledger.rows.length === 0">No recorded payments match these filters.</p>
+            <p class="empty-msg" *ngIf="ledger && ledger.rows.length === 0">No cash movements match these filters.</p>
             <div class="vat-table-scroll" *ngIf="ledger && ledger.rows.length">
-              <table class="vat-table"><thead><tr><th scope="col">Date</th><th scope="col">Customer</th><th scope="col">Invoice</th><th scope="col">Method</th><th scope="col" class="num">Amount</th></tr></thead>
-                <tbody><tr *ngFor="let row of ledger.rows"><td>{{ row.payment_date | date:'mediumDate' }}</td><td>{{ row.customer_name }}</td><td><a [href]="'/invoices/' + row.invoice_id">{{ row.document_number }}</a></td><td>{{ row.payment_method }}</td><td class="num">{{ selectedCurrency }} {{ row.amount | number:'1.2-2' }}</td></tr></tbody>
+              <table class="vat-table"><thead><tr><th scope="col">Date</th><th scope="col">Type</th><th scope="col">Customer</th><th scope="col">Invoice</th><th scope="col">Method</th><th scope="col" class="num">Amount</th></tr></thead>
+                <tbody><tr *ngFor="let row of ledger.rows"><td>{{ row.payment_date | date:'mediumDate' }}</td><td>{{ row.kind | titlecase }}</td><td>{{ row.customer_name }}</td><td><a [href]="'/invoices/' + row.invoice_id">{{ row.document_number }}</a></td><td>{{ row.payment_method }}</td><td class="num">{{ selectedCurrency }} {{ row.amount | number:'1.2-2' }}</td></tr></tbody>
               </table>
             </div>
           </div>
@@ -88,7 +88,7 @@
         </section>
 
         <section class="report report-wide">
-          <div class="section-head"><h2 class="fv-section-label">Customer statement</h2><p class="section-note">Issued invoice charges and recorded payments, with opening and closing balances. Choose a customer and optional dates above.</p></div>
+          <div class="section-head"><h2 class="fv-section-label">Customer statement</h2><p class="section-note">Issued invoices, payments, credit notes and refunds with opening and closing balances. Choose a customer and optional dates above.</p></div>
           <div class="panel panel-pad">
             <ion-button (click)="loadStatement()">Load statement</ion-button>
             <ion-button fill="outline" (click)="exportStatementCsv()" [disabled]="!statement">Export CSV</ion-button>

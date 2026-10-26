@@ -3,7 +3,7 @@ const axios = require('axios');
 const cron = require('node-cron');
 
 const EmailService = require('./src/services/email.service');
-const { buildInvoicePdf, buildQuotePdf, buildReceiptPdf } = require('./src/services/pdf.service');
+const { buildInvoicePdf, buildQuotePdf, buildReceiptPdf, buildCreditNotePdf, buildPaymentReceiptPdf } = require('./src/services/pdf.service');
 // The pool, the logger and the query helpers live in db.service so that CLI
 // tooling can share them without booting an HTTP listener.
 const { logger, executeQuery, getConnection, queryOn, withTransaction, closePool } = require('./src/services/db.service');
@@ -13,6 +13,7 @@ const { actualImageType } = require('./src/services/image-upload.service');
 const { TEMPLATES, previewCatalogueCsv } = require('./src/services/catalogue-import.service');
 const { HEADER: BANK_HEADER, previewBankCsv } = require('./src/services/bank-import.service');
 const { createDocument } = require('./src/services/document-create.service');
+const { money: adjustmentMoney, validDate: validAdjustmentDate, settlement: adjustmentSettlement, invoiceSettlement } = require('./src/services/invoice-adjustments.service');
 const { advanceDate, prepareDocument } = require('./src/services/billing-rules');
 const { captureDocumentSnapshot, hydrateDocumentSnapshots, documentSeller } = require('./src/services/document-snapshot.service');
 const { getNextDocumentNumber, lockDocumentOwner } = require('./src/services/document-number.service');
@@ -20,7 +21,7 @@ const { runMigrations, tableExists } = require('./src/services/migrations.servic
 const { anonymiseExpiredAccounts } = require('./src/services/retention.service');
 const {
   computeDocumentTotals, todayIso, normaliseTerms, resolveDueDate, formatDisplayDate,
-  balanceDue, isSettled, SETTLED_TOLERANCE,
+  SETTLED_TOLERANCE,
 } = require('./src/services/document-math');
 const {
   decryptUserRow, encryptField, decryptField, isEncryptionConfigured, verifyCanary,
@@ -72,6 +73,13 @@ const logoUpload = multer({
 });
 
 const app = express();
+
+async function withInvoiceFinancials(q, invoice) {
+  if (!invoice?.id) return invoice;
+  const state=await invoiceSettlement(q,invoice.id);
+  return { ...invoice,amount_paid:state.netPaid.toFixed(2),credit_total:state.creditTotal.toFixed(2),refund_total:state.refundTotal.toFixed(2),
+    adjusted_total:state.adjustedTotal.toFixed(2),balance_due:state.balanceDue.toFixed(2),refund_due:state.refundDue.toFixed(2) };
+}
 
 // Angular builds to `www` (angular.json outputPath, and capacitor.config.ts webDir).
 const WEB_ROOT = path.join(__dirname, 'www');
@@ -1000,7 +1008,12 @@ app.get('/api/invoices', authenticateToken, async (req, res) => {
   try {
     const search = req.query.search || '', status = req.query.status || '';
     const page = Math.max(1, parseInt(req.query.page) || 1), limit = Math.max(1, Math.min(100, parseInt(req.query.limit) || 20)), offset = (page - 1) * limit;
-    let sql = `SELECT d.id, d.document_number, d.status, d.issue_date, d.due_date, d.subtotal, d.vat_amount, d.total, d.created_at, d.notifications_muted, (SELECT code FROM currencies WHERE id=d.currency_id) AS currency_code, c.name AS customer_name, (SELECT COALESCE(SUM(p.amount), 0) FROM payments p WHERE p.document_id = d.id) AS amount_paid FROM documents d JOIN customers c ON c.id = d.customer_id WHERE d.user_id = ? AND d.type = 'INVOICE'`;
+    let sql = `SELECT d.id, d.document_number, d.status, d.issue_date, d.due_date, d.subtotal, d.vat_amount, d.total, d.created_at, d.notifications_muted,
+      (SELECT code FROM currencies WHERE id=d.currency_id) AS currency_code,c.name AS customer_name,
+      (SELECT COALESCE(SUM(p.amount),0) FROM payments p WHERE p.document_id=d.id)
+        -(SELECT COALESCE(SUM(r.amount),0) FROM payment_refunds r WHERE r.invoice_id=d.id) AS amount_paid,
+      (SELECT COALESCE(SUM(cn.total),0) FROM credit_notes cn WHERE cn.invoice_id=d.id) AS credit_total
+      FROM documents d JOIN customers c ON c.id=d.customer_id WHERE d.user_id=? AND d.type='INVOICE'`;
     let cntSql = `SELECT COUNT(*) AS total FROM documents d JOIN customers c ON c.id = d.customer_id WHERE d.user_id = ? AND d.type = 'INVOICE'`;
     const params = [req.user.id], cntParams = [req.user.id];
     if (status) { sql += ' AND d.status = ?'; cntSql += ' AND d.status = ?'; params.push(status); cntParams.push(status); }
@@ -1084,20 +1097,25 @@ app.post('/api/invoices/preview', authenticateToken, validate(invoiceRules), asy
 app.get('/api/invoices/:id', authenticateToken, async (req, res) => {
   try {
     const { id } = req.params;
-    const [invoices, items, tracking, payments, deliveries] = await Promise.all([
+    const [invoices, items, tracking, payments, deliveries, settlement, credits, refunds] = await Promise.all([
       queryDecrypted(decryptCustomerJoin, `SELECT d.*, d.notifications_muted, c.name AS customer_name, c.email AS customer_email, c.billing_address AS customer_billing_address, c.vat_number AS customer_vat_number, cur.symbol AS currency_symbol, cur.code AS currency_code, q.document_number AS source_quote_number FROM documents d JOIN customers c ON c.id = d.customer_id LEFT JOIN currencies cur ON cur.id = d.currency_id LEFT JOIN documents q ON q.id = d.source_quote_id AND q.user_id = d.user_id WHERE d.id = ? AND d.user_id = ? AND d.type = 'INVOICE'`, [id, req.user.id]),
       executeQuery('SELECT * FROM document_items WHERE document_id = ? ORDER BY id ASC', [id]),
       executeQuery('SELECT id, document_id, event_type, event_date FROM document_tracking WHERE document_id = ? ORDER BY event_date ASC', [id]),
       queryDecrypted(decryptPaymentRow, 'SELECT * FROM payments WHERE document_id = ? ORDER BY payment_date DESC', [id]),
-      executeQuery('SELECT id,kind,status,attempts,last_error,created_at,accepted_at FROM email_outbox WHERE document_id=? AND user_id=? ORDER BY id DESC LIMIT 30',[id,req.user.id])
+      executeQuery('SELECT id,kind,status,attempts,last_error,created_at,accepted_at FROM email_outbox WHERE document_id=? AND user_id=? ORDER BY id DESC LIMIT 30',[id,req.user.id]),
+      invoiceSettlement(executeQuery,id),
+      executeQuery('SELECT id,document_number,issue_date,reason,description,subtotal,vat_amount,total FROM credit_notes WHERE invoice_id=? ORDER BY id',[id]),
+      executeQuery('SELECT id,payment_id,amount,refund_date,method,reference,reason FROM payment_refunds WHERE invoice_id=? ORDER BY id',[id])
     ]);
     if (invoices.length === 0) return res.status(404).json({ message: 'Invoice not found' });
     // Computed here rather than in the client so every screen agrees on what
     // is still owed.
-    const amount_paid = payments.reduce((s, p) => s + Number(p.amount), 0);
     res.json({
-      ...invoices[0], notifications_muted: !!invoices[0].notifications_muted, items, tracking, payments, email_deliveries: deliveries,
-      amount_paid: amount_paid.toFixed(2), balance_due: balanceDue(invoices[0].total, amount_paid).toFixed(2),
+      ...invoices[0], notifications_muted: !!invoices[0].notifications_muted, items, tracking, payments, email_deliveries: deliveries,credits,
+      adjustments_available:process.env.NODE_ENV==='test' && process.env.INVOICE_ADJUSTMENTS_ENABLED==='true',
+      refunds:refunds.map(row=>({...row,reference:decryptField('payment_refunds','reference',row.reference)})),
+      amount_paid: settlement.netPaid.toFixed(2), credit_total:settlement.creditTotal.toFixed(2),refund_total:settlement.refundTotal.toFixed(2),
+      adjusted_total:settlement.adjustedTotal.toFixed(2),balance_due:settlement.balanceDue.toFixed(2),refund_due:settlement.refundDue.toFixed(2),
     });
   } catch (error) { logger.error('Error fetching invoice:', error); res.status(500).json({ message: 'Failed to fetch invoice' }); }
 });
@@ -1120,12 +1138,28 @@ app.get('/api/invoices/:id/pdf', authenticateToken, async (req, res) => {
     // this invoice will have by the time a customer reads the PDF.
     const effectiveStatus = markSent && invoices[0].status === 'DRAFT' ? 'SENT' : invoices[0].status;
     const pay_url = await resolvePayUrl({ ...invoices[0], status: effectiveStatus }, user);
-    const pdfBuffer = await buildInvoicePdf({ ...invoices[0], pay_url }, items, user);
+    const pdfBuffer = await buildInvoicePdf({ ...await withInvoiceFinancials(executeQuery,invoices[0]), pay_url }, items, user);
     await executeQuery(`INSERT INTO document_tracking (document_id, event_type) VALUES (?, 'DOWNLOADED')`, [id]);
 
     res.set({ 'Content-Type': 'application/pdf', 'Content-Disposition': `attachment; filename="${invoices[0].document_number}.pdf"`, 'Content-Length': pdfBuffer.length });
     res.send(pdfBuffer);
   } catch (error) { logger.error('Error generating invoice PDF:', error); res.status(error.status || 500).json({ message: error.status ? error.message : 'Failed to generate PDF' }); }
+});
+
+app.get('/api/invoices/:id/payments/:paymentId/receipt',authenticateToken,async(req,res)=>{
+  try {
+    const [invoice]=await queryDecrypted(decryptCustomerJoin,`SELECT d.id,d.document_number,d.issue_date,c.name AS customer_name,c.billing_address AS customer_billing_address,cur.symbol AS currency_symbol
+      FROM documents d JOIN customers c ON c.id=d.customer_id JOIN currencies cur ON cur.id=d.currency_id
+      WHERE d.id=? AND d.user_id=? AND d.type='INVOICE'`,[req.params.id,req.user.id]);
+    if (!invoice) return res.status(404).json({message:'Invoice not found'});
+    const [payment]=await queryDecrypted(decryptPaymentRow,'SELECT id,amount,payment_date,payment_method,transaction_reference FROM payments WHERE id=? AND document_id=?',[req.params.paymentId,invoice.id]);
+    if (!payment) return res.status(404).json({message:'Payment not found'});
+    const [user]=await queryDecrypted(decryptUserRow,'SELECT * FROM users WHERE id=?',[req.user.id]);
+    const seller=await documentSeller(executeQuery,invoice.id,user);
+    const [historical]=await hydrateDocumentSnapshots(executeQuery,[invoice]);
+    const pdf=await buildPaymentReceiptPdf(payment,historical,seller);
+    res.set({'Content-Type':'application/pdf','Content-Disposition':`attachment; filename="RCPT-${payment.id}.pdf"`,'Content-Length':pdf.length,'Cache-Control':'no-store'}).send(pdf);
+  } catch(error) { logger.error('Payment receipt failed:',error); res.status(500).json({message:'Could not generate payment receipt'}); }
 });
 
 app.get('/api/invoices/:id/receipt', authenticateToken, async (req, res) => {
@@ -1139,10 +1173,11 @@ app.get('/api/invoices/:id/receipt', authenticateToken, async (req, res) => {
       queryDecrypted(decryptPaymentRow, 'SELECT * FROM payments WHERE document_id = ? ORDER BY payment_date DESC', [id])
     ]);
     if (invoices.length === 0) return res.status(404).json({ message: 'Invoice not found' });
-    if (invoices[0].status !== 'PAID') return res.status(400).json({ message: 'Receipt is only available for paid invoices' });
+    const invoice=await withInvoiceFinancials(executeQuery,invoices[0]);
+    if (invoice.status !== 'PAID' || Number(invoice.amount_paid)<=0) return res.status(400).json({ message: 'A paid invoice with a recorded payment is required for a full receipt' });
     const logoRelPath = logoRows[0]?.setting_value || null;
     const user = await documentSeller(executeQuery, id, { ...decryptUserRow(users[0]), logo_path: logoRelPath ? path.join(__dirname, logoRelPath) : null });
-    const pdfBuffer = await buildReceiptPdf(invoices[0], items, user, payments);
+    const pdfBuffer = await buildReceiptPdf(invoice, items, user, payments);
     res.set({ 'Content-Type': 'application/pdf', 'Content-Disposition': `attachment; filename="RECEIPT-${invoices[0].document_number}.pdf"`, 'Content-Length': pdfBuffer.length });
     res.send(pdfBuffer);
   } catch (error) { logger.error('Error generating receipt PDF:', error); res.status(500).json({ message: 'Failed to generate receipt' }); }
@@ -1159,8 +1194,8 @@ app.post('/api/invoices/:id/send-receipt', authenticateToken, validate([body('re
       queryDecrypted(decryptPaymentRow, 'SELECT * FROM payments WHERE document_id = ? ORDER BY payment_date DESC', [id])
     ]);
     if (invoices.length === 0) return res.status(404).json({ message: 'Invoice not found' });
-    const invoice = invoices[0];
-    if (invoice.status !== 'PAID') return res.status(400).json({ message: 'Receipt can only be sent for paid invoices' });
+    const invoice = await withInvoiceFinancials(executeQuery,invoices[0]);
+    if (invoice.status !== 'PAID' || Number(invoice.amount_paid)<=0) return res.status(400).json({ message: 'A paid invoice with a recorded payment is required for a full receipt' });
     if (!invoice.customer_email) return res.status(400).json({ message: 'This customer has no email address on file' });
     const logoRelPath = logoRows[0]?.setting_value || null;
     const user = await documentSeller(executeQuery, id, { ...decryptUserRow(users[0]), logo_path: logoRelPath ? path.join(__dirname, logoRelPath) : null });
@@ -1245,7 +1280,7 @@ async function queueInvoiceEmail(id,userId,key=`invoice:${id}:initial`) {
       executeQuery("SELECT setting_value FROM settings WHERE user_id = ? AND setting_key = 'company_logo'", [userId])
     ]);
     if (invoices.length === 0) throw Object.assign(new Error('Invoice not found'),{status:404});
-    const invoice = invoices[0];
+    const invoice = await withInvoiceFinancials(executeQuery,invoices[0]);
     const logoRelPath = logoRows[0]?.setting_value || null;
     const user = await documentSeller(executeQuery, id, { ...decryptUserRow(users[0]), logo_path: logoRelPath ? path.join(__dirname, logoRelPath) : null });
     if (!['SENT','OVERDUE'].includes(invoice.status)) throw Object.assign(new Error('Only unpaid issued invoices can be emailed'),{status:400});
@@ -1292,7 +1327,7 @@ app.post('/api/invoices/:id/mark-paid', authenticateToken, validate([
     const invoices = await executeQuery(`SELECT id, total, status FROM documents WHERE id = ? AND user_id = ? AND type = 'INVOICE'`, [id, req.user.id]);
     if (invoices.length === 0) return res.status(404).json({ message: 'Invoice not found' });
     if (invoices[0].status === 'CANCELLED') return res.status(400).json({ message: 'Cannot record payment on a cancelled invoice' });
-    if (invoices[0].status === 'PAID') return res.status(400).json({ message: 'This invoice is already paid in full' });
+    if (['PAID','CREDITED'].includes(invoices[0].status)) return res.status(400).json({ message: 'This invoice is already settled' });
     // Ownership was established by the SELECT above, so the shared helper does
     // not re-check user_id. It runs all three writes in one transaction, which
     // this route previously did not.
@@ -1318,13 +1353,115 @@ app.post('/api/invoices/:id/mark-paid', authenticateToken, validate([
   } catch (error) { logger.error('Error recording payment:', error); res.status(error.status || 500).json({ message: error.status ? error.message : 'Failed to record payment' }); }
 });
 
+// Keep adjustment writes closed until every balance, PDF, portal and report path
+// consumes the same ledger. An isolated API would silently misstate invoices.
+const adjustmentGate = (_req,res,next) => process.env.NODE_ENV === 'test' && process.env.INVOICE_ADJUSTMENTS_ENABLED === 'true'
+  ? next() : res.status(503).json({message:'Invoice adjustments are not available yet'});
+const validAdjustmentKey = value => typeof value==='string' && /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value);
+
+app.get('/api/invoices/:id/adjustments', authenticateToken, adjustmentGate, async (req,res) => {
+  try {
+    const [invoice] = await executeQuery("SELECT id FROM documents WHERE id=? AND user_id=? AND type='INVOICE'",[req.params.id,req.user.id]);
+    if (!invoice) return res.status(404).json({message:'Invoice not found'});
+    const [credits,refunds,summary] = await Promise.all([
+      executeQuery('SELECT id,document_number,issue_date,reason,description,subtotal,vat_amount,total,created_at FROM credit_notes WHERE invoice_id=? ORDER BY id',[invoice.id]),
+      executeQuery('SELECT id,payment_id,amount,refund_date,method,reference,reason,created_at FROM payment_refunds WHERE invoice_id=? ORDER BY id',[invoice.id]),
+      invoiceSettlement(executeQuery,invoice.id),
+    ]);
+    res.json({credits,refunds:refunds.map(row=>({...row,reference:decryptField('payment_refunds','reference',row.reference)})),summary});
+  } catch(error) { logger.error('Error loading invoice adjustments:',error); res.status(500).json({message:'Could not load adjustments'}); }
+});
+
+app.get('/api/invoices/:id/credit-notes/:noteId/pdf',authenticateToken,adjustmentGate,async(req,res)=>{
+  try {
+    const [row]=await queryDecrypted(decryptCustomerJoin,`SELECT cn.*,d.document_number AS invoice_number,d.issue_date AS invoice_issue_date,
+      c.name AS customer_name,c.billing_address AS customer_billing_address,cur.symbol AS currency_symbol
+      FROM credit_notes cn JOIN documents d ON d.id=cn.invoice_id JOIN customers c ON c.id=d.customer_id
+      JOIN currencies cur ON cur.id=d.currency_id WHERE cn.id=? AND cn.invoice_id=? AND cn.user_id=? AND d.user_id=?`,[req.params.noteId,req.params.id,req.user.id,req.user.id]);
+    if (!row) return res.status(404).json({message:'Credit note not found'});
+    const [user]=await queryDecrypted(decryptUserRow,'SELECT * FROM users WHERE id=?',[req.user.id]);
+    const seller=await documentSeller(executeQuery,req.params.id,user);
+    const [invoice]=await hydrateDocumentSnapshots(executeQuery,[{id:Number(req.params.id),document_number:row.invoice_number,issue_date:row.invoice_issue_date,customer_name:row.customer_name,customer_billing_address:row.customer_billing_address,currency_symbol:row.currency_symbol}]);
+    const pdf=await buildCreditNotePdf(row,invoice,seller);
+    res.set({'Content-Type':'application/pdf','Content-Disposition':`attachment; filename="${row.document_number}.pdf"`,'Content-Length':pdf.length,'Cache-Control':'no-store'}).send(pdf);
+  } catch(error) { logger.error('Error generating credit note PDF:',error); res.status(500).json({message:'Could not generate credit note'}); }
+});
+
+app.post('/api/invoices/:id/credit-notes', authenticateToken, adjustmentGate, async (req,res) => {
+  try {
+    if (!validAdjustmentKey(req.body.request_key)) return res.status(422).json({message:'A request key is required'});
+    const result=await withTransaction(async q => {
+      const [invoice]=await q("SELECT id,status,subtotal,vat_amount,total FROM documents WHERE id=? AND user_id=? AND type='INVOICE' FOR UPDATE",[req.params.id,req.user.id]);
+      if (!invoice) throw Object.assign(new Error('Invoice not found'),{status:404});
+      if (['DRAFT','CANCELLED'].includes(invoice.status)) throw Object.assign(new Error('Issue the invoice before crediting it'),{status:422});
+      const subtotal=adjustmentMoney(req.body.subtotal,'Subtotal');
+      const vat=adjustmentMoney(req.body.vat_amount,'VAT');
+      const total=adjustmentMoney(req.body.total,'Total');
+      if (total<=0 || Math.round((subtotal+vat)*100)!==Math.round(total*100)) throw Object.assign(new Error('Subtotal plus VAT must equal a positive total'),{status:422});
+      const reason=String(req.body.reason || '').trim();
+      const description=String(req.body.description || '').trim();
+      if (!reason || reason.length>500 || !description || description.length>1000) throw Object.assign(new Error('A reason and description are required'),{status:422});
+      const [existing]=await q('SELECT id,invoice_id,document_number,subtotal,vat_amount,total,reason,description FROM credit_notes WHERE user_id=? AND request_key=?',[req.user.id,req.body.request_key]);
+      if (existing) {
+        if (Number(existing.invoice_id)!==Number(invoice.id) || Number(existing.subtotal)!==subtotal || Number(existing.vat_amount)!==vat || Number(existing.total)!==total || existing.reason!==reason || existing.description!==description) throw Object.assign(new Error('Request key was used for a different credit note'),{status:409});
+        return {id:existing.id,document_number:existing.document_number,summary:await invoiceSettlement(q,invoice.id),replayed:true};
+      }
+      const [prior]=await q('SELECT COALESCE(SUM(subtotal),0) AS subtotal,COALESCE(SUM(vat_amount),0) AS vat,COALESCE(SUM(total),0) AS total FROM credit_notes WHERE invoice_id=?',[invoice.id]);
+      if (subtotal+Number(prior.subtotal)>Number(invoice.subtotal)+0.001 || vat+Number(prior.vat)>Number(invoice.vat_amount)+0.001 || total+Number(prior.total)>Number(invoice.total)+0.001) throw Object.assign(new Error('Credit exceeds the original invoice amounts'),{status:422});
+      await captureDocumentSnapshot(q,invoice.id);
+      const issued=await q('INSERT INTO credit_notes(user_id,invoice_id,request_key,issue_date,reason,description,subtotal,vat_amount,total) VALUES(?,?,?,?,?,?,?,?,?)',[req.user.id,invoice.id,req.body.request_key,todayIso(),reason,description,subtotal.toFixed(2),vat.toFixed(2),total.toFixed(2)]);
+      const number=`CN-${String(issued.insertId).padStart(8,'0')}`;
+      await q('UPDATE credit_notes SET document_number=? WHERE id=?',[number,issued.insertId]);
+      await q("INSERT INTO document_tracking(document_id,event_type) VALUES(?,'CREDIT_NOTE')",[invoice.id]);
+      const summary=await invoiceSettlement(q,invoice.id);
+      await q("UPDATE documents SET status=CASE WHEN ?=0 AND ?=0 THEN 'CREDITED' WHEN ?=0 THEN 'PAID' WHEN due_date<CURDATE() THEN 'OVERDUE' ELSE 'SENT' END,updated_at=NOW() WHERE id=?",[summary.balanceDue,summary.adjustedTotal,summary.balanceDue,invoice.id]);
+      return {id:issued.insertId,document_number:number,summary};
+    });
+    res.status(result.replayed ? 200 : 201).json(result);
+  } catch(error) { logger.error('Error issuing credit note:',error); res.status(error.status || 500).json({message:error.status ? error.message : 'Could not issue credit note'}); }
+});
+
+app.post('/api/invoices/:id/refunds', authenticateToken, adjustmentGate, async (req,res) => {
+  try {
+    if (!validAdjustmentKey(req.body.request_key)) return res.status(422).json({message:'A request key is required'});
+    const result=await withTransaction(async q => {
+      const [invoice]=await q("SELECT id,status FROM documents WHERE id=? AND user_id=? AND type='INVOICE' FOR UPDATE",[req.params.id,req.user.id]);
+      if (!invoice) throw Object.assign(new Error('Invoice not found'),{status:404});
+      const [payment]=await q('SELECT id,amount FROM payments WHERE id=? AND document_id=?',[req.body.payment_id,invoice.id]);
+      if (!payment) throw Object.assign(new Error('Payment not found on this invoice'),{status:404});
+      const amount=adjustmentMoney(req.body.amount,'Refund');
+      const reason=String(req.body.reason || '').trim();
+      const method=String(req.body.method || '').trim();
+      const reference=String(req.body.reference || '').trim();
+      if (!reason || reason.length>500 || !['BANK_TRANSFER','PAYFAST','CARD','CASH','OTHER'].includes(method) || reference.length>255) throw Object.assign(new Error('A reason and valid refund method are required'),{status:422});
+      const date=String(req.body.refund_date || '');
+      if (!validAdjustmentDate(date)) throw Object.assign(new Error('A valid refund date is required'),{status:422});
+      const [existing]=await q("SELECT id,invoice_id,payment_id,amount,DATE_FORMAT(refund_date,'%Y-%m-%d') AS refund_date,method,reference,reason FROM payment_refunds WHERE user_id=? AND request_key=?",[req.user.id,req.body.request_key]);
+      if (existing) {
+        if (Number(existing.invoice_id)!==Number(invoice.id) || Number(existing.payment_id)!==Number(payment.id) || Number(existing.amount)!==amount || existing.refund_date!==date || existing.method!==method || (decryptField('payment_refunds','reference',existing.reference) || '')!==reference || existing.reason!==reason) throw Object.assign(new Error('Request key was used for a different refund'),{status:409});
+        return {id:existing.id,summary:await invoiceSettlement(q,invoice.id),replayed:true};
+      }
+      const [prior]=await q('SELECT COALESCE(SUM(amount),0) AS amount FROM payment_refunds WHERE payment_id=?',[payment.id]);
+      if (amount<=0 || amount+Number(prior.amount)>Number(payment.amount)+0.001) throw Object.assign(new Error('Refund exceeds the unrefunded payment'),{status:422});
+      const inserted=await q('INSERT INTO payment_refunds(user_id,invoice_id,payment_id,request_key,amount,refund_date,method,reference,reason) VALUES(?,?,?,?,?,?,?,?,?)',[req.user.id,invoice.id,payment.id,req.body.request_key,amount.toFixed(2),date,method,encryptField('payment_refunds','reference',reference || null),reason]);
+      await q("INSERT INTO document_tracking(document_id,event_type) VALUES(?,'REFUND')",[invoice.id]);
+      const summary=await invoiceSettlement(q,invoice.id);
+      await q("UPDATE documents SET status=CASE WHEN ?=0 AND ?=0 THEN 'CREDITED' WHEN ?=0 THEN 'PAID' WHEN due_date<CURDATE() THEN 'OVERDUE' ELSE 'SENT' END,updated_at=NOW() WHERE id=?",[summary.balanceDue,summary.adjustedTotal,summary.balanceDue,invoice.id]);
+      return {id:inserted.insertId,summary};
+    });
+    res.status(result.replayed ? 200 : 201).json(result);
+  } catch(error) { logger.error('Error recording refund:',error); res.status(error.status || 500).json({message:error.status ? error.message : 'Could not record refund'}); }
+});
+
 app.post('/api/invoices/:id/cancel', authenticateToken, async (req, res) => {
   try {
     await withTransaction(async q => {
       const [invoice] = await q("SELECT id,status FROM documents WHERE id=? AND user_id=? AND type='INVOICE' FOR UPDATE", [req.params.id, req.user.id]);
       if (!invoice) throw Object.assign(new Error('Invoice not found'), { status: 404 });
       const [{ paid }] = await q('SELECT COALESCE(SUM(amount),0) AS paid FROM payments WHERE document_id=?', [invoice.id]);
-      if (Number(paid)>0 || invoice.status==='PAID') throw Object.assign(new Error('This invoice has payments. Resolve the payment with a credit/refund before cancellation.'), { status: 400 });
+      if (Number(paid)>0 || ['PAID','CREDITED'].includes(invoice.status)) throw Object.assign(new Error('This invoice has payments or credits and cannot be cancelled'), { status: 400 });
+      const [{ credits }] = await q('SELECT COUNT(*) AS credits FROM credit_notes WHERE invoice_id=?',[invoice.id]);
+      if (Number(credits)>0) throw Object.assign(new Error('This invoice has issued credit notes and cannot be cancelled'),{status:400});
       if (invoice.status==='CANCELLED') throw Object.assign(new Error('Invoice is already cancelled'), { status: 400 });
       await q("UPDATE documents SET status='CANCELLED',is_recurring=0,recurrence_next_date=NULL,updated_at=NOW() WHERE id=?", [invoice.id]);
       await q("INSERT INTO document_tracking(document_id,event_type) VALUES(?,'CANCELLED')", [invoice.id]);
@@ -1701,12 +1838,15 @@ app.get('/api/bank-imports/:id/suggestions',authenticateToken,async(req,res)=>{
     if (row.status!=='PENDING' || Number(row.amount)<=0) return res.json([]);
     const reference=decryptField('bank_import_rows','reference',row.reference) || '';
     const description=decryptField('bank_import_rows','description',row.description) || '';
-    const invoices=await executeQuery(`SELECT d.id,d.document_number,d.total,c.name AS customer_name,COALESCE(p.paid,0) AS amount_paid
+    const invoices=await executeQuery(`SELECT d.id,d.document_number,d.total,c.name AS customer_name,
+      COALESCE(p.paid,0)-COALESCE(r.refunded,0) AS amount_paid,COALESCE(cn.credited,0) AS credited
       FROM documents d JOIN customers c ON c.id=d.customer_id LEFT JOIN (SELECT document_id,SUM(amount) AS paid FROM payments GROUP BY document_id) p ON p.document_id=d.id
-      WHERE d.user_id=? AND d.currency_id=? AND d.type='INVOICE' AND d.status IN ('SENT','OVERDUE','DRAFT') AND d.total>COALESCE(p.paid,0)
+      LEFT JOIN (SELECT invoice_id,SUM(total) AS credited FROM credit_notes GROUP BY invoice_id) cn ON cn.invoice_id=d.id
+      LEFT JOIN (SELECT invoice_id,SUM(amount) AS refunded FROM payment_refunds GROUP BY invoice_id) r ON r.invoice_id=d.id
+      WHERE d.user_id=? AND d.currency_id=? AND d.type='INVOICE' AND d.status IN ('SENT','OVERDUE','DRAFT') AND d.total-COALESCE(cn.credited,0)>COALESCE(p.paid,0)-COALESCE(r.refunded,0)
       ORDER BY d.id DESC LIMIT 500`,[req.user.id,row.currency_id]);
     const suggestions=invoices.map(invoice=>{
-      const balance=Number(invoice.total)-Number(invoice.amount_paid);
+      const balance=Number(invoice.total)-Number(invoice.credited)-Number(invoice.amount_paid);
       const match=(reference+' '+description).toLowerCase().includes(invoice.document_number.toLowerCase());
       const exact=Math.abs(balance-Number(row.amount))<0.005;
       return { invoice_id:invoice.id,document_number:invoice.document_number,customer_name:invoice.customer_name,balance_due:balance.toFixed(2),reason:match && exact ? 'Reference and amount' : match ? 'Invoice reference' : exact ? 'Exact balance' : null,score:(match ? 2 : 0)+(exact ? 1 : 0) };
@@ -1751,7 +1891,9 @@ app.get('/api/dashboard/summary', authenticateToken, async (req, res) => {
       // Money actually received this month, by payment date. Summing PAID
       // invoice totals counted a R1,150 invoice as R1,150 of revenue after
       // only R400 had come in, and ignored part payments entirely.
-      executeQuery(`SELECT COALESCE(SUM(p.amount), 0) AS monthRevenue FROM payments p JOIN documents d ON d.id = p.document_id WHERE d.user_id = ? AND d.type = 'INVOICE' AND d.currency_id=? AND p.payment_date >= DATE_FORMAT(?, '%Y-%m-01') AND p.payment_date <= ?`, [userId,currency.id,dashboardDate,dashboardDate]),
+      executeQuery(`SELECT
+        (SELECT COALESCE(SUM(p.amount),0) FROM payments p JOIN documents d ON d.id=p.document_id WHERE d.user_id=? AND d.type='INVOICE' AND d.currency_id=? AND p.payment_date>=DATE_FORMAT(?,'%Y-%m-01') AND p.payment_date<=?)
+        -(SELECT COALESCE(SUM(r.amount),0) FROM payment_refunds r JOIN documents d ON d.id=r.invoice_id WHERE d.user_id=? AND d.type='INVOICE' AND d.currency_id=? AND r.refund_date>=DATE_FORMAT(?,'%Y-%m-01') AND r.refund_date<=?) AS monthRevenue`,[userId,currency.id,dashboardDate,dashboardDate,userId,currency.id,dashboardDate,dashboardDate]),
       executeQuery('SELECT COUNT(*) AS total FROM customers WHERE user_id = ? AND active = 1', [userId]),
       executeQuery(`SELECT COUNT(*) AS total FROM documents d WHERE user_id = ? AND type = 'INVOICE' AND (status IN ('SENT','OVERDUE') OR (status='DRAFT' AND EXISTS(SELECT 1 FROM payments p WHERE p.document_id=d.id)))`, [userId]),
       executeQuery(`SELECT COUNT(*) AS total FROM documents WHERE user_id = ? AND type = 'INVOICE' AND status = 'OVERDUE' AND notifications_muted = 0`, [userId]),
@@ -1766,11 +1908,16 @@ app.get('/api/dashboard/summary', authenticateToken, async (req, res) => {
         COALESCE(SUM(CASE WHEN due_date < ? AND due_date >= DATE_SUB(?, INTERVAL 30 DAY) THEN balance ELSE 0 END),0) AS days_1_30,
         COALESCE(SUM(CASE WHEN due_date < DATE_SUB(?, INTERVAL 30 DAY) AND due_date >= DATE_SUB(?, INTERVAL 60 DAY) THEN balance ELSE 0 END),0) AS days_31_60,
         COALESCE(SUM(CASE WHEN due_date < DATE_SUB(?, INTERVAL 60 DAY) THEN balance ELSE 0 END),0) AS days_61_plus
-        FROM (SELECT d.due_date, GREATEST(d.total-(SELECT COALESCE(SUM(p.amount),0) FROM payments p WHERE p.document_id=d.id),0) AS balance
+        FROM (SELECT d.due_date, GREATEST(d.total
+          -(SELECT COALESCE(SUM(cn.total),0) FROM credit_notes cn WHERE cn.invoice_id=d.id)
+          -(SELECT COALESCE(SUM(p.amount),0) FROM payments p WHERE p.document_id=d.id)
+          +(SELECT COALESCE(SUM(r.amount),0) FROM payment_refunds r WHERE r.invoice_id=d.id),0) AS balance
           FROM documents d WHERE d.user_id=? AND d.type='INVOICE' AND d.currency_id=? AND (d.status IN ('SENT','OVERDUE') OR (d.status='DRAFT' AND EXISTS(SELECT 1 FROM payments p WHERE p.document_id=d.id)))) balances`,
         [dashboardDate,dashboardDate,dashboardDate,dashboardDate,dashboardDate,dashboardDate,userId,currency.id]),
       executeQuery(`SELECT d.id,d.document_number,c.name AS customer_name,d.due_date,
-        GREATEST(d.total-(SELECT COALESCE(SUM(p.amount),0) FROM payments p WHERE p.document_id=d.id),0) AS balance_due
+        GREATEST(d.total-(SELECT COALESCE(SUM(cn.total),0) FROM credit_notes cn WHERE cn.invoice_id=d.id)
+          -(SELECT COALESCE(SUM(p.amount),0) FROM payments p WHERE p.document_id=d.id)
+          +(SELECT COALESCE(SUM(r.amount),0) FROM payment_refunds r WHERE r.invoice_id=d.id),0) AS balance_due
         FROM documents d JOIN customers c ON c.id=d.customer_id
         WHERE d.user_id=? AND d.type='INVOICE' AND d.currency_id=? AND (d.status IN ('SENT','OVERDUE') OR (d.status='DRAFT' AND EXISTS(SELECT 1 FROM payments p WHERE p.document_id=d.id)))
         HAVING balance_due>0 ORDER BY d.due_date IS NULL,d.due_date ASC,d.id ASC LIMIT 5`,[userId,currency.id])
@@ -2090,17 +2237,20 @@ app.get('/api/reports/payments-ledger',authenticateToken,async(req,res)=>{
       const owned = await executeQuery('SELECT id FROM customers WHERE id=? AND user_id=?',[customer_id,req.user.id]);
       if (!owned.length) return res.status(404).json({message:'Customer not found'});
     }
-    let sql = `SELECT p.id,p.payment_date,p.amount,p.payment_method,p.transaction_reference,d.id AS invoice_id,d.document_number,c.id AS customer_id,c.name AS customer_name
-      FROM payments p JOIN documents d ON d.id=p.document_id JOIN customers c ON c.id=d.customer_id
+    let sql = `SELECT cash.id,cash.kind,cash.payment_date,cash.amount,cash.payment_method,cash.transaction_reference,d.id AS invoice_id,d.document_number,c.id AS customer_id,c.name AS customer_name
+      FROM (SELECT p.id,'PAYMENT' AS kind,p.document_id AS invoice_id,p.payment_date,p.amount,p.payment_method,p.transaction_reference FROM payments p
+        UNION ALL SELECT r.id,'REFUND' AS kind,r.invoice_id,r.refund_date AS payment_date,-r.amount AS amount,r.method AS payment_method,r.reference AS transaction_reference FROM payment_refunds r) cash
+      JOIN documents d ON d.id=cash.invoice_id JOIN customers c ON c.id=d.customer_id
       WHERE d.user_id=? AND d.type='INVOICE' AND d.currency_id=?`;
     const params = [req.user.id,currency.id];
-    if (from) { sql += ' AND p.payment_date>=?'; params.push(from); }
-    if (to) { sql += ' AND p.payment_date<=?'; params.push(to); }
+    if (from) { sql += ' AND cash.payment_date>=?'; params.push(from); }
+    if (to) { sql += ' AND cash.payment_date<=?'; params.push(to); }
     if (customer_id) { sql += ' AND c.id=?'; params.push(customer_id); }
-    sql += ' ORDER BY p.payment_date ASC,p.id ASC LIMIT 1001';
+    sql += ' ORDER BY cash.payment_date ASC,cash.kind ASC,cash.id ASC LIMIT 1001';
     const rows = await executeQuery(sql,params);
-    if (rows.length > 1000) return res.status(422).json({message:'Too many payments. Narrow the date or customer filter.'});
-    res.set('Cache-Control','no-store').json({ currency_code:currency.code, from:from || null,to:to || null,rows:rows.map(decryptPaymentRow) });
+    if (rows.length > 1000) return res.status(422).json({message:'Too many cash movements. Narrow the date or customer filter.'});
+    res.set('Cache-Control','no-store').json({ currency_code:currency.code, from:from || null,to:to || null,
+      rows:rows.map(row=>row.kind==='REFUND' ? {...row,transaction_reference:decryptField('payment_refunds','reference',row.transaction_reference)} : decryptPaymentRow(row)) });
   } catch(error) { logger.error('Error fetching payments ledger:',error); res.status(error.status || 500).json({message:error.status ? error.message : 'Report could not be loaded'}); }
 });
 
@@ -2110,13 +2260,16 @@ app.get('/api/reports/ageing',authenticateToken,async(req,res)=>{
     const customerId = req.query.customer_id;
     if (customerId && !/^[1-9]\d*$/.test(String(customerId))) return res.status(422).json({message:'Choose a valid customer'});
     let sql = `SELECT d.id AS invoice_id,d.document_number,d.due_date,d.total,c.id AS customer_id,c.name AS customer_name,
-      COALESCE(p.paid,0) AS amount_paid,ROUND(GREATEST(d.total-COALESCE(p.paid,0),0),2) AS balance_due,
+      COALESCE(p.paid,0)-COALESCE(r.refunded,0) AS amount_paid,COALESCE(cn.credited,0) AS credit_total,
+      ROUND(GREATEST(d.total-COALESCE(cn.credited,0)-COALESCE(p.paid,0)+COALESCE(r.refunded,0),0),2) AS balance_due,
       CASE WHEN d.due_date IS NULL OR d.due_date>=? THEN 'current' WHEN DATEDIFF(?,d.due_date)<=30 THEN 'days1to30'
            WHEN DATEDIFF(?,d.due_date)<=60 THEN 'days31to60' ELSE 'days61plus' END AS band
       FROM documents d JOIN customers c ON c.id=d.customer_id
       LEFT JOIN (SELECT document_id,SUM(amount) AS paid FROM payments GROUP BY document_id) p ON p.document_id=d.id
+      LEFT JOIN (SELECT invoice_id,SUM(total) AS credited FROM credit_notes GROUP BY invoice_id) cn ON cn.invoice_id=d.id
+      LEFT JOIN (SELECT invoice_id,SUM(amount) AS refunded FROM payment_refunds GROUP BY invoice_id) r ON r.invoice_id=d.id
       WHERE d.user_id=? AND d.currency_id=? AND d.type='INVOICE' AND
-        (d.status IN ('SENT','OVERDUE') OR (d.status='DRAFT' AND COALESCE(p.paid,0)>0)) AND d.total>COALESCE(p.paid,0)`;
+        (d.status IN ('SENT','OVERDUE') OR (d.status='DRAFT' AND COALESCE(p.paid,0)>0)) AND d.total-COALESCE(cn.credited,0)>COALESCE(p.paid,0)-COALESCE(r.refunded,0)`;
     const day = todayIso();
     const params = [day,day,day,req.user.id,currency.id];
     if (customerId) { sql += ' AND c.id=?'; params.push(customerId); }
@@ -2142,16 +2295,24 @@ app.get('/api/reports/customer-statement',authenticateToken,async(req,res)=>{
     const end = to || todayIso();
     const invoices = await executeQuery(`SELECT id,document_number,DATE_FORMAT(issue_date,'%Y-%m-%d') AS day,total,status FROM documents
       WHERE user_id=? AND customer_id=? AND currency_id=? AND type='INVOICE' AND issue_date<=? AND
-      (status IN ('SENT','OVERDUE','PAID') OR EXISTS(SELECT 1 FROM payments p WHERE p.document_id=documents.id))
+      (status IN ('SENT','OVERDUE','PAID','CREDITED') OR EXISTS(SELECT 1 FROM payments p WHERE p.document_id=documents.id))
       ORDER BY issue_date,id LIMIT 1001`,[req.user.id,customerId,currency.id,end]);
     const payments = await executeQuery(`SELECT p.id,d.id AS invoice_id,d.document_number,DATE_FORMAT(p.payment_date,'%Y-%m-%d') AS day,p.amount
       FROM payments p JOIN documents d ON d.id=p.document_id WHERE d.user_id=? AND d.customer_id=? AND d.currency_id=? AND d.type='INVOICE' AND p.payment_date<=?
       ORDER BY p.payment_date,p.id LIMIT 1001`,[req.user.id,customerId,currency.id,end]);
-    if (invoices.length>1000 || payments.length>1000) return res.status(422).json({message:'Too many statement entries. Narrow the end date.'});
+    const credits = await executeQuery(`SELECT cn.id,cn.invoice_id,cn.document_number,DATE_FORMAT(cn.issue_date,'%Y-%m-%d') AS day,cn.total
+      FROM credit_notes cn JOIN documents d ON d.id=cn.invoice_id WHERE d.user_id=? AND d.customer_id=? AND d.currency_id=? AND cn.issue_date<=?
+      ORDER BY cn.issue_date,cn.id LIMIT 1001`,[req.user.id,customerId,currency.id,end]);
+    const refunds = await executeQuery(`SELECT r.id,r.invoice_id,d.document_number,DATE_FORMAT(r.refund_date,'%Y-%m-%d') AS day,r.amount
+      FROM payment_refunds r JOIN documents d ON d.id=r.invoice_id WHERE d.user_id=? AND d.customer_id=? AND d.currency_id=? AND r.refund_date<=?
+      ORDER BY r.refund_date,r.id LIMIT 1001`,[req.user.id,customerId,currency.id,end]);
+    if ([invoices,payments,credits,refunds].some(rows=>rows.length>1000)) return res.status(422).json({message:'Too many statement entries. Narrow the end date.'});
     const entries = [
       ...invoices.map(row => ({ day:row.day,kind:'INVOICE',invoice_id:row.id,document_number:row.document_number,debit:row.status==='CANCELLED' ? 0 : Number(row.total),credit:0,id:row.id })),
-      ...payments.map(row => ({ day:row.day,kind:'PAYMENT',invoice_id:row.invoice_id,document_number:row.document_number,debit:0,credit:Number(row.amount),id:row.id }))
-    ].sort((a,b)=>a.day.localeCompare(b.day) || (a.kind===b.kind ? a.id-b.id : a.kind==='INVOICE' ? -1 : 1));
+      ...payments.map(row => ({ day:row.day,kind:'PAYMENT',invoice_id:row.invoice_id,document_number:row.document_number,debit:0,credit:Number(row.amount),id:row.id })),
+      ...credits.map(row => ({ day:row.day,kind:'CREDIT_NOTE',invoice_id:row.invoice_id,document_number:row.document_number,debit:0,credit:Number(row.total),id:row.id })),
+      ...refunds.map(row => ({ day:row.day,kind:'REFUND',invoice_id:row.invoice_id,document_number:row.document_number,debit:Number(row.amount),credit:0,id:row.id }))
+    ].sort((a,b)=>a.day.localeCompare(b.day) || ({INVOICE:0,PAYMENT:1,CREDIT_NOTE:2,REFUND:3}[a.kind]-{INVOICE:0,PAYMENT:1,CREDIT_NOTE:2,REFUND:3}[b.kind]) || a.id-b.id);
     let opening = 0,balance = 0;
     const rows = [];
     for (const entry of entries) {
@@ -2170,7 +2331,7 @@ app.get('/api/public/invoice/:token', portalLimiter, async (req, res) => {
     if (docs.length === 0) return res.status(404).json({ message: 'Invoice not found or link has expired' });
     const items = await executeQuery('SELECT description, quantity, unit_price, vat_rate, vat_inclusive, vat_amount, subtotal, total FROM document_items WHERE document_id = ? ORDER BY id ASC', [docs[0].id]);
     const logoRows = await executeQuery("SELECT setting_value FROM settings WHERE user_id = (SELECT user_id FROM documents WHERE id = ?) AND setting_key = 'company_logo'", [docs[0].id]);
-    const [{ paid }] = await executeQuery('SELECT COALESCE(SUM(amount), 0) AS paid FROM payments WHERE document_id = ?', [docs[0].id]);
+    const settlement = await invoiceSettlement(executeQuery,docs[0].id);
     await executeQuery(`INSERT INTO document_tracking (document_id, event_type, ip_address, user_agent) VALUES (?, 'VIEWED', ?, ?)`, [docs[0].id, encTracking('ip_address', req.ip || null), encTracking('user_agent', req.get('user-agent') || null)]);
     // The seller's PayFast credentials are only ever used to decide whether a
     // button can be shown; they are stripped before the row leaves the server.
@@ -2188,7 +2349,8 @@ app.get('/api/public/invoice/:token', portalLimiter, async (req, res) => {
     } = seller;
     res.json({
       ...publicFields, pay_url, company_logo: Object.hasOwn(seller, 'company_logo') ? seller.company_logo : logoRows[0]?.setting_value || null, items,
-      amount_paid: Number(paid).toFixed(2), balance_due: balanceDue(seller.total, paid).toFixed(2),
+      amount_paid: settlement.netPaid.toFixed(2),credit_total:settlement.creditTotal.toFixed(2),adjusted_total:settlement.adjustedTotal.toFixed(2),
+      balance_due: settlement.balanceDue.toFixed(2),refund_due:settlement.refundDue.toFixed(2),last_updated_at:seller.updated_at,
     });
   } catch (error) { logger.error('Error fetching public invoice:', error); res.status(500).json({ message: 'Failed to fetch invoice' }); }
 });
@@ -2198,7 +2360,7 @@ app.get('/api/public/invoice/:token/pdf', portalLimiter, async (req, res) => {
     const { token } = req.params;
     const docs = await queryDecrypted(decryptCustomerJoin, `SELECT d.*, (SELECT COALESCE(SUM(pp.amount), 0) FROM payments pp WHERE pp.document_id = d.id) AS amount_paid, c.name AS customer_name, c.email AS customer_email, c.billing_address AS customer_billing_address, c.vat_number AS customer_vat_number, cur.symbol AS currency_symbol, cur.code AS currency_code FROM documents d JOIN customers c ON c.id = d.customer_id LEFT JOIN currencies cur ON cur.id = d.currency_id WHERE d.share_token = ? AND EXISTS(SELECT 1 FROM users owner WHERE owner.id=d.user_id AND owner.status='ACTIVE') AND d.type = 'INVOICE' AND (d.share_token_expires_at IS NULL OR d.share_token_expires_at > NOW())`, [hashToken(token)]);
     if (docs.length === 0) return res.status(404).json({ message: 'Invoice not found or link has expired' });
-    const invoice = docs[0];
+    const invoice = await withInvoiceFinancials(executeQuery,docs[0]);
     const [items, users, logoRows] = await Promise.all([
       executeQuery('SELECT * FROM document_items WHERE document_id = ? ORDER BY id ASC', [invoice.id]),
       queryDecrypted(decryptUserRow, 'SELECT * FROM users WHERE id = ?', [invoice.user_id]),
@@ -2355,7 +2517,7 @@ app.get('/api/account/export', authenticateToken, exportLimiter, async (req, res
     // doesn't fill error.log on every export.
     const hasConsents = await tableExists(executeQuery, 'marketing_consents');
 
-    const [user, settings, customers, products, documents, items, payments, tracking, emails, consents, requests, bankRows] =
+    const [user, settings, customers, products, documents, items, payments, tracking, emails, consents, requests, bankRows, credits, refunds] =
       await Promise.all([
         queryDecrypted(decryptUserRow,
           // google_id is the Google account identifier we hold about this
@@ -2384,6 +2546,8 @@ app.get('/api/account/export', authenticateToken, exportLimiter, async (req, res
           : Promise.resolve([]),
         executeQuery('SELECT request_type, status, requested_at, completed_at FROM data_subject_requests WHERE user_id = ?', [uid]),
         executeQuery('SELECT id,currency_id,transaction_date,amount,description,reference,account_label,status,invoice_id,payment_id,created_at,decided_at FROM bank_import_rows WHERE user_id=?',[uid]),
+        executeQuery('SELECT id,invoice_id,document_number,issue_date,reason,description,subtotal,vat_amount,total,created_at FROM credit_notes WHERE user_id=?',[uid]),
+        executeQuery('SELECT id,invoice_id,payment_id,amount,refund_date,method,reference,reason,created_at FROM payment_refunds WHERE user_id=?',[uid]),
       ]);
 
     if (user.length === 0) return res.status(404).json({ message: 'User not found' });
@@ -2413,6 +2577,8 @@ app.get('/api/account/export', authenticateToken, exportLimiter, async (req, res
       document_items: items,
       payments,
       bank_import_rows: bankRows.map(row=>({ ...row,description:decryptField('bank_import_rows','description',row.description),reference:decryptField('bank_import_rows','reference',row.reference),account_label:decryptField('bank_import_rows','account_label',row.account_label) })),
+      credit_notes: credits,
+      payment_refunds: refunds.map(row=>({...row,reference:decryptField('payment_refunds','reference',row.reference)})),
       document_tracking: tracking,
       email_log: emails,
       marketing_consents: consents,
@@ -2942,17 +3108,15 @@ app.get('/pay/:token', payLimiter, payPageCsp(true), async (req, res) => {
     // A PDF is a frozen artifact: its link will keep pointing here for years,
     // long after the invoice is settled. "Already paid" is a normal outcome,
     // not an error.
-    const settled = await executeQuery(
-      'SELECT COALESCE(SUM(amount), 0) AS paid FROM payments WHERE document_id = ?', [row.id]
-    );
-    const alreadyPaid = row.status === 'PAID' || isSettled(row.total, settled[0].paid);
+    const financial = await invoiceSettlement(executeQuery,row.id);
+    const alreadyPaid = ['PAID','CREDITED'].includes(row.status) || financial.settled;
     // What the buyer is asked for. A part payment already recorded comes off,
     // or a customer who paid a deposit would be charged the full total again.
-    const balance = balanceDue(row.total, settled[0].paid);
+    const balance = financial.balanceDue;
 
     if (alreadyPaid) {
       return res.type('html').send(renderPayNotice({
-        nonce, title: 'Already paid', heading: 'This invoice has already been paid',
+        nonce, title: 'Invoice settled', heading: 'This invoice is settled',
         message: `Invoice ${row.document_number} is settled. Nothing further is due — there is no need to pay again.`,
       }));
     }
@@ -3122,8 +3286,8 @@ async function recordInvoicePayment({
     // same stale figure.
     const [invoice] = await q('SELECT total, status FROM documents WHERE id = ? FOR UPDATE', [invoiceId]);
     if (rejectOverpayment && invoice.status === 'CANCELLED') throw Object.assign(new Error('Cannot record payment on a cancelled invoice'), { status: 400 });
-    const [{ paid: paidBefore }] = await q('SELECT COALESCE(SUM(amount), 0) AS paid FROM payments WHERE document_id = ?', [invoiceId]);
-    const balanceBefore = balanceDue(invoice.total, paidBefore);
+    const before = await invoiceSettlement(q, invoiceId);
+    const balanceBefore = before.balanceDue;
     if (rejectOverpayment && Number(amount) > balanceBefore + SETTLED_TOLERANCE) {
       return { duplicate: false, settled: false, cancelled: false, overpayment: true, balanceBefore, balanceAfter: balanceBefore };
     }
@@ -3150,15 +3314,15 @@ async function recordInvoicePayment({
       throw err;
     }
 
-    const paidAfter = Number(paidBefore) + Number(amount);
-    const settled = isSettled(invoice.total, paidAfter);
+    const after = await invoiceSettlement(q, invoiceId);
+    const settled = after.settled && after.adjustedTotal>0;
     const cancelled = invoice.status === 'CANCELLED';
 
     // A payment against a cancelled invoice must not resurrect it. The money
     // is still recorded — see the caller, which alerts the seller. A part
     // payment leaves the status alone: SENT stays SENT and OVERDUE stays
     // OVERDUE until the balance is cleared.
-    if (settled && !cancelled) {
+    if (settled && !cancelled && after.adjustedTotal>0) {
       await q(`UPDATE documents SET status = 'PAID', updated_at = NOW() WHERE id = ?`, [invoiceId]);
     }
     await q(
@@ -3166,7 +3330,7 @@ async function recordInvoicePayment({
        VALUES (?, ?, ?, ?)`,
       [invoiceId, settled ? 'PAID' : 'PAYMENT', encTracking('ip_address', ip), encTracking('user_agent', userAgent)]
     );
-    return { duplicate: false, settled, cancelled, overpayment: false, balanceBefore, balanceAfter: balanceDue(invoice.total, paidAfter), paymentId };
+    return { duplicate: false, settled, cancelled, overpayment: false, balanceBefore, balanceAfter: after.balanceDue, paymentId };
   };
   return transactionQuery ? record(transactionQuery) : withTransaction(record);
 }
@@ -3201,9 +3365,10 @@ async function sendPayfastFollowUps(invoice, posted, outcome) {
   // A receipt says "paid in full", so a part payment does not get one. The pay
   // page charges the outstanding balance, so in practice only a race with a
   // manually recorded payment lands here unsettled.
-  if (outcome.settled && full.length && full[0].customer_email) {
-    const pdf = await buildReceiptPdf(full[0], items, user, payments);
-    const mail=await captureEmail(emailService,'sendReceiptEmail',full[0].customer_email,{...full[0],company_name:user.company_name},pdf);
+  const paidInvoice=full.length ? await withInvoiceFinancials(executeQuery,full[0]) : null;
+  if (outcome.settled && paidInvoice?.customer_email && Number(paidInvoice.amount_paid)>0 && Number(paidInvoice.adjusted_total)>0) {
+    const pdf = await buildReceiptPdf(paidInvoice, items, user, payments);
+    const mail=await captureEmail(emailService,'sendReceiptEmail',paidInvoice.customer_email,{...paidInvoice,company_name:user.company_name},pdf);
     await queueEmail({userId:invoice.user_id,documentId:invoice.id,kind:'RECEIPT',key:`receipt:${invoice.id}:full`,mail});
   }
 
@@ -3338,7 +3503,10 @@ app.post('/payfast/itn',
           WHERE document_id = ? AND NOT (provider <=> 'PAYFAST' AND provider_payment_id <=> ?)`,
         [invoice.id, String(posted.pf_payment_id)]
       );
-      const expected = balanceDue(invoice.total, alreadyPaid);
+      const [adjustments] = await executeQuery(`SELECT
+        (SELECT COALESCE(SUM(total),0) FROM credit_notes WHERE invoice_id=?) AS credited,
+        (SELECT COALESCE(SUM(amount),0) FROM payment_refunds WHERE invoice_id=?) AS refunded`,[invoice.id,invoice.id]);
+      const expected = adjustmentSettlement(invoice.total,adjustments.credited,alreadyPaid,adjustments.refunded).balanceDue;
       const received = Number(posted.amount_gross);
       const matchesBalance = Math.abs(expected - received) <= 0.01;
       const matchesTotal = Math.abs(Number(invoice.total) - received) <= 0.01;

@@ -2,6 +2,7 @@ import { Component, OnInit } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { RouterModule, ActivatedRoute, Router } from '@angular/router';
 import { ReactiveFormsModule, FormBuilder, FormGroup, Validators } from '@angular/forms';
+import { firstValueFrom } from 'rxjs';
 import {
   AlertController, ToastController,
   IonBackButton, IonButton, IonButtons, IonContent, IonHeader, IonIcon, IonInput, IonItem,
@@ -40,6 +41,13 @@ export class InvoiceDetailPage implements OnInit {
   showPaymentForm = false;
   paymentForm: FormGroup;
   isSubmittingPayment = false;
+  showCreditForm = false;
+  showRefundForm = false;
+  creditForm: FormGroup;
+  refundForm: FormGroup;
+  isSavingAdjustment = false;
+  private creditRetry?: {fingerprint:string;key:string};
+  private refundRetry?: {fingerprint:string;key:string};
   isSending = false;
   isDownloading = false;
   isDownloadingReceipt = false;
@@ -97,6 +105,14 @@ export class InvoiceDetailPage implements OnInit {
       transaction_reference: [''],
       notes:                ['']
     });
+    this.creditForm = this.fb.group({
+      subtotal:[null,[Validators.required,Validators.min(0)]],vat_amount:[0,[Validators.required,Validators.min(0)]],
+      reason:['',Validators.required],description:['',Validators.required]
+    });
+    this.refundForm = this.fb.group({
+      payment_id:[null,Validators.required],amount:[null,[Validators.required,Validators.min(0.01)]],
+      refund_date:[todayLocalIso(),Validators.required],method:['BANK_TRANSFER',Validators.required],reference:[''],reason:['',Validators.required]
+    });
   }
 
   ngOnInit() {
@@ -133,7 +149,7 @@ export class InvoiceDetailPage implements OnInit {
 
   getStatusColor(status: string): string {
     const map: Record<string, string> = {
-      DRAFT: 'medium', SENT: 'primary', PAID: 'success', OVERDUE: 'warning', CANCELLED: 'danger'
+      DRAFT: 'medium', SENT: 'primary', PAID: 'success', CREDITED:'success', OVERDUE: 'warning', CANCELLED: 'danger'
     };
     return map[status] ?? 'medium';
   }
@@ -142,14 +158,14 @@ export class InvoiceDetailPage implements OnInit {
     const map: Record<string, string> = {
       CREATED: 'document-outline', SENT: 'send-outline', VIEWED: 'eye-outline',
       DOWNLOADED: 'download-outline', PAID: 'checkmark-circle-outline', CANCELLED: 'close-circle-outline',
-      PAYMENT: 'cash-outline', OVERDUE: 'alarm-outline'
+      PAYMENT: 'cash-outline', CREDIT_NOTE:'document-outline', REFUND:'cash-outline', OVERDUE: 'alarm-outline'
     };
     return map[eventType] ?? 'ellipse-outline';
   }
 
   getTrackingLabel(eventType: string): string {
     const map: Record<string, string> = {
-      PAYMENT: 'Part payment received', PAID: 'Paid in full'
+      PAYMENT: 'Part payment received', PAID: 'Paid in full', CREDIT_NOTE:'Credit note issued', REFUND:'Refund recorded'
     };
     return map[eventType] ?? eventType.charAt(0) + eventType.slice(1).toLowerCase();
   }
@@ -239,6 +255,41 @@ export class InvoiceDetailPage implements OnInit {
     }
   }
 
+  async downloadPaymentReceipt(paymentId: number) {
+    this.isDownloadingReceipt = true;
+    try {
+      const token = localStorage.getItem('token');
+      const response = await fetch(`${environment.apiUrl}/invoices/${this.invoiceId}/payments/${paymentId}/receipt`, { headers: { Authorization: `Bearer ${token}` } });
+      if (!response.ok) throw new Error('Failed to generate payment receipt');
+      const blobUrl = URL.createObjectURL(await response.blob());
+      const a = document.createElement('a');
+      a.href = blobUrl;
+      a.download = `RCPT-${paymentId}.pdf`;
+      a.click();
+      URL.revokeObjectURL(blobUrl);
+    } catch {
+      const toast = await this.toastCtrl.create({ message: 'Failed to download payment receipt', duration: 3000, color: 'danger', position: 'bottom' });
+      await toast.present();
+    } finally { this.isDownloadingReceipt = false; }
+  }
+
+  async downloadCreditNote(noteId: number, number: string) {
+    try {
+      const token = localStorage.getItem('token');
+      const response = await fetch(`${environment.apiUrl}/invoices/${this.invoiceId}/credit-notes/${noteId}/pdf`, { headers: { Authorization: `Bearer ${token}` } });
+      if (!response.ok) throw new Error('Failed to generate credit note');
+      const blobUrl = URL.createObjectURL(await response.blob());
+      const a = document.createElement('a');
+      a.href = blobUrl;
+      a.download = `${number}.pdf`;
+      a.click();
+      URL.revokeObjectURL(blobUrl);
+    } catch {
+      const toast = await this.toastCtrl.create({ message: 'Failed to download credit note', duration: 3000, color: 'danger', position: 'bottom' });
+      await toast.present();
+    }
+  }
+
   async confirmSendReceipt() {
     const alert = await this.alertCtrl.create({
       header: 'Email Receipt',
@@ -319,8 +370,69 @@ export class InvoiceDetailPage implements OnInit {
     });
   }
 
+  get creditFormTotal(): number { return Math.round((Number(this.creditForm.value.subtotal || 0)+Number(this.creditForm.value.vat_amount || 0))*100)/100; }
+  get creditRemaining(): number { return Math.max(0,Number(this.invoice?.total || 0)-this.creditTotal); }
+  get canIssueCredit(): boolean { return !!this.invoice?.adjustments_available && !['DRAFT','CANCELLED'].includes(this.invoice.status) && this.creditRemaining>0; }
+  get refundablePayments() { return (this.invoice?.payments || []).filter(payment=>this.unrefundedAmount(payment.id)>0); }
+  unrefundedAmount(paymentId:number):number {
+    const payment=this.invoice?.payments.find(item=>item.id===paymentId);
+    const refunded=(this.invoice?.refunds || []).filter(item=>item.payment_id===paymentId).reduce((sum,item)=>sum+Number(item.amount),0);
+    return Math.max(0,Math.round((Number(payment?.amount || 0)-refunded)*100)/100);
+  }
+  openRefund(paymentId:number) {
+    this.showRefundForm=true;
+    this.refundForm.patchValue({payment_id:paymentId,amount:this.unrefundedAmount(paymentId),refund_date:todayLocalIso()});
+  }
+  private adjustmentKey(kind:'credit'|'refund',payload:object):string {
+    const fingerprint=JSON.stringify(payload);
+    const previous=kind==='credit' ? this.creditRetry : this.refundRetry;
+    if (previous?.fingerprint===fingerprint) return previous.key;
+    const next={fingerprint,key:window.crypto.randomUUID()};
+    if (kind==='credit') this.creditRetry=next; else this.refundRetry=next;
+    return next.key;
+  }
+  async submitCreditNote() {
+    if (this.creditForm.invalid || this.creditFormTotal<=0 || this.creditFormTotal>this.creditRemaining) { this.creditForm.markAllAsTouched(); return; }
+    const confirmed=await this.alertCtrl.create({header:'Issue credit note?',message:'This creates a numbered, permanent adjustment to the invoice. Check the net and VAT amounts before continuing.',buttons:[{text:'Review',role:'cancel'},{text:'Issue credit note',role:'confirm'}]});
+    await confirmed.present();
+    const answer=await confirmed.onDidDismiss();
+    if (answer.role!=='confirm') return;
+    const payload={...this.creditForm.value,total:this.creditFormTotal};
+    this.isSavingAdjustment=true;
+    try {
+      await firstValueFrom(this.invoiceService.issueCreditNote(this.invoiceId,{...payload,request_key:this.adjustmentKey('credit',payload)}));
+      this.creditRetry=undefined;this.showCreditForm=false;this.creditForm.reset({subtotal:null,vat_amount:0,reason:'',description:''});
+      this.loadInvoice();
+      const toast=await this.toastCtrl.create({message:'Credit note issued',duration:3000,color:'success'});await toast.present();
+    } catch (error: any) {
+      const toast=await this.toastCtrl.create({message:error.error?.message || 'Could not issue credit note',duration:4000,color:'danger'});await toast.present();
+    } finally { this.isSavingAdjustment=false; }
+  }
+  async submitRefund() {
+    const paymentId=Number(this.refundForm.value.payment_id);
+    const amount=Number(this.refundForm.value.amount);
+    if (this.refundForm.invalid || amount<=0 || amount>this.unrefundedAmount(paymentId)) { this.refundForm.markAllAsTouched(); return; }
+    const confirmed=await this.alertCtrl.create({header:'Record refund?',message:'Record this only after the money has actually been returned. The original payment stays in the history.',buttons:[{text:'Review',role:'cancel'},{text:'Record refund',role:'confirm'}]});
+    await confirmed.present();
+    const answer=await confirmed.onDidDismiss();
+    if (answer.role!=='confirm') return;
+    const payload={...this.refundForm.value};
+    this.isSavingAdjustment=true;
+    try {
+      await firstValueFrom(this.invoiceService.recordRefund(this.invoiceId,{...payload,request_key:this.adjustmentKey('refund',payload)}));
+      this.refundRetry=undefined;this.showRefundForm=false;this.refundForm.reset({payment_id:null,amount:null,refund_date:todayLocalIso(),method:'BANK_TRANSFER',reference:'',reason:''});
+      this.loadInvoice();
+      const toast=await this.toastCtrl.create({message:'Refund recorded',duration:3000,color:'success'});await toast.present();
+    } catch (error: any) {
+      const toast=await this.toastCtrl.create({message:error.error?.message || 'Could not record refund',duration:4000,color:'danger'});await toast.present();
+    } finally { this.isSavingAdjustment=false; }
+  }
+
   get amountPaid(): number { return +(this.invoice?.amount_paid ?? 0); }
   get balanceDue(): number { return +(this.invoice?.balance_due ?? 0); }
+  get creditTotal(): number { return +(this.invoice?.credit_total ?? 0); }
+  get refundTotal(): number { return +(this.invoice?.refund_total ?? 0); }
+  get refundDue(): number { return +(this.invoice?.refund_due ?? 0); }
 
   /** Some money in, some still owed. Shown alongside the status, not instead of it. */
   get isPartlyPaid(): boolean {
@@ -330,8 +442,8 @@ export class InvoiceDetailPage implements OnInit {
   // Once a payment is recorded the lines are evidence of what was billed.
   get canEdit(): boolean { return this.invoice?.status === 'DRAFT' && (this.invoice?.payments || []).length === 0; }
   get canSend(): boolean { return ['DRAFT', 'SENT', 'OVERDUE'].includes(this.invoice?.status ?? ''); }
-  get canMarkPaid(): boolean { return !['PAID', 'CANCELLED'].includes(this.invoice?.status ?? ''); }
-  get canCancel(): boolean { return !['PAID', 'CANCELLED'].includes(this.invoice?.status ?? '') && Number(this.invoice?.amount_paid || 0) === 0; }
+  get canMarkPaid(): boolean { return !['PAID', 'CREDITED', 'CANCELLED'].includes(this.invoice?.status ?? ''); }
+  get canCancel(): boolean { return !['PAID', 'CREDITED', 'CANCELLED'].includes(this.invoice?.status ?? '') && Number(this.invoice?.amount_paid || 0) === 0 && Number(this.invoice?.credit_total || 0) === 0; }
   get currencySymbol(): string { return this.invoice?.currency_symbol || 'R'; }
 
   async manageShare(rotate: boolean) {
