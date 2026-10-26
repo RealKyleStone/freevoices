@@ -381,7 +381,7 @@ export class InvoiceDetailPage implements OnInit {
   }
   openRefund(paymentId:number) {
     this.showRefundForm=true;
-    this.refundForm.patchValue({payment_id:paymentId,amount:this.unrefundedAmount(paymentId),refund_date:todayLocalIso()});
+    this.refundForm.patchValue({payment_id:paymentId,amount:null,refund_date:todayLocalIso(),reference:'',reason:''});
   }
   private adjustmentKey(kind:'credit'|'refund',payload:object):string {
     const fingerprint=JSON.stringify(payload);
