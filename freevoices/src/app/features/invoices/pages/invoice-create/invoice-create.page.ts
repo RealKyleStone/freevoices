@@ -10,6 +10,7 @@ import {
 } from '@ionic/angular/standalone';
 import { forkJoin } from 'rxjs';
 import { CataloguePickerComponent } from '../../../../shared/components/catalogue-picker/catalogue-picker.component';
+import { InvoicePreviewComponent } from '../../../../shared/components/invoice-preview/invoice-preview.component';
 import { addIcons } from 'ionicons';
 import { trashOutline, addOutline } from 'ionicons/icons';
 import { InvoiceService } from '../../services/invoice.service';
@@ -30,7 +31,7 @@ function dueNotBeforeIssue(ctrl: AbstractControl): ValidationErrors | null {
   styleUrls: ['./invoice-create.page.scss'],
   standalone: true,
   imports: [
-    CommonModule, ReactiveFormsModule, CataloguePickerComponent,
+    CommonModule, ReactiveFormsModule, CataloguePickerComponent, InvoicePreviewComponent,
     IonBackButton, IonButton, IonButtons, IonCard, IonCardContent, IonCardHeader, IonCardTitle,
     IonContent, IonHeader, IonIcon, IonInput, IonItem, IonLabel, IonNote, IonSelect,
     IonSelectOption, IonSpinner, IonText, IonTextarea, IonTitle, IonToggle, IonToolbar,
@@ -42,6 +43,7 @@ export class InvoiceCreatePage implements OnInit, HasUnsavedChanges {
   isLoading = false;
   isLoadingData = true;
   submitted = false;
+  selectedCustomerName = '';
   private saved = false;
   private defaultVatRate = 15;
   private defaultTerms = 30;
@@ -159,8 +161,9 @@ export class InvoiceCreatePage implements OnInit, HasUnsavedChanges {
     if (this.items.length > 1) { this.items.removeAt(i); this.form.markAsDirty(); }
   }
 
-  onCustomerSelected(customer: Customer) {
-    this.form.patchValue({ payment_terms: customer.payment_terms ?? this.defaultTerms });
+  onCustomerSelected(customer: Customer | null) {
+    this.selectedCustomerName = customer?.name || '';
+    if (customer) this.form.patchValue({ payment_terms: customer.payment_terms ?? this.defaultTerms });
   }
 
   onProductSelected(index: number, product: Product | null) {

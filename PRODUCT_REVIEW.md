@@ -2,9 +2,13 @@
 
 24 October 2026 · branch `dev` · initial local assessment
 
-## Milestone 1/2 regression follow-up - 26 October 2026
+## Current status - 26 October 2026
 
-The navigation regression pass found and fixed a tablet menu breakpoint gap, a mobile footer overlay that stayed open, conflicting authentication router outlets/cached views and a crash when report data was empty. Local results: 142 backend tests, 112 frontend tests, 30 responsive navigation checks, production build and lint pass. All work remains on `dev`. [Full regression report](REGRESSION_REPORT.md) documents the exact component/API coverage and the unavailable live editor-browser controls.
+Milestone 1's automated acceptance checks pass. The first Milestone 2 slice (setup checklist and searchable, paginated customer/product pickers) is implemented; the rest of Milestone 2 is planned. The navigation regression pass also fixed a tablet menu breakpoint gap, a mobile footer overlay that stayed open, conflicting authentication router outlets/cached views and a crash when report data was empty. The last published `dev` CI run passed: 142 backend tests, 112 frontend tests, 30 responsive navigation checks, production build and lint. [CI evidence](https://github.com/RealKyleStone/freevoices/actions/runs/40297548410) and the [full regression report](REGRESSION_REPORT.md) give the tested scope and limits. No changes have been merged into `main`.
+
+The next Milestone 2 increment adds a live on-screen invoice review to create/edit: selected customer, dates, lines, VAT mode, totals, notes and terms update as the form changes. It uses the existing client/server-parity calculation helper. The review explicitly distinguishes itself from the final PDF and number. Local checks: 113 frontend tests, 30 responsive navigation checks, production build and lint pass. It has not been exercised in the live editor browser.
+
+The historical assessment and reproduced findings below describe the starting state on 24 October. They are retained as evidence, not an open defect list. The implementation notes above each milestone record subsequent fixes. Live editor-browser navigation, real devices and screen readers, production email delivery, Google OAuth, PayFast transactions and production backup/key recovery remain unverified.
 
 ## Milestone 2 first slice - 26 October 2026
 
@@ -17,9 +21,9 @@ Implemented the company setup checklist and searchable catalogues on `dev`:
 - Native modal dialogs provide keyboard focus containment, labelled search, selectable results and explicit Close actions. Enter in search cannot accidentally submit the enclosing invoice. Broader mobile and screen-reader usability testing remains pending.
 - Customer selection can request a lightweight detail response (`include_documents=false`) instead of downloading the customer's invoice history. Catalogue ordering uses name plus ID so equal names paginate consistently.
 
-Local verification: **142 backend tests with zero skips**, including paged/search results beyond 100 records and tenant isolation; **102 frontend tests**, including picker keyboard/focus, cancellation, inline creation, selection/defaults and checklist refresh; production build and lint pass. Publication to `dev` triggers the existing GitHub Actions checks.
+At the first-slice checkpoint, local verification passed **142 backend tests with zero skips** and **102 frontend tests**, plus build and lint. The current totals after navigation regressions are recorded in Current status above.
 
-This is the first Milestone 2 slice, not the whole milestone. Live invoice preview, discounts/units/references, draft autosave/recovery, copying invoices, richer money/ageing dashboard actions and the full usability pass remain planned.
+This is the first Milestone 2 slice, not the whole milestone. A live on-screen invoice review has since been added. A rendered PDF preview, discounts/units/references, draft autosave/recovery, copying invoices, richer money/ageing dashboard actions and the full usability pass remain planned.
 
 ## Milestone 1 complete - 26 October 2026
 
@@ -88,7 +92,7 @@ The authenticated browser journey, responsive layouts, keyboard navigation, and 
 
 Machine-readable observations and the long-invoice sample are in `H:\Workspace\.local\freevoices\feature-audit-results.json` and `long-invoice.pdf`. These are local evidence, outside Git. The findings below distinguish reproduced behavior from source inspection and proposed capabilities.
 
-## What already exists
+## What existed at the initial review
 
 | Area | Current evidence | Assessment |
 |---|---|---|
@@ -104,7 +108,7 @@ Machine-readable observations and the long-invoice sample are in `H:\Workspace\.
 | Data protection foundations | Argon2, session token hashing, field encryption, rate limiting, migration ledger, account lifecycle, export and backup tooling exist | Valuable foundations; complete authorization and recovery testing is still required |
 | Automated checks | 93 backend tests pass | Frontend tests do not compile; lint has five errors and one warning; route-level regression coverage needs expansion |
 
-## Priority findings
+## Initial priority findings (historical)
 
 P0 means a release blocker for the affected workflow. P1 means the next reliability or usability milestone. These priorities are product judgments based on the evidence, not a completed security or compliance certification.
 
@@ -192,6 +196,4 @@ No production usage baseline was available. Treat these as measurements to add, 
 
 ## Recommended next implementation
 
-PDF pagination, atomic numbering, issued-party snapshots and explicit VAT-inclusive line pricing are implemented locally. Next, address **currency-aware reporting and truthful delivery state**, followed by recurring calendar/scheduler behavior and saved company/customer defaults. These remain necessary before promoting the app for routine business billing.
-
-The initial review added documentation only; the first implementation pass is recorded above. All work remains on `dev`; no commit or push was made.
+Continue Milestone 2 on `dev`: a rendered PDF preview; units, discounts and references; draft autosave and recovery; copy invoice; and clearer outstanding-balance and ageing actions. Measure the first-invoice usability target with real users and exercise complete mobile, keyboard and screen-reader journeys. Then validate the production integrations and recovery procedures listed in Current status before treating the service as ready for routine business billing.

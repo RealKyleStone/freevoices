@@ -131,8 +131,8 @@ export class QuoteEditPage implements OnInit, HasUnsavedChanges {
 
   removeItem(i: number) { if (this.items.length > 1) { this.items.removeAt(i); this.form.markAsDirty(); } }
 
-  onCustomerSelected(customer: Customer) {
-    this.form.patchValue({ payment_terms: customer.payment_terms ?? this.defaultTerms });
+  onCustomerSelected(customer: Customer | null) {
+    if (customer) this.form.patchValue({ payment_terms: customer.payment_terms ?? this.defaultTerms });
   }
 
   onProductSelected(index: number, product: Product | null) {

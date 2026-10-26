@@ -107,14 +107,9 @@
       </ion-card-content>
     </ion-card>
 
-    <!-- Totals -->
     <ion-card>
       <ion-card-content>
-        <div class="totals">
-          <div class="totals-row"><span>Subtotal</span><span>{{ currencySymbol }} {{ docSubtotal | number:'1.2-2' }}</span></div>
-          <div class="totals-row"><span>VAT</span><span>{{ currencySymbol }} {{ docVat | number:'1.2-2' }}</span></div>
-          <div class="totals-row total-row"><strong>Total</strong><strong>{{ currencySymbol }} {{ docTotal | number:'1.2-2' }}</strong></div>
-        </div>
+        <app-invoice-preview [form]="form" [currencySymbol]="currencySymbol" [customerName]="selectedCustomerName" [invoiceNumber]="invoiceNumber"></app-invoice-preview>
       </ion-card-content>
     </ion-card>
 

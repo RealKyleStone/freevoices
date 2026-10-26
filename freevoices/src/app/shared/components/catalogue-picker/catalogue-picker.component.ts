@@ -20,7 +20,7 @@ let nextId = 0;
 export class CataloguePickerComponent implements ControlValueAccessor, OnDestroy {
   @Input() kind: 'customer' | 'product' = 'customer';
   @Input() invalid = false;
-  @Output() customerChosen = new EventEmitter<Customer>();
+  @Output() customerChosen = new EventEmitter<Customer | null>();
   @Output() productChosen = new EventEmitter<Product | null>();
   @ViewChild('dialog', { static: true }) dialog!: ElementRef<HTMLDialogElement>;
   @ViewChild('searchBox', { static: true }) searchBox!: ElementRef<HTMLInputElement>;
@@ -113,7 +113,7 @@ export class CataloguePickerComponent implements ControlValueAccessor, OnDestroy
     clearTimeout(this.focusTimer); this.lookup?.unsubscribe();
     this.value = row?.id ?? null; this.selectedName = row?.name ?? ''; this.selectionError = '';
     this.changed(this.value); this.touched();
-    if (this.kind === 'customer' && row) this.customerChosen.emit(row as Customer);
+    if (this.kind === 'customer') this.customerChosen.emit(row as Customer | null);
     if (this.kind === 'product') this.productChosen.emit(row as Product | null);
     this.cancelSearch.next(); this.loading = false;
     this.dialog.nativeElement.close();

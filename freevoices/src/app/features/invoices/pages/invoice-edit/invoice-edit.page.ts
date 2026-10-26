@@ -10,6 +10,7 @@ import {
 } from '@ionic/angular/standalone';
 import { forkJoin } from 'rxjs';
 import { CataloguePickerComponent } from '../../../../shared/components/catalogue-picker/catalogue-picker.component';
+import { InvoicePreviewComponent } from '../../../../shared/components/invoice-preview/invoice-preview.component';
 import { addIcons } from 'ionicons';
 import { trashOutline, addOutline } from 'ionicons/icons';
 import { InvoiceService, InvoicePayload } from '../../services/invoice.service';
@@ -30,7 +31,7 @@ function dueNotBeforeIssue(ctrl: AbstractControl): ValidationErrors | null {
   styleUrls: ['./invoice-edit.page.scss'],
   standalone: true,
   imports: [
-    CommonModule, ReactiveFormsModule, CataloguePickerComponent,
+    CommonModule, ReactiveFormsModule, CataloguePickerComponent, InvoicePreviewComponent,
     IonBackButton, IonButton, IonButtons, IonCard, IonCardContent, IonCardHeader, IonCardTitle,
     IonContent, IonHeader, IonIcon, IonInput, IonItem, IonLabel, IonNote, IonSelect,
     IonSelectOption, IonSpinner, IonText, IonTextarea, IonTitle, IonToggle, IonToolbar,
@@ -43,6 +44,8 @@ export class InvoiceEditPage implements OnInit, HasUnsavedChanges {
   submitted = false;
   invoiceId!: number;
   currencySymbol = 'R';
+  selectedCustomerName = '';
+  invoiceNumber = '';
   private saved = false;
   private defaultVatRate = 15;
   private defaultTerms = 30;
@@ -124,6 +127,8 @@ export class InvoiceEditPage implements OnInit, HasUnsavedChanges {
         this.defaultTerms = Number(settings.invoice_payment_terms ?? 30);
 
         this.currencySymbol = invoice.currency_symbol || 'R';
+        this.selectedCustomerName = invoice.customer_name || '';
+        this.invoiceNumber = invoice.document_number || '';
         // Dates arrive as 'YYYY-MM-DD'. They used to arrive as a UTC
         // timestamp of local midnight ('2026-10-19T22:00:00Z' for the 20th),
         // and this split then loaded the day before into the form.
@@ -193,8 +198,9 @@ export class InvoiceEditPage implements OnInit, HasUnsavedChanges {
     if (this.items.length > 1) { this.items.removeAt(i); this.form.markAsDirty(); }
   }
 
-  onCustomerSelected(customer: Customer) {
-    this.form.patchValue({ payment_terms: customer.payment_terms ?? this.defaultTerms });
+  onCustomerSelected(customer: Customer | null) {
+    this.selectedCustomerName = customer?.name || '';
+    if (customer) this.form.patchValue({ payment_terms: customer.payment_terms ?? this.defaultTerms });
   }
 
   onProductSelected(index: number, product: Product | null) {
