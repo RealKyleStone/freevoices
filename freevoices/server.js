@@ -367,11 +367,16 @@ const authenticateToken = async (req, res, next) => {
       FROM business_bookkeepers b JOIN users u ON u.id=b.owner_id
       WHERE b.member_id=? AND b.revoked_at IS NULL`,[actorId]);
     if (access) {
+      const ownAccount = (req.method === 'GET' && ['/api/account/status','/api/account/export'].includes(req.path))
+        || (req.method === 'POST' && req.path === '/api/account/close');
+      if (ownAccount) req.user = {id:actorId,actorId,role:'BOOKKEEPER'};
+      else {
       if (access.owner_status !== 'ACTIVE') return res.status(403).json({message:'Business access is unavailable'});
       const readable = req.method === 'GET' && /^\/api\/(?:dashboard\/summary|customers(?:\/|$)|products(?:\/|$)|invoices(?:\/|$)|quotes(?:\/|$)|reports(?:\/|$)|bank-imports(?:\/|$)|currencies(?:\/|$))/.test(req.path);
       if (!readable && req.path !== '/api/logout' && req.path !== '/api/business/access')
         return res.status(403).json({message:'Bookkeeper access is read only'});
       req.user = { id: access.owner_id, actorId, role:'BOOKKEEPER' };
+      }
     } else req.user = { id: actorId, actorId, role:'OWNER' };
 
     // Slide the idle window, clamped to the absolute ceiling. The guard on
@@ -733,33 +738,137 @@ app.get('/api/business/bookkeepers',authenticateToken,async(req,res)=>{
   } catch(error) { logger.error('Bookkeeper list failed',error);res.status(500).json({message:'Could not load bookkeepers'}); }
 });
 
-app.post('/api/business/bookkeepers',authenticateToken,validate([
+app.get('/api/business/bookkeeper-invitations',authenticateToken,async(req,res)=>{
+  try {
+    const rows=await executeQuery(`SELECT id,email,expires_at,delivery_status,created_at FROM bookkeeper_invitations
+      WHERE owner_id=? AND accepted_at IS NULL AND revoked_at IS NULL AND expires_at>NOW()
+      ORDER BY id DESC`,[req.user.id]);
+    res.set('Cache-Control','no-store').json(rows);
+  } catch(error) {logger.error('Bookkeeper invitation list failed',error);res.status(500).json({message:'Could not load invitations'});}
+});
+
+app.post('/api/business/bookkeeper-invitations',authenticateToken,validate([
   body('email').isEmail().normalizeEmail(),
   body('password').optional().isString(),
   body('idToken').optional().isString(),
 ]),async(req,res)=>{
   try {
     const [owner]=await executeQuery('SELECT * FROM users WHERE id=?',[req.user.id]);
-    if(!(await reauthenticateForSensitiveAction(req,res,owner,'BOOKKEEPER_GRANT_REAUTH_FAILED'))) return;
-    const [member]=await executeQuery('SELECT id,email_verified,status FROM users WHERE email=?',[req.body.email]);
-    if(!member || !member.email_verified || member.status!=='ACTIVE') return res.status(422).json({message:'The bookkeeper must register and verify their email first'});
-    if(member.id===owner.id) return res.status(422).json({message:'Choose a different account'});
-    const [ownData]=await executeQuery(`SELECT
-      (SELECT COUNT(*) FROM customers WHERE user_id=?) AS customers,
-      (SELECT COUNT(*) FROM documents WHERE user_id=?) AS documents,
-      (SELECT COUNT(*) FROM products WHERE user_id=?) AS products`,[member.id,member.id,member.id]);
-    if(ownData.customers || ownData.documents || ownData.products) return res.status(409).json({message:'This account already owns business data'});
-    const [prior]=await executeQuery('SELECT id,owner_id,revoked_at FROM business_bookkeepers WHERE member_id=?',[member.id]);
-    if(prior && prior.owner_id!==owner.id) return res.status(409).json({message:'This account already belongs to another business'});
-    if(prior && !prior.revoked_at) return res.status(409).json({message:'Bookkeeper already has access'});
-    await withTransaction(async q=>{
-      if(prior) await q('UPDATE business_bookkeepers SET revoked_at=NULL,granted_at=NOW() WHERE id=? AND owner_id=?',[prior.id,owner.id]);
-      else await q('INSERT INTO business_bookkeepers(owner_id,member_id) VALUES(?,?)',[owner.id,member.id]);
-      await q("INSERT INTO business_access_events(owner_id,member_id,actor_id,action) VALUES(?,?,?,'GRANTED')",[owner.id,member.id,owner.id]);
-      await q('DELETE FROM sessions WHERE userId=?',[member.id]);
+    if(!(await reauthenticateForSensitiveAction(req,res,owner,'BOOKKEEPER_INVITE_REAUTH_FAILED'))) return;
+    if(req.body.email===owner.email) return res.status(422).json({message:'Choose a different email address'});
+    const token=randomUUID();
+    const outcome=await withTransaction(async q=>{
+      await q('SELECT id FROM users WHERE id=? FOR UPDATE',[owner.id]);
+      const [active]=await q('SELECT id FROM business_bookkeepers WHERE owner_id=? AND revoked_at IS NULL',[owner.id]);
+      if(active) return {status:409,message:'This business already has a bookkeeper. Revoke access before inviting another.'};
+      const [pending]=await q(`SELECT id,email FROM bookkeeper_invitations WHERE owner_id=? AND accepted_at IS NULL
+        AND revoked_at IS NULL AND expires_at>NOW() ORDER BY id DESC LIMIT 1 FOR UPDATE`,[owner.id]);
+      if(pending && pending.email!==req.body.email) return {status:409,message:'Cancel the pending invitation before inviting another bookkeeper.'};
+      if(pending) {
+        await q(`UPDATE bookkeeper_invitations SET token_hash=?,expires_at=DATE_ADD(NOW(),INTERVAL 7 DAY),
+          delivery_status='PENDING',created_at=NOW() WHERE id=?`,[hashToken(token),pending.id]);
+        return {id:pending.id};
+      }
+      const result=await q(`INSERT INTO bookkeeper_invitations(owner_id,email,token_hash,expires_at)
+        VALUES(?,?,?,DATE_ADD(NOW(),INTERVAL 7 DAY))`,[owner.id,req.body.email,hashToken(token)]);
+      return {id:result.insertId};
     });
-    res.status(201).json({message:'Bookkeeper access granted. Ask them to sign in again.'});
-  } catch(error) {logger.error('Bookkeeper grant failed',error);res.status(500).json({message:'Could not grant bookkeeper access'});}
+    if(outcome.status) return res.status(outcome.status).json({message:outcome.message});
+    const inviteUrl=`${(process.env.APP_URL || 'http://localhost:4200').replace(/\/+$/,'')}/bookkeeper-invite?token=${token}`;
+    let sent=false;
+    if(process.env.BOOKKEEPER_INVITE_DELIVERY!=='preview' || process.env.NODE_ENV==='production') {
+      try { await emailService.sendBookkeeperInviteEmail(req.body.email,owner.company_name,inviteUrl); sent=true; }
+      catch(error) {logger.error('Bookkeeper invitation email failed',error);}
+    }
+    await executeQuery('UPDATE bookkeeper_invitations SET delivery_status=? WHERE id=?',[sent?'SENT':'FAILED',outcome.id]);
+    res.status(sent?201:202).json({message:sent?'Invitation emailed to the bookkeeper':'Invitation saved but email delivery failed. Retry after checking SMTP.',
+      email_sent:sent,...(process.env.NODE_ENV==='production'?{}:{preview_url:inviteUrl})});
+  } catch(error) {logger.error('Bookkeeper invitation failed',error);res.status(500).json({message:'Could not create invitation'});}
+});
+
+app.delete('/api/business/bookkeeper-invitations/:id',authenticateToken,async(req,res)=>{
+  try {
+    const [owner]=await executeQuery('SELECT * FROM users WHERE id=?',[req.user.id]);
+    if(!(await reauthenticateForSensitiveAction(req,res,owner,'BOOKKEEPER_INVITE_CANCEL_REAUTH_FAILED'))) return;
+    const result=await withTransaction(async q=>{
+      await q('SELECT id FROM users WHERE id=? FOR UPDATE',[owner.id]);
+      return q(`UPDATE bookkeeper_invitations SET revoked_at=NOW() WHERE id=? AND owner_id=?
+        AND accepted_at IS NULL AND revoked_at IS NULL`,[req.params.id,owner.id]);
+    });
+    if(!result.affectedRows) return res.status(404).json({message:'Invitation not found'});
+    res.json({message:'Invitation cancelled'});
+  } catch(error) {logger.error('Bookkeeper invitation cancellation failed',error);res.status(500).json({message:'Could not cancel invitation'});}
+});
+
+app.get('/api/bookkeeper-invitations/:token',async(req,res)=>{
+  try {
+    const [row]=await executeQuery(`SELECT b.email,b.expires_at,u.company_name FROM bookkeeper_invitations b
+      JOIN users u ON u.id=b.owner_id AND u.status='ACTIVE' WHERE b.token_hash=? AND b.accepted_at IS NULL
+      AND b.revoked_at IS NULL AND b.expires_at>NOW()`,[hashToken(req.params.token)]);
+    res.set('Cache-Control','no-store');
+    if(!row) return res.status(404).json({message:'Invitation expired or unavailable'});
+    res.json({email:row.email,business_name:row.company_name,expires_at:row.expires_at});
+  } catch(error) {logger.error('Bookkeeper invitation lookup failed',error);res.status(500).json({message:'Could not load invitation'});}
+});
+
+app.post('/api/bookkeeper-invitations/:token/accept',authenticateToken,async(req,res)=>{
+  try {
+    const result=await withTransaction(async q=>{
+      const [candidate]=await q('SELECT owner_id FROM bookkeeper_invitations WHERE token_hash=?',[hashToken(req.params.token)]);
+      if(!candidate) return {status:404,message:'Invitation expired or unavailable'};
+      await q('SELECT id FROM users WHERE id=? FOR UPDATE',[candidate.owner_id]);
+      const [invite]=await q(`SELECT id,owner_id,email FROM bookkeeper_invitations WHERE token_hash=? AND
+        accepted_at IS NULL AND revoked_at IS NULL AND expires_at>NOW() FOR UPDATE`,[hashToken(req.params.token)]);
+      if(!invite) return {status:404,message:'Invitation expired or unavailable'};
+      const [member]=await q('SELECT id,email,email_verified,status FROM users WHERE id=?',[req.user.actorId]);
+      if(!member || member.status!=='ACTIVE' || !member.email_verified || member.email!==invite.email)
+        return {status:403,message:'Sign in with the verified email address on the invitation'};
+      const [active]=await q('SELECT id FROM business_bookkeepers WHERE owner_id=? AND revoked_at IS NULL',[invite.owner_id]);
+      if(active) return {status:409,message:'This business already has a bookkeeper'};
+      const [ownData]=await q(`SELECT (SELECT COUNT(*) FROM customers WHERE user_id=?) AS customers,
+        (SELECT COUNT(*) FROM documents WHERE user_id=?) AS documents,
+        (SELECT COUNT(*) FROM products WHERE user_id=?) AS products`,[member.id,member.id,member.id]);
+      if(ownData.customers || ownData.documents || ownData.products) return {status:409,message:'This account already owns business data'};
+      const [prior]=await q('SELECT id,owner_id,revoked_at FROM business_bookkeepers WHERE member_id=?',[member.id]);
+      if(prior && prior.owner_id!==invite.owner_id) return {status:409,message:'This account already belongs to another business'};
+      if(prior && !prior.revoked_at) return {status:409,message:'Bookkeeper already has access'};
+      if(prior) await q('UPDATE business_bookkeepers SET revoked_at=NULL,granted_at=NOW() WHERE id=?',[prior.id]);
+      else await q('INSERT INTO business_bookkeepers(owner_id,member_id) VALUES(?,?)',[invite.owner_id,member.id]);
+      await q('UPDATE bookkeeper_invitations SET accepted_at=NOW() WHERE id=?',[invite.id]);
+      await q("INSERT INTO business_access_events(owner_id,member_id,actor_id,action) VALUES(?,?,?,'GRANTED')",[invite.owner_id,member.id,member.id]);
+      await q('DELETE FROM sessions WHERE userId=?',[member.id]);
+      return {status:200,message:'Access accepted. Sign in again to view the business.'};
+    });
+    res.status(result.status).json({message:result.message});
+  } catch(error) {logger.error('Bookkeeper invitation acceptance failed',error);res.status(error.code==='ER_DUP_ENTRY'?409:500).json({message:'Could not accept invitation'});}
+});
+
+app.post('/api/bookkeeper-invitations/:token/register',registerLimiter,validate([
+  body('name').trim().isLength({min:2,max:255}),
+  body('password').isLength({min:8}),
+]),async(req,res)=>{
+  try {
+    const passwordHash=await argon2.hash(req.body.password);
+    const result=await withTransaction(async q=>{
+      const [candidate]=await q('SELECT owner_id FROM bookkeeper_invitations WHERE token_hash=?',[hashToken(req.params.token)]);
+      if(!candidate) return {status:404,message:'Invitation expired or unavailable'};
+      await q('SELECT id FROM users WHERE id=? FOR UPDATE',[candidate.owner_id]);
+      const [invite]=await q(`SELECT id,owner_id,email FROM bookkeeper_invitations WHERE token_hash=? AND
+        accepted_at IS NULL AND revoked_at IS NULL AND expires_at>NOW() FOR UPDATE`,[hashToken(req.params.token)]);
+      if(!invite) return {status:404,message:'Invitation expired or unavailable'};
+      const [existing]=await q('SELECT id FROM users WHERE email=?',[invite.email]);
+      if(existing) return {status:409,message:'This email already has an account. Sign in to accept the invitation.'};
+      const [active]=await q('SELECT id FROM business_bookkeepers WHERE owner_id=? AND revoked_at IS NULL',[invite.owner_id]);
+      if(active) return {status:409,message:'This business already has a bookkeeper'};
+      const member=await q(`INSERT INTO users(email,password_hash,contact_person,email_verified)
+        VALUES(?,?,?,1)`,[invite.email,passwordHash,req.body.name]);
+      await q('INSERT INTO business_bookkeepers(owner_id,member_id) VALUES(?,?)',[invite.owner_id,member.insertId]);
+      await q('UPDATE bookkeeper_invitations SET accepted_at=NOW() WHERE id=?',[invite.id]);
+      await q("INSERT INTO business_access_events(owner_id,member_id,actor_id,action) VALUES(?,?,?,'GRANTED')",[invite.owner_id,member.insertId,member.insertId]);
+      return {status:201,message:'Bookkeeper account created. Sign in to view the business.'};
+    });
+    res.status(result.status).json({message:result.message});
+  } catch(error) {logger.error('Bookkeeper invitation registration failed',error);res.status(error.code==='ER_DUP_ENTRY'?409:500).json({message:'Could not create bookkeeper account'});}
 });
 
 app.delete('/api/business/bookkeepers/:id',authenticateToken,async(req,res)=>{
@@ -2630,6 +2739,11 @@ app.get('/api/account/export', authenticateToken, exportLimiter, async (req, res
     const scrubbed = documents.map(({ share_token, ...rest }) => rest);
     const snapshots = await executeQuery(`SELECT s.document_id, s.payload FROM document_snapshots s
       JOIN documents d ON d.id=s.document_id WHERE d.user_id=?`, [uid]);
+    const [businessAccess, accessEvents, bookkeeperInvitations] = await Promise.all([
+      executeQuery('SELECT owner_id,member_id,granted_at,revoked_at FROM business_bookkeepers WHERE owner_id=? OR member_id=?',[uid,uid]),
+      executeQuery('SELECT owner_id,member_id,actor_id,action,created_at FROM business_access_events WHERE owner_id=? OR member_id=?',[uid,uid]),
+      executeQuery('SELECT email,expires_at,delivery_status,accepted_at,revoked_at,created_at FROM bookkeeper_invitations WHERE owner_id=?',[uid]),
+    ]);
 
     const payload = {
       document_snapshots: snapshots.map(row => ({ document_id: row.document_id,
@@ -2642,6 +2756,9 @@ app.get('/api/account/export', authenticateToken, exportLimiter, async (req, res
         'included because you are the responsible party for them. Passwords and security tokens are ' +
         'deliberately excluded.',
       account: user[0],
+      business_access: businessAccess,
+      business_access_events: accessEvents,
+      bookkeeper_invitations: bookkeeperInvitations,
       settings,
       customers,
       products,
@@ -2694,6 +2811,14 @@ app.post('/api/account/close', authenticateToken, validate([
     if (!proven) return;
 
     await withTransaction(async (q) => {
+      await q('SELECT id FROM users WHERE id=? FOR UPDATE',[uid]);
+      const memberships=await q('SELECT owner_id,member_id FROM business_bookkeepers WHERE (owner_id=? OR member_id=?) AND revoked_at IS NULL FOR UPDATE',[uid,uid]);
+      for(const membership of memberships) {
+        await q('UPDATE business_bookkeepers SET revoked_at=NOW() WHERE owner_id=? AND member_id=?',[membership.owner_id,membership.member_id]);
+        await q("INSERT INTO business_access_events(owner_id,member_id,actor_id,action) VALUES(?,?,?,'REVOKED')",[membership.owner_id,membership.member_id,uid]);
+        if(membership.owner_id===uid) await q('DELETE FROM sessions WHERE userId=?',[membership.member_id]);
+      }
+      await q('UPDATE bookkeeper_invitations SET revoked_at=NOW() WHERE owner_id=? AND accepted_at IS NULL AND revoked_at IS NULL',[uid]);
       await q(
         `UPDATE users
             SET status = 'CLOSED', closed_at = NOW(), anonymise_after = DATE_ADD(NOW(), INTERVAL ? DAY)

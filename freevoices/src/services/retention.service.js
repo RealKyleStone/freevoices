@@ -77,6 +77,7 @@ async function anonymiseExpiredAccounts() {
   for (const { id } of due) {
     try {
       const didAnonymise = await withTransaction(async (q) => {
+        const [account]=await q('SELECT email FROM users WHERE id=? FOR UPDATE',[id]);
         // email is NOT NULL and UNIQUE, so it cannot just be nulled — it
         // becomes a per-id placeholder that can never route anywhere.
         //
@@ -123,6 +124,7 @@ async function anonymiseExpiredAccounts() {
         await q('DELETE FROM email_outbox WHERE user_id = ?', [id]);
         await q('DELETE FROM bank_import_rows WHERE user_id = ?', [id]);
         await q('DELETE FROM catalogue_import_batches WHERE user_id = ?', [id]);
+        await q('DELETE FROM bookkeeper_invitations WHERE owner_id=? OR email=?',[id,account.email]);
         await q('DELETE s FROM document_share_links s JOIN documents d ON d.id=s.document_id WHERE d.user_id=?',[id]);
         return true;
       });

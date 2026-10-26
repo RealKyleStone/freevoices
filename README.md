@@ -64,7 +64,7 @@ INSERT INTO currencies (id, code, name, symbol) VALUES (1, 'ZAR', 'South African
 
 ### Bookkeeper access
 
-An owner can grant a verified FreeVoices account read-only access in **Settings → Bookkeepers**. The bookkeeper signs in with their own email and password. They can view the owner's customers, products, invoices, quotes, bank review and reports, but cannot change business records or account settings. The owner can revoke access there; grants and revocations end the bookkeeper's existing sessions and are recorded in the access audit table. This first role allows one business per bookkeeper account. Staff permissions, multi-business switching and invitation acceptance remain future work.
+An owner can invite **one** bookkeeper in **Settings → Bookkeepers**. The email link expires after seven days. A new bookkeeper creates a login from that link; an existing verified account signs in and accepts it. The bookkeeper can view the owner's customers, products, invoices, quotes, bank review and reports, but cannot change business records or account settings. The owner can cancel a pending invite or revoke active access. Accepted and revoked access is recorded in the audit table, and affected sessions end. This first role allows one business per bookkeeper account. Staff permissions and multi-business switching remain future work. Configure SMTP to deliver invitations; local development can set `BOOKKEEPER_INVITE_DELIVERY=preview` to display a preview link to the signed-in owner.
 
 ## Checks
 

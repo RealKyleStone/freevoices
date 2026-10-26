@@ -21,6 +21,10 @@ import { documentTextOutline, sunnyOutline, moonOutline } from 'ionicons/icons';
   imports: [CommonModule, ReactiveFormsModule, RouterLink, IonContent, IonButton, IonInput, IonSpinner, IonIcon]
 })
 export class LoginPage implements OnInit, AfterViewInit {
+  private destinationAfterSignIn(): string {
+    const requested = this.route.snapshot.queryParamMap.get('returnUrl') || '';
+    return /^\/bookkeeper-invite\?token=[0-9a-f-]{36}$/i.test(requested) ? requested : '/dashboard';
+  }
   @ViewChild('recaptcha') recaptchaElement?: ElementRef;
   @ViewChild('googleBtn') googleButtonElement?: ElementRef<HTMLElement>;
 
@@ -197,7 +201,7 @@ export class LoginPage implements OnInit, AfterViewInit {
           });
           return;
         }
-        this.router.navigate(['/dashboard']);
+        this.router.navigateByUrl(this.destinationAfterSignIn());
       });
   }
 
@@ -257,7 +261,7 @@ export class LoginPage implements OnInit, AfterViewInit {
           }),
           finalize(() => { this.isLoading = false; this.cdr.detectChanges(); })
         ).subscribe(response => {
-          if (response) this.router.navigate(['/dashboard']);
+          if (response) this.router.navigateByUrl(this.destinationAfterSignIn());
         });
     } catch (error) {
       this.errorMessage = 'An error occurred. Please try again.';

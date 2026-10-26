@@ -908,6 +908,30 @@ const MIGRATIONS = [
       return 'bookkeeper access available';
     },
   },
+  {
+    id:'023_bookkeeper_invitations',
+    description:'Single-slot expiring bookkeeper invitations',
+    async up(q) {
+      const duplicates=await q(`SELECT owner_id,COUNT(*) AS total FROM business_bookkeepers
+        WHERE revoked_at IS NULL GROUP BY owner_id HAVING COUNT(*)>1 LIMIT 1`);
+      if(duplicates.length) throw new Error(`Owner ${duplicates[0].owner_id} has multiple active bookkeepers; revoke extras before migration 023`);
+      if (!(await tableExists(q,'bookkeeper_invitations'))) await q(`CREATE TABLE bookkeeper_invitations (
+        id bigint NOT NULL AUTO_INCREMENT PRIMARY KEY,
+        owner_id bigint NOT NULL,
+        email varchar(255) NOT NULL,
+        token_hash char(64) NOT NULL,
+        expires_at datetime NOT NULL,
+        delivery_status enum('PENDING','SENT','FAILED') NOT NULL DEFAULT 'PENDING',
+        accepted_at datetime NULL DEFAULT NULL,
+        revoked_at datetime NULL DEFAULT NULL,
+        created_at timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        UNIQUE KEY uq_bookkeeper_invite_token(token_hash),
+        KEY idx_bookkeeper_invite_owner(owner_id,expires_at),
+        CONSTRAINT fk_bookkeeper_invite_owner FOREIGN KEY(owner_id) REFERENCES users(id)
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`);
+      return 'bookkeeper invitations available';
+    },
+  },
 ];
 
 // ─── Runner ───────────────────────────────────────────────────────────────────
