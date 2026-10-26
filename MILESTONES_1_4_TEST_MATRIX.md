@@ -4,14 +4,14 @@
 
 ## Status
 
-This is a working verification matrix, **not the combined external testing handoff**. Every roadmap item is in scope. Current work is on `dev`; no change has been merged to `main`. Use fictional customers, bank statements and payments. Run migrations 017–021 before testing newer workflows. Credit/refund creation remains behind an internal test gate.
+This is a working verification matrix, **not the combined external testing handoff**. Every roadmap item is in scope. Current work is on `dev`; no change has been merged to `main`. Use fictional customers, bank statements and payments. Run migrations 017–021 before testing newer workflows. Credit/refund creation requires `INVOICE_ADJUSTMENTS_ENABLED=true` in development or test; production remains closed.
 
 | Area | What is available on `dev` | What testers should verify | Gate |
 |---|---|---|---|
 | M1 dependable billing | Numbering, pricing/PDF, party snapshots, outbox, recurring and ownership fixes | Inclusive/exclusive VAT, concurrent and repeat requests, email retries, recurring dates, invoice history | Automated acceptance passed; real SMTP/payment/provider checks pending |
 | M2 fast daily work | Setup checklist, paged pickers, inline creation, preview, discounts/units, draft recovery, copy/convert, dashboard collections, responsive menu fixes | Follow the seven journeys in [the M2 handoff](MILESTONE_2_TEST_HANDOFF.md), including phone/tablet/keyboard/screen reader | External usability acceptance pending |
 | M3 quote decision | Revocable customer review link, PDF, expiry, accept/decline, guarded conversion | Accept, decline, replay, expiry, revoke, ownership, mobile and keyboard flows; one invoice per quote | Automated API checks passed; external usability pending |
-| M3 settlement | Part payments, balances, paid-in-full receipts and per-payment receipts; test-mode credit/refund ledger and seller forms | Reconcile invoice, portal, PDF, receipt, dashboard and ledger after partial and final payment, credit and refund | Credit/refund creation is test-gated; live UI, tax/PDF and external acceptance pending |
+| M3 settlement | Part payments, balances, paid-in-full receipts and per-payment receipts; development-gated credit/refund ledger and seller forms | Reconcile invoice, portal, PDF, receipt, dashboard and ledger after partial and final payment, credit and refund | Live UI, tax/PDF and external acceptance pending; production gate closed |
 | M3 collections | Opt-in reminders with configurable stages, email delivery history, seller share action | Pause/retry, delivery history, portal payment refresh and last update, bounced/failed email handling | End-to-end collections and portal checks pending |
 | M3 bank review | CSV preview, duplicate detection, pending queue, match suggestions, explicit match/ignore, linked payment | Duplicate file/row, wrong currency, ambiguous reference, partial/excess/negative amount, concurrent match, ownership and audit | Automated API checks passed; human review pending |
 | M4 reporting | VAT CSV, filtered payment ledger, ageing, customer statement | Reconcile totals to source invoices/payments in one and multiple currencies and periods; test CSV formula safety | Automated checks partially cover this; external reconciliation pending |
@@ -22,7 +22,7 @@ This is a working verification matrix, **not the combined external testing hando
 
 ## Latest local automated evidence
 
-At the current local settlement checkpoint, a fresh disposable migrated database passed **156 backend tests, zero failures and zero skips**. Angular passed **127 frontend tests**; lint and production build passed. The responsive navigation suite passed **30 checks** at phone, tablet and desktop sizes. An encrypted backup from the earlier checkpoint restored into a disposable local database and passed table counts and a canary check; it has not yet been repeated with migration 021. CI for this checkpoint has not been verified in this document. These checks do not prove that the embedded editor browser, real devices, production SMTP, PayFast, OAuth or off-site recovery work.
+At the current local settlement checkpoint, a fresh disposable migrated database passed **156 backend tests, zero failures and zero skips**. Angular passed **127 frontend tests**; lint and production build passed. The responsive navigation suite passed **30 checks** at phone, tablet and desktop sizes. An encrypted backup from the earlier checkpoint restored into a disposable local database and passed table counts and a canary check; it has not yet been repeated with migration 021. CI passed at `d155a9e`. The local demo database has migrations 018–021 and its API readiness check passes. Live UI inspection stopped when Computer Use could not verify the browser URL, so seller screens are unverified. These checks do not prove that the embedded editor browser, real devices, production SMTP, PayFast, OAuth or off-site recovery work.
 
 ## Combined handoff exit conditions
 

@@ -73,6 +73,8 @@ const logoUpload = multer({
 });
 
 const app = express();
+const adjustmentsEnabled = () => process.env.INVOICE_ADJUSTMENTS_ENABLED === 'true'
+  && ['development','test'].includes(process.env.NODE_ENV);
 
 async function withInvoiceFinancials(q, invoice) {
   if (!invoice?.id) return invoice;
@@ -1112,7 +1114,7 @@ app.get('/api/invoices/:id', authenticateToken, async (req, res) => {
     // is still owed.
     res.json({
       ...invoices[0], notifications_muted: !!invoices[0].notifications_muted, items, tracking, payments, email_deliveries: deliveries,credits,
-      adjustments_available:process.env.NODE_ENV==='test' && process.env.INVOICE_ADJUSTMENTS_ENABLED==='true',
+      adjustments_available:adjustmentsEnabled(),
       refunds:refunds.map(row=>({...row,reference:decryptField('payment_refunds','reference',row.reference)})),
       amount_paid: settlement.netPaid.toFixed(2), credit_total:settlement.creditTotal.toFixed(2),refund_total:settlement.refundTotal.toFixed(2),
       adjusted_total:settlement.adjustedTotal.toFixed(2),balance_due:settlement.balanceDue.toFixed(2),refund_due:settlement.refundDue.toFixed(2),
@@ -1353,9 +1355,8 @@ app.post('/api/invoices/:id/mark-paid', authenticateToken, validate([
   } catch (error) { logger.error('Error recording payment:', error); res.status(error.status || 500).json({ message: error.status ? error.message : 'Failed to record payment' }); }
 });
 
-// Keep adjustment writes closed until every balance, PDF, portal and report path
-// consumes the same ledger. An isolated API would silently misstate invoices.
-const adjustmentGate = (_req,res,next) => process.env.NODE_ENV === 'test' && process.env.INVOICE_ADJUSTMENTS_ENABLED === 'true'
+// Allow local settlement review while production acceptance is pending.
+const adjustmentGate = (_req,res,next) => adjustmentsEnabled()
   ? next() : res.status(503).json({message:'Invoice adjustments are not available yet'});
 const validAdjustmentKey = value => typeof value==='string' && /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value);
 
