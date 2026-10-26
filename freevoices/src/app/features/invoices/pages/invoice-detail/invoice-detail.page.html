@@ -167,6 +167,10 @@
 
               <!-- Documents and sharing: always available, never the main event. -->
               <div class="actions actions-secondary">
+                <ion-button expand="block" fill="outline" color="medium" [routerLink]="['/invoices/new']" [queryParams]="{ copyFrom: invoice.id }">
+                  <ion-icon slot="start" name="copy-outline"></ion-icon>
+                  Copy as new draft
+                </ion-button>
                 <ion-button expand="block" fill="outline" color="medium" (click)="confirmDownload()" [disabled]="isDownloading">
                   <ion-spinner *ngIf="isDownloading" slot="start" name="crescent"></ion-spinner>
                   <ion-icon *ngIf="!isDownloading" slot="start" name="download-outline"></ion-icon>

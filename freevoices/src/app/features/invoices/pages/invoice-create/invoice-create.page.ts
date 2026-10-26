@@ -1,19 +1,20 @@
 import { Component, HostListener, OnInit } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { ReactiveFormsModule, FormBuilder, FormGroup, FormArray, Validators, AbstractControl, ValidationErrors } from '@angular/forms';
-import { Router } from '@angular/router';
+import { ActivatedRoute, Router } from '@angular/router';
 import {
   ToastController,
   IonBackButton, IonButton, IonButtons, IonCard, IonCardContent, IonCardHeader, IonCardTitle,
   IonContent, IonHeader, IonIcon, IonInput, IonItem, IonLabel, IonNote, IonSelect,
   IonSelectOption, IonSpinner, IonText, IonTextarea, IonTitle, IonToggle, IonToolbar,
 } from '@ionic/angular/standalone';
-import { forkJoin } from 'rxjs';
+import { forkJoin, of } from 'rxjs';
 import { CataloguePickerComponent } from '../../../../shared/components/catalogue-picker/catalogue-picker.component';
 import { InvoicePreviewComponent } from '../../../../shared/components/invoice-preview/invoice-preview.component';
 import { addIcons } from 'ionicons';
 import { trashOutline, addOutline } from 'ionicons/icons';
 import { InvoiceService } from '../../services/invoice.service';
+import { InvoiceDetail } from '../../services/invoice.service';
 import { SettingsService } from '../../../settings/services/settings.service';
 import { Customer, Product, Currency } from '../../../../../models/database.models';
 import { lineTotals, roundCents, todayLocalIso, dueDateFromTerms } from '../../../../shared/utils/document-math';
@@ -44,6 +45,7 @@ export class InvoiceCreatePage implements OnInit, HasUnsavedChanges {
   isLoadingData = true;
   submitted = false;
   selectedCustomerName = '';
+  copiedFromNumber = '';
   private saved = false;
   private defaultVatRate = 15;
   private defaultTerms = 30;
@@ -58,7 +60,8 @@ export class InvoiceCreatePage implements OnInit, HasUnsavedChanges {
     private invoiceService: InvoiceService,
     private settingsService: SettingsService,
     private router: Router,
-    private toastCtrl: ToastController
+    private toastCtrl: ToastController,
+    private route: ActivatedRoute
   ) {
     addIcons({ trashOutline, addOutline });
 
@@ -108,24 +111,62 @@ export class InvoiceCreatePage implements OnInit, HasUnsavedChanges {
   }
 
   ngOnInit() {
+    const copyId = Number(this.route.snapshot.queryParamMap.get('copyFrom'));
+    const sourceId = Number.isSafeInteger(copyId) && copyId > 0 ? copyId : null;
     forkJoin({
       currencies: this.settingsService.getCurrencies(),
-      settings:   this.settingsService.getSettings()
+      settings:   this.settingsService.getSettings(),
+      source:     sourceId ? this.invoiceService.getInvoice(sourceId) : of(null)
     }).subscribe({
-      next: ({ currencies, settings }) => {
+      next: ({ currencies, settings, source }) => {
         this.currencies = currencies;
         const defaultCurrencyId = parseInt(settings.default_currency_id || '1', 10);
         this.defaultVatRate = Number(settings.invoice_vat_rate ?? 15);
         this.defaultTerms = Number(settings.invoice_payment_terms ?? 30);
         this.form.patchValue({ currency_id: defaultCurrencyId, payment_terms: this.defaultTerms, notes: settings.invoice_notes || '' });
-        this.addItem();
+        if (source) this.copyFrom(source);
+        else this.addItem();
         this.isLoadingData = false;
       },
       error: async () => {
         this.isLoadingData = false;
-        await this.showToast('Failed to load data', 'danger');
+        await this.showToast(sourceId ? 'Could not load the invoice to copy' : 'Failed to load data', 'danger');
+        if (sourceId) this.router.navigate(['/invoices', sourceId]);
       }
     });
+  }
+
+  private copyFrom(source: InvoiceDetail) {
+    this.copiedFromNumber = source.document_number;
+    this.selectedCustomerName = source.customer_name;
+    // A copy is a new draft dated today. The source's number, payment state,
+    // delivery history, shares and recurrence schedule never carry across.
+    this.form.patchValue({
+      customer_id: source.customer_id,
+      currency_id: source.currency_id,
+      payment_terms: source.payment_terms ?? this.defaultTerms,
+      notes: source.notes ?? '',
+      terms_conditions: source.terms_conditions ?? '',
+      is_recurring: false,
+      recurrence_interval: null,
+      recurrence_end_date: '',
+      auto_send: false
+    });
+    this.items.clear();
+    for (const item of source.items) {
+      const group = this.newItemGroup();
+      group.patchValue({
+        product_id: item.product_id ?? null,
+        description: item.description,
+        quantity: item.quantity,
+        unit_price: item.unit_price,
+        vat_inclusive: !!item.vat_inclusive,
+        vat_rate: item.vat_rate
+      });
+      this.items.push(group);
+    }
+    if (!this.items.length) this.addItem();
+    this.form.markAsDirty();
   }
 
   get isRecurring(): boolean {

@@ -3,7 +3,7 @@
     <ion-buttons slot="start">
       <ion-back-button defaultHref="/invoices"></ion-back-button>
     </ion-buttons>
-    <ion-title>New invoice</ion-title>
+    <ion-title>{{ copiedFromNumber ? 'Copy invoice' : 'New invoice' }}</ion-title>
   </ion-toolbar>
 </ion-header>
 
@@ -13,6 +13,8 @@
   </div>
 
   <form class="form-container" [formGroup]="form" (ngSubmit)="onSubmit()" *ngIf="!isLoadingData">
+
+    <p *ngIf="copiedFromNumber" role="status">Copying {{ copiedFromNumber }} into a new draft. Review the customer, prices and dates before creating it.</p>
 
     <!-- Header details -->
     <ion-card>
