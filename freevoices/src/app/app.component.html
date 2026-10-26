@@ -1,7 +1,7 @@
 <ion-app>
 
-  <ion-split-pane contentId="main-content" *ngIf="isLoggedIn$ | async">
-    <ion-menu contentId="main-content">
+  <ion-split-pane [when]="(isLoggedIn$ | async) === true ? 'lg' : false" contentId="main-content">
+    <ion-menu *ngIf="isLoggedIn$ | async" contentId="main-content">
       <ion-content>
         <!-- A button rather than a div: it navigates, so it has to be
              focusable and operable from the keyboard. -->
@@ -46,7 +46,7 @@
       <ion-footer>
         <!-- Renders in the split-pane shell regardless of the routed child, so
              it stays reachable even from a full-page interstitial. -->
-        <ion-item button routerLink="/settings/legal" routerLinkActive="selected" detail="false">
+        <ion-item button (click)="closeMenu()" routerLink="/settings/legal" routerLinkActive="selected" detail="false">
           <ion-icon name="reader-outline" slot="start"></ion-icon>
           <ion-label>Legal &amp; privacy</ion-label>
         </ion-item>
@@ -67,6 +67,5 @@
     </div>
   </ion-split-pane>
 
-  <ion-router-outlet *ngIf="(isLoggedIn$ | async) !== true"></ion-router-outlet>
 
 </ion-app>

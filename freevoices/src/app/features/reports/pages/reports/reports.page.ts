@@ -1,4 +1,4 @@
-import { Component, OnInit, OnDestroy, ViewChild, ElementRef } from '@angular/core';
+import { Component, OnInit, OnDestroy, AfterViewChecked, ViewChild, ElementRef } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import {
   IonButtons, IonContent, IonHeader, IonIcon, IonMenuButton, IonSpinner, IonToolbar,
@@ -7,7 +7,7 @@ import { Chart, ChartConfiguration, registerables } from 'chart.js';
 import {
   ReportsService, RevenueByMonth, InvoiceStatusBreakdown, TopCustomer, VatSummaryRow
 } from '../../services/reports.service';
-import { forkJoin } from 'rxjs';
+import { forkJoin, Subscription } from 'rxjs';
 import { addIcons } from 'ionicons';
 import {
   alertCircleOutline,
@@ -58,7 +58,7 @@ function formatMonth(ym: string): string {
     IonToolbar,
   ]
 })
-export class ReportsPage implements OnInit, OnDestroy {
+export class ReportsPage implements OnInit, OnDestroy, AfterViewChecked {
   @ViewChild('revenueCanvas')  revenueCanvas!:  ElementRef<HTMLCanvasElement>;
   @ViewChild('statusCanvas')   statusCanvas!:   ElementRef<HTMLCanvasElement>;
   @ViewChild('customersCanvas') customersCanvas!: ElementRef<HTMLCanvasElement>;
@@ -79,6 +79,8 @@ export class ReportsPage implements OnInit, OnDestroy {
   private statusData?:  InvoiceStatusBreakdown[];
   private customerData?: TopCustomer[];
   private vatData?:     VatSummaryRow[];
+  private chartsPending = false;
+  private requests = new Subscription();
 
 
   constructor(private reports: ReportsService) {
@@ -115,7 +117,7 @@ export class ReportsPage implements OnInit, OnDestroy {
   }
 
   ngOnInit() {
-    this.reports.getCurrencies().subscribe(rows => this.currencies = rows);
+    this.requests.add(this.reports.getCurrencies().subscribe(rows => this.currencies = rows));
     this.loadReports();
   }
 
@@ -128,7 +130,8 @@ export class ReportsPage implements OnInit, OnDestroy {
     this.destroyCharts();
     this.isLoading = true;
     this.hasError = false;
-    forkJoin({
+    this.chartsPending = false;
+    this.requests.add(forkJoin({
       revenue:   this.reports.getRevenueByMonth(this.selectedCurrency),
       status:    this.reports.getInvoiceStatus(this.selectedCurrency),
       customers: this.reports.getTopCustomers(this.selectedCurrency),
@@ -142,18 +145,26 @@ export class ReportsPage implements OnInit, OnDestroy {
         this.topCustomers = customers;
         this.vatRows      = vat;
         this.isLoading    = false;
-        // Wait one tick for Angular to render the *ngIf canvases before building charts
-        setTimeout(() => this.buildCharts(), 0);
+        this.chartsPending = true;
       },
       error: () => {
         this.isLoading = false;
         this.hasError  = true;
       }
-    });
+    }));
   }
 
 
+  ngAfterViewChecked() {
+    if (this.chartsPending && this.revenueCanvas && this.statusCanvas) {
+      this.chartsPending = false;
+      this.buildCharts();
+    }
+  }
+
   ngOnDestroy() {
+    this.requests.unsubscribe();
+    this.chartsPending = false;
     this.themeObserver?.disconnect();
     this.destroyCharts();
   }
@@ -193,8 +204,8 @@ export class ReportsPage implements OnInit, OnDestroy {
 
     this.buildRevenueChart();
     this.buildStatusChart();
-    this.buildCustomersChart();
-    this.buildVatChart();
+    if (this.customersCanvas) this.buildCustomersChart();
+    if (this.vatCanvas) this.buildVatChart();
     this.watchTheme();
   }
 

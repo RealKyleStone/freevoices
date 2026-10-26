@@ -15,6 +15,7 @@
     "test:server": "node --test test/*.test.js",
     "test:integration": "node scripts/test-integration.js",
     "test:ci": "ng test --watch=false --browsers=ChromeHeadless",
+    "test:navigation": "ng test --watch=false --browsers=ChromeHeadlessPhone,ChromeHeadlessTablet,ChromeHeadlessDesktop --include=src/app/app-navigation.spec.ts",
     "check:payfast": "node scripts/payfast-check.js",
     "encrypt:backfill": "node scripts/encrypt-backfill.js",
     "encrypt:verify": "node scripts/encrypt-backfill.js --verify",

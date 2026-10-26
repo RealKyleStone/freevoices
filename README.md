@@ -110,3 +110,7 @@ The dashboard now shows a business setup checklist linking to company, invoice a
 Invoice and quote create/edit forms search customers and products in server-paged dialogs. Use **Add customer/product** to create and select a record without leaving the document. Search errors offer retry; failed additions retain their entries. Existing draft selections load independently of the first search page, and products remain optional for custom lines.
 
 Latest local checks: 142 backend tests with no skips, 102 frontend tests, build and lint pass. See PRODUCT_REVIEW.md for the rest of Milestone 2 and remaining visual usability checks.
+
+## Milestone 1/2 regression checks
+
+Run `npm.cmd run test:navigation` to exercise menu navigation in three headless Chrome window sizes. The suite is also part of dev CI and checks the tablet sidebar boundary, mobile overlay dismissal, settings sections, authentication transitions, dirty drafts, picker cancellation, theme switching and empty reports. The full current frontend suite has 112 passing tests; backend checks have 142 with zero skips. See [REGRESSION_REPORT.md](REGRESSION_REPORT.md) for the fixes, test scope and live-browser limitations.

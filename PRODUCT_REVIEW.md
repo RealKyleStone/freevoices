@@ -2,6 +2,10 @@
 
 24 October 2026 · branch `dev` · initial local assessment
 
+## Milestone 1/2 regression follow-up - 26 October 2026
+
+The navigation regression pass found and fixed a tablet menu breakpoint gap, a mobile footer overlay that stayed open, conflicting authentication router outlets/cached views and a crash when report data was empty. Local results: 142 backend tests, 112 frontend tests, 30 responsive navigation checks, production build and lint pass. All work remains on `dev`. [Full regression report](REGRESSION_REPORT.md) documents the exact component/API coverage and the unavailable live editor-browser controls.
+
 ## Milestone 2 first slice - 26 October 2026
 
 Implemented the company setup checklist and searchable catalogues on `dev`:

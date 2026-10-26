@@ -1,8 +1,8 @@
-import { Component, OnInit } from '@angular/core';
+import { Component, OnInit, OnDestroy } from '@angular/core';
 import { Router, RouterModule } from '@angular/router';
 import { IonApp, IonSplitPane, IonMenu, IonContent, IonList,
          IonMenuToggle, IonItem, IonIcon, IonLabel, IonFooter,
-         IonRouterOutlet, MenuController } from '@ionic/angular/standalone';
+         IonRouterOutlet, MenuController, NavController } from '@ionic/angular/standalone';
 import { Capacitor } from '@capacitor/core';
 import { StatusBar, Style } from '@capacitor/status-bar';
 import { AuthService } from './core/auth/services/auth.service';
@@ -23,8 +23,8 @@ import {
   timeOutline, documentOutline, mailOutline, callOutline,
   locationOutline, navigateOutline, pricetagOutline, timerOutline
 } from 'ionicons/icons';
-import { Observable } from 'rxjs';
-import { filter, take } from 'rxjs/operators';
+import { Observable, Subscription } from 'rxjs';
+import { distinctUntilChanged, filter, map, take } from 'rxjs/operators';
 import { LocalNotificationService } from './core/services/local-notification.service';
 import { BrowserNotificationService } from './core/services/browser-notification.service';
 import { todayLocalIso } from './shared/utils/document-math';
@@ -42,19 +42,21 @@ import { InvoiceService } from './features/invoices/services/invoice.service';
     IonRouterOutlet
   ]
 })
-export class AppComponent implements OnInit {
-  isLoggedIn$: Observable<any>;
+export class AppComponent implements OnInit, OnDestroy {
+  isLoggedIn$: Observable<boolean>;
   isDarkMode = false;
+  private readonly subscriptions = new Subscription();
 
   constructor(
     private authService: AuthService,
     private router: Router,
     private menuCtrl: MenuController,
+    private navCtrl: NavController,
     private localNotifications: LocalNotificationService,
     private browserNotifications: BrowserNotificationService,
     private invoiceService: InvoiceService
   ) {
-    this.isLoggedIn$ = this.authService.currentUser$;
+    this.isLoggedIn$ = this.authService.currentUser$.pipe(map(user => !!user), distinctUntilChanged());
     addIcons({
       readerOutline,
   walletOutline, gridOutline, cashOutline, businessOutline,
@@ -75,10 +77,16 @@ export class AppComponent implements OnInit {
   ngOnInit(): void {
     this.initTheme();
     this.browserNotifications.requestPermission();
-    this.authService.currentUser$.pipe(filter(user => !!user), take(1)).subscribe(() => {
+    // Keep one outlet mounted, but clear its cached pages at account boundaries.
+    this.subscriptions.add(this.authService.currentUser$.pipe(
+      map(user => user?.id ?? null), distinctUntilChanged()
+    ).subscribe(() => this.navCtrl.setDirection('root', false)));
+    this.subscriptions.add(this.authService.currentUser$.pipe(filter(user => !!user), take(1)).subscribe(() => {
       this.checkInvoicesOnStartup();
-    });
+    }));
   }
+
+  ngOnDestroy() { this.subscriptions.unsubscribe(); }
 
   initTheme() {
     const saved = localStorage.getItem('fv-theme');
@@ -157,6 +165,7 @@ export class AppComponent implements OnInit {
   async closeMenu() { await this.menuCtrl.close(); }
 
   async logout() {
+    await this.closeMenu();
     await this.authService.logout();
     this.router.navigate(['/login']);
   }
