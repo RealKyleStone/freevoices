@@ -13,6 +13,8 @@
     "deploy:build": "ng build --configuration production && node scripts/build-deploy-bundle.js",
     "doctor": "node scripts/doctor.js",
     "test:server": "node --test test/*.test.js",
+    "test:integration": "node scripts/test-integration.js",
+    "test:ci": "ng test --watch=false --browsers=ChromeHeadless",
     "check:payfast": "node scripts/payfast-check.js",
     "encrypt:backfill": "node scripts/encrypt-backfill.js",
     "encrypt:verify": "node scripts/encrypt-backfill.js --verify",

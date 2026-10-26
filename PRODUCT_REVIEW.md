@@ -2,6 +2,22 @@
 
 24 October 2026 · branch `dev` · initial local assessment
 
+## Milestone 1 follow-up ? 26 October 2026
+
+New work stays on `dev`; `main` is not merged. The dependable-billing fixes are already in PR_1. This follow-up adds the missing CI workflow and an isolated fresh-database test runner, plus explicit inclusive-VAT reconciliation assertions across issued PDFs, the VAT report, paid-revenue report and dashboard.
+
+| Completion criterion | Evidence/status |
+|---|---|
+| P0 reproductions, ownership and email-verification safeguards | Backend API regressions run with the full suite |
+| Unique concurrent numbers and safe request replay | Concurrent numbering and idempotency regressions |
+| Historical issued parties remain stable | Document-history regression after buyer/seller edits and logo deletion |
+| Pricing agrees across preview, API, PDF and reports | Actual client helper parity plus issued-inclusive PDF/report/dashboard assertions |
+| Email failure visible and safe to retry | Outbox, local SMTP acceptance, duplicate-send and ambiguous-attempt regressions |
+| Recurring calendar, restarts and concurrent workers | Anchored monthly/leap-year fixtures, occurrence uniqueness and queue recovery checks |
+| Build, backend tests, frontend tests and lint pass in CI | Workflow implemented; first GitHub Actions run pending publication to dev |
+
+Local validation: **141 backend tests with zero skips** on a newly imported/migrated database, **82 frontend tests**, production build and lint pass. The test database and its dedicated user used for this workstation run were removed afterwards. The runner itself never drops/replaces database contents. All 16 migrations were exercised from the base schema; ordinary `.env` credentials and the demo database were not used for integration execution.
+
 ## Fix progress
 
 The first implementation pass fixes PDF pagination and concurrent document numbering. The 60-line regression sample now renders as four pages with repeated table headings and page-numbered footers. Pagination is shared by invoices, quotes and receipts, including long descriptions and trailing text sections.

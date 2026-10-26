@@ -82,3 +82,23 @@ Set that variable when running `npm.cmd run test:server` to include the integrat
 Current validation: 140 backend tests (with `FREEVOICES_TEST_API_URL=http://localhost:3000/api`), 82 headless frontend tests, production build and lint pass. Integration tests create and remove their own synthetic businesses. SMTP protocol tests use an ephemeral local server; real inbox delivery, OAuth, payment-provider transactions and production disaster recovery still need separate validation. See [PRODUCT_REVIEW.md](PRODUCT_REVIEW.md) for current fix status and remaining product work.
 
 The logical backup script now uses one consistent transaction and SQL-format date/time strings (`format_version: 2`). A local restore drill verified all 21 tables, 268 rows and 21 foreign keys in a disposable database. It is still an unencrypted logical export; production off-site backup scheduling, retention, encryption and separate key recovery need operational setup. Repeated API regression runs can hit the normal authentication rate limits; restart the local API between complete runs rather than disabling those limits.
+
+## Milestone 1 automated checks
+
+All new development stays on `dev`. The workflow in `.github/workflows/dev-checks.yml` checks pushes to `dev` and pull requests targeting `dev`; it does not deploy or merge branches. Its frontend job runs the production build, lint and headless browser tests. Its backend job uses a fresh MariaDB 11.4.13 service and runs every backend test, failing if any test is skipped. No production credentials or repository secrets are needed.
+
+To run the same backend checks locally, first create an **empty disposable database** named `freevoices_test` or `freevoices_test_<suffix>`, with a database user granted access only to that database. From the inner app directory, supply the connection explicitly:
+
+```powershell
+$env:DB_HOST = '127.0.0.1'
+$env:DB_NAME = 'freevoices_test_local'
+$env:DB_USER = 'your_disposable_test_user'
+$env:DB_PASSWORD = 'your_test_password'
+npm.cmd run test:integration
+```
+
+The runner refuses remote hosts, production mode, other database names and any nonempty database. It imports the base schema, seeds ZAR/USD, starts a separate API on a temporary port, applies migrations and uses a freshly generated encryption key. SMTP is forced to localhost; the real SMTP protocol regression creates its own local test server. It stops the API afterwards but never drops the database. Use a new empty database for another run; the temporary key is intentionally not saved. Do not point this command at the demo database.
+
+Run `npm.cmd run test:ci` for browser tests (Chrome required), plus `npm.cmd run build` and `npm.cmd run lint`.
+
+26 October 2026 validation: 141 backend tests pass with zero skips against a fresh migrated database; 82 frontend tests, production build and lint pass locally. The workflow YAML is parsed and its dev-only triggers checked. The first GitHub Actions run is pending publication of these changes to `dev`; Milestone 1's CI completion criterion remains pending that run.
