@@ -35,7 +35,7 @@
               <ion-icon name="bar-chart-outline" slot="start"></ion-icon>
               <ion-label>Reports</ion-label>
             </ion-item>
-            <ion-item routerLink="/settings" routerLinkActive="selected" detail="false">
+            <ion-item *ngIf="!isBookkeeper" routerLink="/settings" routerLinkActive="selected" detail="false">
               <ion-icon name="settings-outline" slot="start"></ion-icon>
               <ion-label>Settings</ion-label>
             </ion-item>
@@ -46,7 +46,7 @@
       <ion-footer>
         <!-- Renders in the split-pane shell regardless of the routed child, so
              it stays reachable even from a full-page interstitial. -->
-        <ion-item button (click)="closeMenu()" routerLink="/settings/legal" routerLinkActive="selected" detail="false">
+        <ion-item *ngIf="!isBookkeeper" button (click)="closeMenu()" routerLink="/settings/legal" routerLinkActive="selected" detail="false">
           <ion-icon name="reader-outline" slot="start"></ion-icon>
           <ion-label>Legal &amp; privacy</ion-label>
         </ion-item>

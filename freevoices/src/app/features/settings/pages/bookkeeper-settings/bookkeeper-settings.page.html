@@ -1,0 +1,18 @@
+<section class="bookkeeper-page">
+  <h1>Bookkeepers</h1>
+  <p>Give a verified FreeVoices account read-only access to your customers, invoices, bank review and reports. Bookkeepers cannot change records or account settings.</p>
+  <p>The bookkeeper must create and verify their own account first. Granting or revoking access signs them out so the new permissions take effect.</p>
+  <form (ngSubmit)="grant()">
+    <label for="bookkeeper-email">Bookkeeper email</label>
+    <input id="bookkeeper-email" name="bookkeeper-email" type="email" autocomplete="email" required [(ngModel)]="email">
+    <label for="bookkeeper-password">Your password</label>
+    <input id="bookkeeper-password" name="bookkeeper-password" type="password" autocomplete="current-password" required [(ngModel)]="password">
+    <ion-button type="submit" [disabled]="busy || !email || !password">Grant read-only access</ion-button>
+  </form>
+  <ion-spinner *ngIf="busy"></ion-spinner>
+  <p role="alert" *ngIf="error">{{ error }}</p>
+  <p role="status" *ngIf="message">{{ message }}</p>
+  <h2>Active bookkeepers</h2>
+  <p *ngIf="!bookkeepers.length">No bookkeepers have access.</p>
+  <ul><li *ngFor="let entry of bookkeepers">{{ entry.email }} <ion-button fill="outline" color="danger" size="small" (click)="revoke(entry)" [disabled]="busy">Revoke</ion-button></li></ul>
+</section>

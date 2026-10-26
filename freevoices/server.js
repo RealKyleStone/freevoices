@@ -362,7 +362,17 @@ const authenticateToken = async (req, res, next) => {
       return res.status(403).json({ message: 'This account is closed.', code: 'ACCOUNT_CLOSED' });
     }
 
-    req.user = { id: sessions[0].userId };
+    const actorId = sessions[0].userId;
+    const [access] = await executeQuery(`SELECT b.owner_id,u.status AS owner_status
+      FROM business_bookkeepers b JOIN users u ON u.id=b.owner_id
+      WHERE b.member_id=? AND b.revoked_at IS NULL`,[actorId]);
+    if (access) {
+      if (access.owner_status !== 'ACTIVE') return res.status(403).json({message:'Business access is unavailable'});
+      const readable = req.method === 'GET' && /^\/api\/(?:dashboard\/summary|customers(?:\/|$)|products(?:\/|$)|invoices(?:\/|$)|quotes(?:\/|$)|reports(?:\/|$)|bank-imports(?:\/|$)|currencies(?:\/|$))/.test(req.path);
+      if (!readable && req.path !== '/api/logout' && req.path !== '/api/business/access')
+        return res.status(403).json({message:'Bookkeeper access is read only'});
+      req.user = { id: access.owner_id, actorId, role:'BOOKKEEPER' };
+    } else req.user = { id: actorId, actorId, role:'OWNER' };
 
     // Slide the idle window, clamped to the absolute ceiling. The guard on
     // `expires` means this only writes once the window has actually moved by
@@ -563,7 +573,11 @@ async function completeSignIn(req, res, user, eventType) {
   await executeQuery('UPDATE users SET last_login_at = NOW() WHERE id = ?', [user.id]);
   await recordSecurityEvent(req, eventType, user.id);
   logger.info('User logged in successfully', { userId: user.id });
-  res.json({ token, user: { id: user.id, email: user.email, company_name: user.company_name } });
+  const [access] = await executeQuery(`SELECT b.owner_id,u.company_name FROM business_bookkeepers b
+    JOIN users u ON u.id=b.owner_id AND u.status='ACTIVE'
+    WHERE b.member_id=? AND b.revoked_at IS NULL`,[user.id]);
+  res.json({ token, user: { id: user.id, email: user.email, company_name: access?.company_name || user.company_name,
+    role: access ? 'BOOKKEEPER' : 'OWNER' } });
   return true;
 }
 
@@ -704,6 +718,63 @@ app.post('/api/logout', authenticateToken, async (req, res) => {
     await executeQuery('DELETE FROM sessions WHERE token = ?', [hashToken(token)]);
     res.json({ message: 'Logged out successfully' });
   } catch (error) { logger.error('Logout error:', error); res.status(500).json({ message: 'Logout error' }); }
+});
+
+app.get('/api/business/access',authenticateToken,async(req,res)=>{
+  if(req.user.role==='BOOKKEEPER') return res.json({role:'BOOKKEEPER',business_id:req.user.id});
+  res.json({role:'OWNER',business_id:req.user.id});
+});
+
+app.get('/api/business/bookkeepers',authenticateToken,async(req,res)=>{
+  try {
+    const rows=await executeQuery(`SELECT b.id,u.email,b.granted_at FROM business_bookkeepers b
+      JOIN users u ON u.id=b.member_id WHERE b.owner_id=? AND b.revoked_at IS NULL ORDER BY u.email`,[req.user.id]);
+    res.json(rows);
+  } catch(error) { logger.error('Bookkeeper list failed',error);res.status(500).json({message:'Could not load bookkeepers'}); }
+});
+
+app.post('/api/business/bookkeepers',authenticateToken,validate([
+  body('email').isEmail().normalizeEmail(),
+  body('password').optional().isString(),
+  body('idToken').optional().isString(),
+]),async(req,res)=>{
+  try {
+    const [owner]=await executeQuery('SELECT * FROM users WHERE id=?',[req.user.id]);
+    if(!(await reauthenticateForSensitiveAction(req,res,owner,'BOOKKEEPER_GRANT_REAUTH_FAILED'))) return;
+    const [member]=await executeQuery('SELECT id,email_verified,status FROM users WHERE email=?',[req.body.email]);
+    if(!member || !member.email_verified || member.status!=='ACTIVE') return res.status(422).json({message:'The bookkeeper must register and verify their email first'});
+    if(member.id===owner.id) return res.status(422).json({message:'Choose a different account'});
+    const [ownData]=await executeQuery(`SELECT
+      (SELECT COUNT(*) FROM customers WHERE user_id=?) AS customers,
+      (SELECT COUNT(*) FROM documents WHERE user_id=?) AS documents,
+      (SELECT COUNT(*) FROM products WHERE user_id=?) AS products`,[member.id,member.id,member.id]);
+    if(ownData.customers || ownData.documents || ownData.products) return res.status(409).json({message:'This account already owns business data'});
+    const [prior]=await executeQuery('SELECT id,owner_id,revoked_at FROM business_bookkeepers WHERE member_id=?',[member.id]);
+    if(prior && prior.owner_id!==owner.id) return res.status(409).json({message:'This account already belongs to another business'});
+    if(prior && !prior.revoked_at) return res.status(409).json({message:'Bookkeeper already has access'});
+    await withTransaction(async q=>{
+      if(prior) await q('UPDATE business_bookkeepers SET revoked_at=NULL,granted_at=NOW() WHERE id=? AND owner_id=?',[prior.id,owner.id]);
+      else await q('INSERT INTO business_bookkeepers(owner_id,member_id) VALUES(?,?)',[owner.id,member.id]);
+      await q("INSERT INTO business_access_events(owner_id,member_id,actor_id,action) VALUES(?,?,?,'GRANTED')",[owner.id,member.id,owner.id]);
+      await q('DELETE FROM sessions WHERE userId=?',[member.id]);
+    });
+    res.status(201).json({message:'Bookkeeper access granted. Ask them to sign in again.'});
+  } catch(error) {logger.error('Bookkeeper grant failed',error);res.status(500).json({message:'Could not grant bookkeeper access'});}
+});
+
+app.delete('/api/business/bookkeepers/:id',authenticateToken,async(req,res)=>{
+  try {
+    const [owner]=await executeQuery('SELECT * FROM users WHERE id=?',[req.user.id]);
+    if(!(await reauthenticateForSensitiveAction(req,res,owner,'BOOKKEEPER_REVOKE_REAUTH_FAILED'))) return;
+    const [entry]=await executeQuery('SELECT id,member_id FROM business_bookkeepers WHERE id=? AND owner_id=? AND revoked_at IS NULL',[req.params.id,owner.id]);
+    if(!entry) return res.status(404).json({message:'Bookkeeper access not found'});
+    await withTransaction(async q=>{
+      await q('UPDATE business_bookkeepers SET revoked_at=NOW() WHERE id=? AND owner_id=?',[entry.id,owner.id]);
+      await q("INSERT INTO business_access_events(owner_id,member_id,actor_id,action) VALUES(?,?,?,'REVOKED')",[owner.id,entry.member_id,owner.id]);
+      await q('DELETE FROM sessions WHERE userId=?',[entry.member_id]);
+    });
+    res.json({message:'Bookkeeper access revoked'});
+  } catch(error) {logger.error('Bookkeeper revoke failed',error);res.status(500).json({message:'Could not revoke bookkeeper access'});}
 });
 
 process.on('SIGINT', () => {

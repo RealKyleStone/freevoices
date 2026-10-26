@@ -62,6 +62,10 @@ INSERT INTO currencies (id, code, name, symbol) VALUES (1, 'ZAR', 'South African
 
 7. Start the API and frontend as above and register a local account. Use fictional data.
 
+### Bookkeeper access
+
+An owner can grant a verified FreeVoices account read-only access in **Settings → Bookkeepers**. The bookkeeper signs in with their own email and password. They can view the owner's customers, products, invoices, quotes, bank review and reports, but cannot change business records or account settings. The owner can revoke access there; grants and revocations end the bookkeeper's existing sessions and are recorded in the access audit table. This first role allows one business per bookkeeper account. Staff permissions, multi-business switching and invitation acceptance remain future work.
+
 ## Checks
 
 Run these from the inner application directory:

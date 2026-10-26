@@ -877,6 +877,37 @@ const MIGRATIONS = [
       return 'credit notes and refunds available';
     },
   },
+  {
+    id:'022_bookkeeper_access',
+    description:'Explicit read-only bookkeeper access to an owner business',
+    async up(q) {
+      if (!(await tableExists(q,'business_bookkeepers'))) await q(`CREATE TABLE business_bookkeepers (
+        id bigint NOT NULL AUTO_INCREMENT PRIMARY KEY,
+        owner_id bigint NOT NULL,
+        member_id bigint NOT NULL,
+        granted_at timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        revoked_at timestamp NULL DEFAULT NULL,
+        UNIQUE KEY uq_bookkeeper_member(member_id),
+        KEY idx_bookkeeper_owner(owner_id,revoked_at),
+        CONSTRAINT fk_bookkeeper_owner FOREIGN KEY(owner_id) REFERENCES users(id),
+        CONSTRAINT fk_bookkeeper_member FOREIGN KEY(member_id) REFERENCES users(id),
+        CONSTRAINT chk_bookkeeper_distinct CHECK (owner_id<>member_id)
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`);
+      if (!(await tableExists(q,'business_access_events'))) await q(`CREATE TABLE business_access_events (
+        id bigint NOT NULL AUTO_INCREMENT PRIMARY KEY,
+        owner_id bigint NOT NULL,
+        member_id bigint NOT NULL,
+        actor_id bigint NOT NULL,
+        action enum('GRANTED','REVOKED') NOT NULL,
+        created_at timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        KEY idx_business_access_events(owner_id,created_at),
+        CONSTRAINT fk_access_event_owner FOREIGN KEY(owner_id) REFERENCES users(id),
+        CONSTRAINT fk_access_event_member FOREIGN KEY(member_id) REFERENCES users(id),
+        CONSTRAINT fk_access_event_actor FOREIGN KEY(actor_id) REFERENCES users(id)
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`);
+      return 'bookkeeper access available';
+    },
+  },
 ];
 
 // ─── Runner ───────────────────────────────────────────────────────────────────

@@ -112,7 +112,10 @@ test('a value moved to another table fails to decrypt', (t) => {
 test('a tampered envelope fails the auth tag', (t) => {
   withKeyring(t, `1:${KEY_1}`, '1');
   const envelope = ef.encryptField('users', 'payfast_passphrase', 'secret');
-  const flipped = envelope.slice(0, -2) + (envelope.slice(-2) === 'AA' ? 'AB' : 'AA');
+  const [header, payload] = envelope.split('$');
+  // The trailing base64 characters can contain unused padding bits. Flip a
+  // character near the start so the decoded authenticated bytes must change.
+  const flipped = `${header}$${payload.slice(0, 2)}${payload[2] === 'A' ? 'B' : 'A'}${payload.slice(3)}`;
   assert.throws(() => ef.decryptField('users', 'payfast_passphrase', flipped));
 });
 

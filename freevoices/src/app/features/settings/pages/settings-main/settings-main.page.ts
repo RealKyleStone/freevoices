@@ -14,7 +14,7 @@ import {
   notificationsOutline,
   menuOutline,
   readerOutline,
-  shieldCheckmarkOutline, cloudUploadOutline
+  shieldCheckmarkOutline, cloudUploadOutline, peopleOutline
 } from 'ionicons/icons';
 
 @Component({
@@ -36,13 +36,14 @@ export class SettingsMainPage {
     { label: 'Notifications', path: 'notifications', icon: 'notifications-outline' },
     { label: 'Privacy & data', path: 'privacy', icon: 'shield-checkmark-outline' },
     { label: 'Legal', path: 'legal', icon: 'reader-outline' },
-    { label: 'Imports', path: 'imports', icon: 'cloud-upload-outline' }
+    { label: 'Imports', path: 'imports', icon: 'cloud-upload-outline' },
+    { label: 'Bookkeepers', path: 'bookkeepers', icon: 'people-outline' }
   ];
 
   constructor() {
     addIcons({
       personOutline, businessOutline, documentTextOutline, cardOutline,
-      notificationsOutline, menuOutline, readerOutline, shieldCheckmarkOutline, cloudUploadOutline
+      notificationsOutline, menuOutline, readerOutline, shieldCheckmarkOutline, cloudUploadOutline, peopleOutline
     });
   }
 }

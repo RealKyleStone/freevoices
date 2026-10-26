@@ -47,6 +47,11 @@ export const SETTINGS_ROUTES: Routes = [
           .then(m => m.ImportSettingsPage)
       },
       {
+        path: 'bookkeepers',
+        loadComponent: () => import('./pages/bookkeeper-settings/bookkeeper-settings.page')
+          .then(m => m.BookkeeperSettingsPage)
+      },
+      {
         path: '',
         redirectTo: 'profile',
         pathMatch: 'full'

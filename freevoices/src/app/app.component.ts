@@ -46,6 +46,7 @@ export class AppComponent implements OnInit, OnDestroy {
   isLoggedIn$: Observable<boolean>;
   isDarkMode = false;
   private readonly subscriptions = new Subscription();
+  get isBookkeeper(): boolean { return this.authService.getCurrentUser()?.role === 'BOOKKEEPER'; }
 
   constructor(
     private authService: AuthService,

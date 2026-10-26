@@ -7,6 +7,7 @@ interface User {
   id: number;
   email: string;
   company_name: string;
+  role?: 'OWNER' | 'BOOKKEEPER';
 }
 
 @Injectable({
