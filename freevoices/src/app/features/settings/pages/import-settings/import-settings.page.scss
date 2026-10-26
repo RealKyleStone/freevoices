@@ -1,0 +1,11 @@
+.import-page {
+  max-width: 52rem;
+  display: grid;
+  gap: 1rem;
+  padding: 1rem;
+  label { display: grid; gap: 0.4rem; }
+  select, input { min-height: 2.5rem; padding: 0.35rem; color: var(--ion-text-color); background: var(--ion-card-background); border: 1px solid var(--fv-border); }
+  .import-table-scroll { overflow-x: auto; }
+  table { width: 100%; border-collapse: collapse; }
+  th, td { padding: 0.5rem; border-bottom: 1px solid var(--fv-border); text-align: left; }
+}

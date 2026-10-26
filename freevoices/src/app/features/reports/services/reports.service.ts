@@ -26,6 +26,25 @@ export interface VatSummaryRow {
   total: number;
 }
 
+export interface PaymentLedgerRow {
+  id: number;
+  payment_date: string;
+  amount: number;
+  payment_method: string;
+  transaction_reference?: string;
+  invoice_id: number;
+  document_number: string;
+  customer_id: number;
+  customer_name: string;
+}
+
+export interface PaymentLedger {
+  currency_code: string;
+  from: string | null;
+  to: string | null;
+  rows: PaymentLedgerRow[];
+}
+
 @Injectable({ providedIn: 'root' })
 export class ReportsService {
   constructor(private api: ApiService) {}
@@ -46,5 +65,13 @@ export class ReportsService {
 
   getVatSummary(currency = 'ZAR'): Observable<VatSummaryRow[]> {
     return this.api.get<VatSummaryRow[]>(`/reports/vat-summary?currency=${encodeURIComponent(currency)}`);
+  }
+
+  getPaymentsLedger(currency: string, from: string, to: string, customerId: number | null): Observable<PaymentLedger> {
+    const query = new URLSearchParams({ currency });
+    if (from) query.set('from', from);
+    if (to) query.set('to', to);
+    if (customerId) query.set('customer_id', String(customerId));
+    return this.api.get<PaymentLedger>(`/reports/payments-ledger?${query}`);
   }
 }

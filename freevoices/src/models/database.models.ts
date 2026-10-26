@@ -58,7 +58,7 @@ export interface Document extends BaseModel {
   share_token?: string;
   share_token_expires_at?: string;
   // CONVERTED applies to quotes only.
-  status: 'DRAFT' | 'SENT' | 'PAID' | 'OVERDUE' | 'CANCELLED' | 'CONVERTED';
+  status: 'DRAFT' | 'SENT' | 'PAID' | 'OVERDUE' | 'CANCELLED' | 'CONVERTED' | 'ACCEPTED' | 'DECLINED';
   issue_date: string;
   due_date: string;
   valid_until?: string;
@@ -97,7 +97,7 @@ export interface DocumentItem extends BaseModel {
 export interface DocumentTracking extends BaseModel {
   document_id: number;
   // PAYMENT is a part payment; PAID is the one that settles the invoice.
-  event_type: 'CREATED' | 'SENT' | 'VIEWED' | 'DOWNLOADED' | 'PAID' | 'CANCELLED' | 'OVERDUE' | 'PAYMENT' | 'CONVERTED';
+  event_type: 'CREATED' | 'SENT' | 'VIEWED' | 'DOWNLOADED' | 'PAID' | 'CANCELLED' | 'OVERDUE' | 'PAYMENT' | 'CONVERTED' | 'ACCEPTED' | 'DECLINED';
   event_date: string;
   ip_address?: string;
   user_agent?: string;

@@ -23,5 +23,7 @@ Acceptance: reports reconcile across currencies and periods; imports are safely 
 
 ## Current checkpoint
 
-- Milestone 3: existing invoice portal, partial payments, receipts, opt-in reminders and quote conversion provide a base; customer quote decisions and bank reconciliation are unimplemented.
-- Milestone 4: charts and a basic VAT report exist. VAT CSV export is the first delivery slice; the remaining filters, statements, imports, access model and operational readiness work are pending.
+- Milestone 3: customer quote review links, recorded accept/decline, expiry display, revocation and conversion guards are implemented for the next checkpoint. Existing invoice portal, part payments, paid-in-full receipts and opt-in reminders remain the base. Credit notes, refunds, bank reconciliation and richer sharing/delivery history remain pending.
+- Milestone 4: VAT CSV export, a filterable payment transaction ledger with CSV export, customer/product CSV imports and basic live/ready checks are implemented for the next checkpoint. Customer statements and ageing reports, business membership/roles, full operations and restore evidence, and release accessibility checks remain pending.
+- The repository owner's license decision is **TBD**. Do not present the repository as licensed open source until the owner decides and adds the actual license text.
+- This is **not** the combined Milestones 1–4 testing handoff. It remains a working plan until every roadmap item and regression gate is complete.

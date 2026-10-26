@@ -4,7 +4,7 @@ describe('VAT summary CSV', () => {
   it('exports the visible currency and amounts with an explicit basis', () => {
     const csv = vatSummaryCsv([{ month: '2026-10', subtotal: 180, vat_amount: 27, total: 207 }], 'ZAR');
     expect(csv).toContain('"Month","Currency","Basis","Subtotal","Output VAT","Total"');
-    expect(csv).toContain('"2026-10","ZAR","Issued invoices by issue month","180","27","207"');
+    expect(csv).toContain('"2026-10","ZAR","Issued invoices by issue month","180.00","27.00","207.00"');
   });
 
   it('escapes spreadsheet formulas in text fields', () => {

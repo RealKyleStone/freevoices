@@ -1,0 +1,18 @@
+<section class="import-page">
+  <h1>Import customers or products</h1>
+  <p>Download a template, fill it with up to 500 rows, then review every row before saving. The whole file saves together; retrying the same file will not create duplicates.</p>
+  <label>Import type <select [value]="kind" (change)="chooseKind($event)"><option value="customers">Customers</option><option value="products">Products</option></select></label>
+  <ion-button fill="outline" (click)="downloadTemplate()">Download {{ kind }} template</ion-button>
+  <label>CSV file <input type="file" accept=".csv,text/csv" (change)="chooseFile($event)"></label>
+  <ion-spinner *ngIf="busy"></ion-spinner>
+  <p role="alert" *ngIf="error">{{ error }}</p>
+  <p role="status" *ngIf="result">{{ result }}</p>
+  <section *ngIf="preview as p">
+    <h2>Preview: {{ fileName }}</h2>
+    <p>{{ p.rows.length }} rows; {{ p.replayed ? 'this exact file was already imported (' + p.previous_count + ' rows)' : p.valid ? 'ready to import' : 'fix the errors below and choose the file again' }}.</p>
+    <div class="import-table-scroll"><table><thead><tr><th scope="col">CSV line</th><th scope="col">Name</th><th scope="col">Email or price</th><th scope="col">Check</th></tr></thead>
+      <tbody><tr *ngFor="let row of p.rows"><td>{{ row.line }}</td><td>{{ row.data['name'] }}</td><td>{{ kind === 'customers' ? row.data['email'] : row.data['price'] }}</td><td>{{ row.errors.length ? row.errors.join('; ') : 'Ready' }}</td></tr></tbody>
+    </table></div>
+    <ion-button (click)="commit()" [disabled]="!p.valid || busy">Import {{ p.rows.length }} rows</ion-button>
+  </section>
+</section>

@@ -9,6 +9,8 @@ const { buildInvoicePdf, buildQuotePdf, buildReceiptPdf } = require('./src/servi
 const { logger, executeQuery, getConnection, queryOn, withTransaction, closePool } = require('./src/services/db.service');
 const { reportCurrency, report } = require('./src/services/reporting.service');
 const { shareDocument } = require('./src/services/document-share.service');
+const { actualImageType } = require('./src/services/image-upload.service');
+const { TEMPLATES, previewCatalogueCsv } = require('./src/services/catalogue-import.service');
 const { createDocument } = require('./src/services/document-create.service');
 const { advanceDate, prepareDocument } = require('./src/services/billing-rules');
 const { captureDocumentSnapshot, hydrateDocumentSnapshots, documentSeller } = require('./src/services/document-snapshot.service');
@@ -188,6 +190,17 @@ const portalLimiter = limiter(15, 60, 'Too many requests. Please try again short
 const apiLimiter = limiter(15, 1000, 'Too many requests. Please slow down.');
 
 app.use('/api', apiLimiter);
+
+app.get('/api/health/live', (req, res) => res.json({ status: 'live' }));
+app.get('/api/health/ready', async (req, res) => {
+  try {
+    await executeQuery('SELECT 1 AS ok');
+    res.set('Cache-Control', 'no-store').json({ status: 'ready' });
+  } catch (error) {
+    logger.error('Readiness check failed', error);
+    res.set('Cache-Control', 'no-store').status(503).json({ status: 'unavailable' });
+  }
+});
 
 app.use(express.static(WEB_ROOT));
 
@@ -1328,10 +1341,16 @@ app.get('/api/quotes', authenticateToken, async (req, res) => {
   try {
     const search = req.query.search || '', status = req.query.status || '';
     const page = Math.max(1, parseInt(req.query.page) || 1), limit = Math.max(1, Math.min(100, parseInt(req.query.limit) || 20)), offset = (page - 1) * limit;
-    let sql = `SELECT d.id, d.document_number, d.status, d.issue_date, d.due_date, d.valid_until, d.subtotal, d.vat_amount, d.total, d.created_at, (SELECT code FROM currencies WHERE id=d.currency_id) AS currency_code, c.name AS customer_name FROM documents d JOIN customers c ON c.id = d.customer_id WHERE d.user_id = ? AND d.type = 'QUOTE'`;
+    const currentDay = todayIso();
+    let sql = `SELECT d.id, d.document_number, CASE WHEN d.status='SENT' AND d.valid_until < ? THEN 'EXPIRED' ELSE d.status END AS status, d.issue_date, d.due_date, d.valid_until, d.subtotal, d.vat_amount, d.total, d.created_at, (SELECT code FROM currencies WHERE id=d.currency_id) AS currency_code, c.name AS customer_name FROM documents d JOIN customers c ON c.id = d.customer_id WHERE d.user_id = ? AND d.type = 'QUOTE'`;
     let cntSql = `SELECT COUNT(*) AS total FROM documents d JOIN customers c ON c.id = d.customer_id WHERE d.user_id = ? AND d.type = 'QUOTE'`;
-    const params = [req.user.id], cntParams = [req.user.id];
-    if (status) { sql += ' AND d.status = ?'; cntSql += ' AND d.status = ?'; params.push(status); cntParams.push(status); }
+    const params = [currentDay, req.user.id], cntParams = [req.user.id];
+    if (status) {
+      const clause = status === 'EXPIRED' ? " AND d.status='SENT' AND d.valid_until < ?" : status === 'SENT' ? " AND d.status='SENT' AND (d.valid_until IS NULL OR d.valid_until >= ?)" : ' AND d.status = ?';
+      sql += clause; cntSql += clause;
+      params.push(status === 'EXPIRED' || status === 'SENT' ? currentDay : status);
+      cntParams.push(status === 'EXPIRED' || status === 'SENT' ? currentDay : status);
+    }
     if (search) { const clause = ' AND (d.document_number LIKE ? OR c.name LIKE ?)'; sql += clause; cntSql += clause; params.push(`%${search}%`, `%${search}%`); cntParams.push(`%${search}%`, `%${search}%`); }
     sql += ' ORDER BY d.created_at DESC LIMIT ? OFFSET ?'; params.push(limit, offset);
     const [quotes, countResult] = await Promise.all([executeQuery(sql, params), executeQuery(cntSql, cntParams)]);
@@ -1349,13 +1368,14 @@ app.get('/api/quotes/:id', authenticateToken, async (req, res) => {
   try {
     const { id } = req.params;
     const [quotes, items, tracking, converted_invoices] = await Promise.all([
-      queryDecrypted(decryptCustomerJoin, `SELECT d.*, c.name AS customer_name, c.email AS customer_email, c.billing_address AS customer_billing_address, c.vat_number AS customer_vat_number, cur.symbol AS currency_symbol, cur.code AS currency_code FROM documents d JOIN customers c ON c.id = d.customer_id LEFT JOIN currencies cur ON cur.id = d.currency_id WHERE d.id = ? AND d.user_id = ? AND d.type = 'QUOTE'`, [id, req.user.id]),
+      queryDecrypted(decryptCustomerJoin, `SELECT d.*, DATE_FORMAT(d.valid_until,'%Y-%m-%d') AS valid_until_iso, c.name AS customer_name, c.email AS customer_email, c.billing_address AS customer_billing_address, c.vat_number AS customer_vat_number, cur.symbol AS currency_symbol, cur.code AS currency_code FROM documents d JOIN customers c ON c.id = d.customer_id LEFT JOIN currencies cur ON cur.id = d.currency_id WHERE d.id = ? AND d.user_id = ? AND d.type = 'QUOTE'`, [id, req.user.id]),
       executeQuery('SELECT * FROM document_items WHERE document_id = ? ORDER BY id ASC', [id]),
       executeQuery('SELECT id, document_id, event_type, event_date FROM document_tracking WHERE document_id = ? ORDER BY event_date ASC', [id]),
       executeQuery(`SELECT id, document_number, status, created_at FROM documents WHERE source_quote_id = ? AND user_id = ? AND type = 'INVOICE' ORDER BY id ASC`, [id, req.user.id])
     ]);
     if (quotes.length === 0) return res.status(404).json({ message: 'Quote not found' });
-    res.json({ ...quotes[0], items, tracking, converted_invoices });
+    const quote = quotes[0];
+    res.json({ ...quote, status: quote.status === 'SENT' && quote.valid_until_iso && quote.valid_until_iso < todayIso() ? 'EXPIRED' : quote.status, items, tracking, converted_invoices });
   } catch (error) { logger.error('Error fetching quote:', error); res.status(500).json({ message: 'Failed to fetch quote' }); }
 });
 
@@ -1425,6 +1445,23 @@ app.post('/api/quotes/:id/send', authenticateToken, async (req, res) => {
   } catch (error) { logger.error('Error sending quote:', error); res.status(error.status || 500).json({ message: error.status ? error.message : 'Failed to send quote' }); }
 });
 
+app.post('/api/quotes/:id/share', authenticateToken, validate([body('rotate').optional().isBoolean().toBoolean()]), async (req, res) => {
+  try {
+    const [date] = await executeQuery("SELECT status,DATE_FORMAT(valid_until,'%Y-%m-%d') AS valid_until FROM documents WHERE id=? AND user_id=? AND type='QUOTE'", [req.params.id,req.user.id]);
+    if (!date) return res.status(404).json({ message:'Quote not found' });
+    if (date?.valid_until && date.valid_until < todayIso()) return res.status(400).json({ message:'Cannot share an expired quote' });
+    if (!['DRAFT','SENT','ACCEPTED'].includes(date.status)) return res.status(400).json({ message:'This quote can no longer be shared' });
+    if (date.status !== 'ACCEPTED') await issueDocument(req.params.id, req.user.id, 'QUOTE');
+    const link = await shareDocument(req.user.id, req.params.id, { rotate: req.body.rotate === true, type: 'QUOTE' });
+    const origin = (process.env.APP_URL || 'http://localhost:4200').replace(/\/$/, '');
+    res.json({ ...link, share_url: `${origin}/portal/quote/${link.token}` });
+  } catch (error) { res.status(error.status || 500).json({ message: error.status ? error.message : 'Failed to create quote link' }); }
+});
+app.delete('/api/quotes/:id/share', authenticateToken, async (req, res) => {
+  try { res.json(await shareDocument(req.user.id, req.params.id, { revoke: true, type: 'QUOTE' })); }
+  catch (error) { res.status(error.status || 500).json({ message: error.status ? error.message : 'Failed to revoke quote link' }); }
+});
+
 app.post('/api/quotes/:id/convert-to-invoice', authenticateToken, async (req, res) => {
   try {
     const { id } = req.params;
@@ -1432,10 +1469,11 @@ app.post('/api/quotes/:id/convert-to-invoice', authenticateToken, async (req, re
       await lockDocumentOwner(q, req.user.id);
       // Locked so a double-click, or a retry after a dropped connection, waits
       // for the first conversion to commit and then sees its invoice.
-      const quotes = await q(`SELECT * FROM documents WHERE id = ? AND user_id = ? AND type = 'QUOTE' FOR UPDATE`, [id, req.user.id]);
+      const quotes = await q(`SELECT d.*, DATE_FORMAT(d.valid_until,'%Y-%m-%d') AS valid_until_iso FROM documents d WHERE d.id = ? AND d.user_id = ? AND d.type = 'QUOTE' FOR UPDATE`, [id, req.user.id]);
       if (quotes.length === 0) return { status: 404, body: { message: 'Quote not found' } };
       const quote = quotes[0];
-      if (quote.status === 'CANCELLED') return { status: 400, body: { message: 'Cannot convert a cancelled quote' } };
+      if (['CANCELLED', 'DECLINED'].includes(quote.status)) return { status: 400, body: { message: 'Cannot convert a cancelled or declined quote' } };
+      if (quote.valid_until_iso && quote.valid_until_iso < todayIso()) return { status: 400, body: { message: 'Cannot convert an expired quote' } };
 
       // One live invoice per quote. Converting again is allowed only once
       // every earlier invoice from it has been cancelled.
@@ -1538,6 +1576,53 @@ app.delete('/api/products/:id', authenticateToken, async (req, res) => {
     await executeQuery('UPDATE products SET is_active = 0, updated_at = NOW() WHERE id = ? AND user_id = ?', [id, req.user.id]);
     res.json({ message: 'Product deleted successfully' });
   } catch (error) { logger.error('Error deleting product:', error); res.status(500).json({ message: 'Failed to delete product' }); }
+});
+
+async function reviewCatalogueImport(q, userId, kind, csv) {
+  const preview = previewCatalogueCsv(kind,csv);
+  const [prior] = await q('SELECT created_count FROM catalogue_import_batches WHERE user_id=? AND kind=? AND content_hash=?',[userId,preview.kind,preview.hash]);
+  if (prior) return { ...preview,valid:false,replayed:true,previous_count:prior.created_count };
+  for (const row of preview.rows) {
+    if (row.errors.length) continue;
+    const duplicate = kind === 'customers'
+      ? await q('SELECT id FROM customers WHERE user_id=? AND active=1 AND LOWER(email)=? LIMIT 1',[userId,row.data.email.toLowerCase()])
+      : await q('SELECT id FROM products WHERE user_id=? AND is_active=1 AND LOWER(name)=? LIMIT 1',[userId,row.data.name.toLowerCase()]);
+    if (duplicate.length) row.errors.push(`Already exists: ${kind === 'customers' ? row.data.email : row.data.name}`);
+  }
+  preview.valid = preview.rows.length > 0 && preview.rows.every(row => row.errors.length === 0);
+  return preview;
+}
+
+app.get('/api/imports/:kind/template',authenticateToken,(req,res)=>{
+  const columns = TEMPLATES[req.params.kind];
+  if (!columns) return res.status(404).json({message:'Import template not found'});
+  res.set({ 'Content-Type':'text/csv; charset=utf-8','Content-Disposition':`attachment; filename="freevoices-${req.params.kind}-template.csv"` }).send(columns.join(',')+'\r\n');
+});
+app.post('/api/imports/preview',authenticateToken,async(req,res)=>{
+  try { res.json(await reviewCatalogueImport(executeQuery,req.user.id,req.body?.kind,req.body?.csv)); }
+  catch(error) { res.status(error.status || 500).json({message:error.status ? error.message : 'Import preview failed'}); }
+});
+app.post('/api/imports/commit',authenticateToken,async(req,res)=>{
+  try {
+    const outcome = await withTransaction(async q => {
+      await lockDocumentOwner(q,req.user.id);
+      const parsed = previewCatalogueCsv(req.body?.kind,req.body?.csv);
+      const [prior] = await q('SELECT created_count FROM catalogue_import_batches WHERE user_id=? AND kind=? AND content_hash=?',[req.user.id,parsed.kind,parsed.hash]);
+      if (prior) return { count:prior.created_count,replayed:true };
+      const preview = await reviewCatalogueImport(q,req.user.id,req.body.kind,req.body.csv);
+      if (!preview.valid) return { errors:preview.rows.filter(row => row.errors.length),status:422 };
+      for (const row of preview.rows) {
+        const d = row.data;
+        if (preview.kind === 'customers') await q('INSERT INTO customers(user_id,name,email,billing_address,phone,payment_terms) VALUES(?,?,?,?,?,?)',
+          [req.user.id,d.name,d.email.toLowerCase(),encCustomer('billing_address',d.billing_address),encCustomer('phone',d.phone || null),d.payment_terms ? Number(d.payment_terms) : null]);
+        else await q('INSERT INTO products(user_id,name,price,description,vat_inclusive) VALUES(?,?,?,?,?)',
+          [req.user.id,d.name,Number(d.price).toFixed(2),d.description || null,['true','1'].includes(d.vat_inclusive.toLowerCase()) ? 1 : 0]);
+      }
+      await q('INSERT INTO catalogue_import_batches(user_id,kind,content_hash,created_count) VALUES(?,?,?,?)',[req.user.id,preview.kind,preview.hash,preview.rows.length]);
+      return { count:preview.rows.length,replayed:false };
+    });
+    res.status(outcome.status || 201).json(outcome.status ? {message:'Fix import errors before saving',errors:outcome.errors} : outcome);
+  } catch(error) { logger.error('Catalogue import failed:',error); res.status(error.status || 500).json({message:error.status ? error.message : 'Import failed'}); }
 });
 
 // ─── Dashboard summary ────────────────────────────────────────────────────────
@@ -1682,13 +1767,19 @@ app.post('/api/settings/logo', authenticateToken, (req, res) => {
     if (err) { if (err.code === 'LIMIT_FILE_SIZE') return res.status(400).json({ message: 'Logo must be 5 MB or smaller' }); return res.status(400).json({ message: err.message || 'Upload failed' }); }
     if (!req.file) return res.status(400).json({ message: 'No file uploaded' });
     try {
+      const extension = path.extname(req.file.filename).toLowerCase();
+      const expectedType = extension === '.png' ? 'image/png' : extension === '.jpg' || extension === '.jpeg' ? 'image/jpeg' : null;
+      if (!expectedType || req.file.mimetype !== expectedType || actualImageType(req.file.path) !== expectedType) {
+        fs.unlink(req.file.path, () => {});
+        return res.status(400).json({ message: 'Logo content must match its PNG or JPEG file type' });
+      }
       const userId = req.user.id;
       const logoPath = `/uploads/logos/${req.file.filename}`;
       const existing = await executeQuery("SELECT setting_value FROM settings WHERE user_id = ? AND setting_key = 'company_logo'", [userId]);
-      if (existing.length > 0 && existing[0].setting_value) fs.unlink(path.join(__dirname, existing[0].setting_value), () => {});
       await executeQuery(`INSERT INTO settings (user_id, setting_key, setting_value, updated_at) VALUES (?, 'company_logo', ?, NOW()) ON DUPLICATE KEY UPDATE setting_value = VALUES(setting_value), updated_at = NOW()`, [userId, logoPath]);
+      if (existing.length > 0 && existing[0].setting_value) fs.unlink(path.join(__dirname, existing[0].setting_value), () => {});
       res.json({ message: 'Logo uploaded successfully', logo_url: logoPath });
-    } catch (error) { logger.error('Error saving logo path:', error); res.status(500).json({ message: 'Failed to save logo' }); }
+    } catch (error) { fs.unlink(req.file.path, () => {}); logger.error('Error saving logo path:', error); res.status(500).json({ message: 'Failed to save logo' }); }
   });
 });
 
@@ -1868,6 +1959,31 @@ app.get('/api/reports/vat-summary',authenticateToken,async(req,res)=>{
   try { res.json(await report(executeQuery,req.user.id,req.query.currency,'vat')); }
   catch(error) { res.status(error.status || 500).json({message:error.status ? error.message : 'Report could not be loaded'}); }
 });
+app.get('/api/reports/payments-ledger',authenticateToken,async(req,res)=>{
+  try {
+    const { from, to, customer_id } = req.query;
+    const validDate = value => !value || (typeof value === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(value) && !Number.isNaN(Date.parse(`${value}T00:00:00Z`)) && new Date(`${value}T00:00:00Z`).toISOString().slice(0,10) === value);
+    if (!validDate(from) || !validDate(to) || (from && to && from > to))
+      return res.status(422).json({message:'Choose a valid date range'});
+    if (customer_id && !/^[1-9]\d*$/.test(String(customer_id))) return res.status(422).json({message:'Choose a valid customer'});
+    const currency = await reportCurrency(executeQuery,req.user.id,req.query.currency);
+    if (customer_id) {
+      const owned = await executeQuery('SELECT id FROM customers WHERE id=? AND user_id=?',[customer_id,req.user.id]);
+      if (!owned.length) return res.status(404).json({message:'Customer not found'});
+    }
+    let sql = `SELECT p.id,p.payment_date,p.amount,p.payment_method,p.transaction_reference,d.id AS invoice_id,d.document_number,c.id AS customer_id,c.name AS customer_name
+      FROM payments p JOIN documents d ON d.id=p.document_id JOIN customers c ON c.id=d.customer_id
+      WHERE d.user_id=? AND d.type='INVOICE' AND d.currency_id=?`;
+    const params = [req.user.id,currency.id];
+    if (from) { sql += ' AND p.payment_date>=?'; params.push(from); }
+    if (to) { sql += ' AND p.payment_date<=?'; params.push(to); }
+    if (customer_id) { sql += ' AND c.id=?'; params.push(customer_id); }
+    sql += ' ORDER BY p.payment_date ASC,p.id ASC LIMIT 1001';
+    const rows = await executeQuery(sql,params);
+    if (rows.length > 1000) return res.status(422).json({message:'Too many payments. Narrow the date or customer filter.'});
+    res.set('Cache-Control','no-store').json({ currency_code:currency.code, from:from || null,to:to || null,rows:rows.map(decryptPaymentRow) });
+  } catch(error) { logger.error('Error fetching payments ledger:',error); res.status(error.status || 500).json({message:error.status ? error.message : 'Report could not be loaded'}); }
+});
 
 app.get('/api/public/invoice/:token', portalLimiter, async (req, res) => {
   try {
@@ -1918,6 +2034,60 @@ app.get('/api/public/invoice/:token/pdf', portalLimiter, async (req, res) => {
     res.set({ 'Content-Type': 'application/pdf', 'Content-Disposition': `attachment; filename="${invoice.document_number}.pdf"`, 'Content-Length': pdfBuffer.length });
     res.send(pdfBuffer);
   } catch (error) { logger.error('Error generating public invoice PDF:', error); res.status(500).json({ message: 'Failed to generate PDF' }); }
+});
+
+app.get('/api/public/quote/:token', portalLimiter, async (req, res) => {
+  try {
+    const docs = await executeQuery(`SELECT d.id,d.document_number,d.status,d.issue_date,d.valid_until,d.payment_terms,d.subtotal,d.vat_amount,d.total,d.notes,d.terms_conditions,d.purchase_order_ref,d.delivery_details,
+      DATE_FORMAT(d.valid_until,'%Y-%m-%d') AS valid_until_iso,
+      c.name AS customer_name,c.email AS customer_email,c.billing_address AS customer_billing_address,
+      cur.symbol AS currency_symbol,cur.code AS currency_code,u.company_name,u.vat_number AS company_vat_number,u.address AS company_address,u.email AS company_email
+      FROM documents d JOIN customers c ON c.id=d.customer_id LEFT JOIN currencies cur ON cur.id=d.currency_id JOIN users u ON u.id=d.user_id
+      WHERE d.share_token=? AND d.type='QUOTE' AND u.status='ACTIVE' AND (d.share_token_expires_at IS NULL OR d.share_token_expires_at>NOW())`, [hashToken(req.params.token)]);
+    if (!docs.length) return res.status(404).json({ message: 'Quote not found or link has expired' });
+    const quote = docs[0];
+    const items = await executeQuery('SELECT description,quantity,unit_label,unit_price,discount_percent,vat_rate,vat_inclusive,vat_amount,subtotal,total FROM document_items WHERE document_id=? ORDER BY id', [quote.id]);
+    await executeQuery("INSERT INTO document_tracking(document_id,event_type,ip_address,user_agent) VALUES(?,'VIEWED',?,?)", [quote.id,encTracking('ip_address',req.ip || null),encTracking('user_agent',req.get('user-agent') || null)]);
+    const [publicQuote] = await hydrateDocumentSnapshots(executeQuery, [decryptCustomerJoin(decryptAliasedRow('users',decryptUserRow(quote),'company_'))], { includeLogo:true });
+    res.set('Cache-Control','no-store').json({ ...publicQuote, status: quote.status === 'SENT' && quote.valid_until_iso && quote.valid_until_iso < todayIso() ? 'EXPIRED' : quote.status, items });
+  } catch (error) { logger.error('Error fetching public quote:',error); res.status(500).json({ message:'Failed to fetch quote' }); }
+});
+
+app.get('/api/public/quote/:token/pdf', portalLimiter, async (req, res) => {
+  try {
+    const docs = await queryDecrypted(decryptCustomerJoin, `SELECT d.*,c.name AS customer_name,c.email AS customer_email,c.billing_address AS customer_billing_address,c.vat_number AS customer_vat_number,cur.symbol AS currency_symbol,cur.code AS currency_code
+      FROM documents d JOIN customers c ON c.id=d.customer_id LEFT JOIN currencies cur ON cur.id=d.currency_id JOIN users u ON u.id=d.user_id
+      WHERE d.share_token=? AND d.type='QUOTE' AND u.status='ACTIVE' AND (d.share_token_expires_at IS NULL OR d.share_token_expires_at>NOW())`, [hashToken(req.params.token)]);
+    if (!docs.length) return res.status(404).json({ message:'Quote not found or link has expired' });
+    const quote = docs[0];
+    const [items, users, logoRows] = await Promise.all([
+      executeQuery('SELECT * FROM document_items WHERE document_id=? ORDER BY id',[quote.id]),
+      queryDecrypted(decryptUserRow,'SELECT * FROM users WHERE id=?',[quote.user_id]),
+      executeQuery("SELECT setting_value FROM settings WHERE user_id=? AND setting_key='company_logo'",[quote.user_id])
+    ]);
+    const logo = logoRows[0]?.setting_value || null;
+    const seller = await documentSeller(executeQuery,quote.id,{ ...users[0],logo_path:logo ? path.join(__dirname,logo) : null });
+    const pdf = await buildQuotePdf(quote,items,seller);
+    await executeQuery("INSERT INTO document_tracking(document_id,event_type,ip_address,user_agent) VALUES(?,'DOWNLOADED',?,?)",[quote.id,encTracking('ip_address',req.ip || null),encTracking('user_agent',req.get('user-agent') || null)]);
+    res.set({ 'Content-Type':'application/pdf','Content-Disposition':`attachment; filename="${quote.document_number}.pdf"`,'Content-Length':pdf.length,'Cache-Control':'no-store' }).send(pdf);
+  } catch(error) { logger.error('Error generating public quote PDF:',error); res.status(500).json({ message:'Failed to generate quote PDF' }); }
+});
+
+app.post('/api/public/quote/:token/decision', portalLimiter, validate([body('decision').isIn(['ACCEPTED','DECLINED'])]), async (req,res) => {
+  try {
+    const outcome = await withTransaction(async q => {
+      const [quote] = await q(`SELECT d.id,d.status,DATE_FORMAT(d.valid_until,'%Y-%m-%d') AS valid_until_iso FROM documents d JOIN users u ON u.id=d.user_id
+        WHERE d.share_token=? AND d.type='QUOTE' AND u.status='ACTIVE' AND (d.share_token_expires_at IS NULL OR d.share_token_expires_at>NOW()) FOR UPDATE`,[hashToken(req.params.token)]);
+      if (!quote) return { status:404,message:'Quote not found or link has expired' };
+      if (quote.status === req.body.decision) return { status:200,message:`Quote already ${req.body.decision.toLowerCase()}` };
+      if (quote.status !== 'SENT') return { status:409,message:'This quote can no longer be decided' };
+      if (quote.valid_until_iso && quote.valid_until_iso < todayIso()) return { status:410,message:'This quote has expired' };
+      await q('UPDATE documents SET status=?,updated_at=NOW() WHERE id=?',[req.body.decision,quote.id]);
+      await q('INSERT INTO document_tracking(document_id,event_type,ip_address,user_agent) VALUES(?,?,?,?)',[quote.id,req.body.decision,encTracking('ip_address',req.ip || null),encTracking('user_agent',req.get('user-agent') || null)]);
+      return { status:200,message:`Quote ${req.body.decision.toLowerCase()}` };
+    });
+    res.set('Cache-Control','no-store').status(outcome.status).json({ message:outcome.message });
+  } catch(error) { logger.error('Error recording quote decision:',error); res.status(500).json({ message:'Failed to record quote decision' }); }
 });
 
 // ─── Recurring invoice cron — runs daily at 00:05 ─────────────────────────────

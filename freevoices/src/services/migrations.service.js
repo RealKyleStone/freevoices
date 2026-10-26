@@ -768,6 +768,38 @@ const MIGRATIONS = [
       return 'document commercial fields available';
     },
   },
+  {
+    id:'018_quote_decisions',
+    description:'Recorded customer quote acceptance and decline',
+    async up(q) {
+      const status = await columnDefinition(q, 'documents', 'status');
+      if (!status.COLUMN_TYPE.includes("'ACCEPTED'") || !status.COLUMN_TYPE.includes("'DECLINED'")) {
+        await q("ALTER TABLE documents MODIFY status ENUM('DRAFT','SENT','PAID','OVERDUE','CANCELLED','CONVERTED','ACCEPTED','DECLINED') NOT NULL DEFAULT 'DRAFT'");
+      }
+      const event = await columnDefinition(q, 'document_tracking', 'event_type');
+      if (!event.COLUMN_TYPE.includes("'ACCEPTED'") || !event.COLUMN_TYPE.includes("'DECLINED'")) {
+        await q("ALTER TABLE document_tracking MODIFY event_type ENUM('CREATED','SENT','VIEWED','DOWNLOADED','PAID','CANCELLED','OVERDUE','PAYMENT','CONVERTED','ACCEPTED','DECLINED') NOT NULL");
+      }
+      return 'quote decision statuses and tracking available';
+    },
+  },
+  {
+    id:'019_catalogue_import_batches',
+    description:'Idempotent customer and product CSV import batches',
+    async up(q) {
+      if (!(await tableExists(q,'catalogue_import_batches'))) await q(`CREATE TABLE catalogue_import_batches (
+        id bigint NOT NULL AUTO_INCREMENT PRIMARY KEY,
+        user_id bigint NOT NULL,
+        kind enum('customers','products') NOT NULL,
+        content_hash char(64) NOT NULL,
+        created_count int NOT NULL,
+        created_at timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        UNIQUE KEY uq_catalogue_import(user_id,kind,content_hash),
+        CONSTRAINT fk_catalogue_import_owner FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`);
+      return 'catalogue import batches available';
+    },
+  },
 ];
 
 // ─── Runner ───────────────────────────────────────────────────────────────────

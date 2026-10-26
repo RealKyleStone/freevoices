@@ -52,6 +52,26 @@
       <div class="reports-grid">
 
         <section class="report report-wide">
+          <div class="section-head"><h2 class="fv-section-label">Payment transactions</h2><p class="section-note">Recorded payments by payment date. Filter by period, customer and the selected currency; each row links to its invoice.</p></div>
+          <div class="panel panel-pad">
+            <div class="ledger-filters">
+              <label>From <input type="date" [value]="ledgerFrom" (change)="ledgerFrom = $any($event.target).value"></label>
+              <label>To <input type="date" [value]="ledgerTo" (change)="ledgerTo = $any($event.target).value"></label>
+              <label>Customer <app-catalogue-picker kind="customer" [formControl]="ledgerCustomer"></app-catalogue-picker></label>
+              <ion-button (click)="loadLedger()" [disabled]="ledgerLoading">{{ ledgerLoading ? 'Loading...' : 'Load transactions' }}</ion-button>
+              <ion-button fill="outline" (click)="exportLedgerCsv()" [disabled]="!ledger || ledger.rows.length === 0">Export CSV</ion-button>
+            </div>
+            <p role="alert" *ngIf="ledgerError">{{ ledgerError }}</p>
+            <p class="empty-msg" *ngIf="ledger && ledger.rows.length === 0">No recorded payments match these filters.</p>
+            <div class="vat-table-scroll" *ngIf="ledger && ledger.rows.length">
+              <table class="vat-table"><thead><tr><th scope="col">Date</th><th scope="col">Customer</th><th scope="col">Invoice</th><th scope="col">Method</th><th scope="col" class="num">Amount</th></tr></thead>
+                <tbody><tr *ngFor="let row of ledger.rows"><td>{{ row.payment_date | date:'mediumDate' }}</td><td>{{ row.customer_name }}</td><td><a [href]="'/invoices/' + row.invoice_id">{{ row.document_number }}</a></td><td>{{ row.payment_method }}</td><td class="num">{{ selectedCurrency }} {{ row.amount | number:'1.2-2' }}</td></tr></tbody>
+              </table>
+            </div>
+          </div>
+        </section>
+
+        <section class="report report-wide">
           <div class="section-head">
             <h2 class="fv-section-label">Revenue by month</h2>
             <p class="section-note">Payments received by month, including part payments</p>

@@ -2,10 +2,10 @@ const { randomUUID } = require('crypto');
 const { withTransaction } = require('./db.service');
 const { encryptField, decryptField, hashToken } = require('./encrypted-fields');
 
-async function shareDocument(userId, id, { rotate = false, revoke = false } = {}) {
+async function shareDocument(userId, id, { rotate = false, revoke = false, type = 'INVOICE' } = {}) {
   return withTransaction(async q => {
-    const [document] = await q("SELECT share_token,share_token_expires_at FROM documents WHERE id=? AND user_id=? AND type='INVOICE' FOR UPDATE", [id,userId]);
-    if (!document) throw Object.assign(new Error('Invoice not found'),{ status:404 });
+    const [document] = await q('SELECT share_token,share_token_expires_at FROM documents WHERE id=? AND user_id=? AND type=? FOR UPDATE', [id,userId,type]);
+    if (!document) throw Object.assign(new Error(`${type === 'QUOTE' ? 'Quote' : 'Invoice'} not found`),{ status:404 });
     if (revoke) {
       await q('UPDATE documents SET share_token=NULL,share_token_expires_at=NULL WHERE id=?', [id]);
       await q('DELETE FROM document_share_links WHERE document_id=?', [id]);

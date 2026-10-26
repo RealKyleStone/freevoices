@@ -30,6 +30,9 @@ export class QuoteDetailPage implements OnInit {
   isLoading = true;
   isConverting = false;
   isDownloading = false;
+  isSharing = false;
+  shareLink: string | null = null;
+  shareExpiry: string | null = null;
   quoteId!: number;
 
   constructor(
@@ -72,7 +75,7 @@ export class QuoteDetailPage implements OnInit {
 
   getStatusColor(status: string): string {
     const map: Record<string, string> = {
-      DRAFT: 'medium', SENT: 'primary', ACCEPTED: 'success', CONVERTED: 'success', EXPIRED: 'warning', OVERDUE: 'warning', CANCELLED: 'danger'
+      DRAFT: 'medium', SENT: 'primary', ACCEPTED: 'success', CONVERTED: 'success', EXPIRED: 'warning', DECLINED: 'danger', OVERDUE: 'warning', CANCELLED: 'danger'
     };
     return map[status] ?? 'medium';
   }
@@ -81,7 +84,7 @@ export class QuoteDetailPage implements OnInit {
     const map: Record<string, string> = {
       CREATED: 'document-outline', SENT: 'send-outline', VIEWED: 'eye-outline',
       DOWNLOADED: 'download-outline', PAID: 'checkmark-circle-outline', CANCELLED: 'close-circle-outline',
-      CONVERTED: 'document-text-outline'
+      CONVERTED: 'document-text-outline', ACCEPTED: 'checkmark-circle-outline', DECLINED: 'close-circle-outline'
     };
     return map[eventType] ?? 'ellipse-outline';
   }
@@ -118,6 +121,43 @@ export class QuoteDetailPage implements OnInit {
         await toast.present();
       }
     });
+  }
+
+  shareQuote(rotate = false) {
+    this.isSharing = true;
+    this.quoteService.shareQuote(this.quoteId, rotate).subscribe({
+      next: response => { this.isSharing = false; this.shareLink = response.share_url; this.shareExpiry = response.expires_at; this.loadQuote(); },
+      error: async err => {
+        this.isSharing = false;
+        const toast = await this.toastCtrl.create({ message: err.error?.message || 'Could not create quote link', duration: 3000, color: 'danger' });
+        await toast.present();
+      }
+    });
+  }
+
+  async copyShareLink() {
+    if (!this.shareLink) return;
+    try {
+      await navigator.clipboard.writeText(this.shareLink);
+      const toast = await this.toastCtrl.create({ message: 'Quote link copied', duration: 2000, color: 'success' });
+      await toast.present();
+    } catch {
+      const toast = await this.toastCtrl.create({ message: 'Copy failed. Select the link below to copy it.', duration: 3000, color: 'warning' });
+      await toast.present();
+    }
+  }
+
+  async manageShare(rotate: boolean) {
+    const alert = await this.alertCtrl.create({ header: rotate ? 'Replace quote link?' : 'Revoke quote link?', message: 'The current customer link will stop working.', buttons: [
+      { text: 'Keep link', role: 'cancel' },
+      { text: rotate ? 'Replace link' : 'Revoke link', role: 'destructive', handler: () => {
+        if (rotate) this.shareQuote(true);
+        else this.quoteService.revokeShare(this.quoteId).subscribe({ next: () => { this.shareLink = null; this.shareExpiry = null; }, error: async () => {
+          const toast = await this.toastCtrl.create({ message: 'Could not revoke quote link', duration: 3000, color: 'danger' }); await toast.present();
+        } });
+      } }
+    ] });
+    await alert.present();
   }
 
   async downloadPdf() {
@@ -194,6 +234,7 @@ export class QuoteDetailPage implements OnInit {
 
   get canEdit(): boolean { return this.quote?.status === 'DRAFT'; }
   get canSend(): boolean { return ['DRAFT', 'SENT'].includes(this.quote?.status ?? ''); }
+  get canShare(): boolean { return ['DRAFT', 'SENT', 'ACCEPTED'].includes(this.quote?.status ?? ''); }
   /** The invoice this quote became, if it has not been cancelled. */
   get activeInvoice() {
     return (this.quote?.converted_invoices || []).find(i => i.status !== 'CANCELLED');
@@ -202,6 +243,6 @@ export class QuoteDetailPage implements OnInit {
     return (this.quote?.converted_invoices || []).filter(i => i.status === 'CANCELLED');
   }
   // One live invoice per quote; the server enforces the same rule.
-  get canConvert(): boolean { return this.quote?.status !== 'CANCELLED' && !this.activeInvoice; }
+  get canConvert(): boolean { return !['CANCELLED', 'DECLINED', 'EXPIRED'].includes(this.quote?.status ?? '') && !this.activeInvoice; }
   get currencySymbol(): string { return this.quote?.currency_symbol || 'R'; }
 }

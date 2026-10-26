@@ -1,12 +1,15 @@
 import { Component, OnInit, OnDestroy, AfterViewChecked, ViewChild, ElementRef } from '@angular/core';
 import { CommonModule } from '@angular/common';
+import { FormControl, ReactiveFormsModule } from '@angular/forms';
 import {
   IonButton, IonButtons, IonContent, IonHeader, IonIcon, IonMenuButton, IonSpinner, IonToolbar,
 } from '@ionic/angular/standalone';
 import { Chart, ChartConfiguration, registerables } from 'chart.js';
 import {
-  ReportsService, RevenueByMonth, InvoiceStatusBreakdown, TopCustomer, VatSummaryRow
+  ReportsService, RevenueByMonth, InvoiceStatusBreakdown, TopCustomer, VatSummaryRow, PaymentLedger
 } from '../../services/reports.service';
+import { CataloguePickerComponent } from '../../../../shared/components/catalogue-picker/catalogue-picker.component';
+import { paymentsLedgerCsv } from '../../services/payments-ledger-csv';
 import { forkJoin, Subscription } from 'rxjs';
 import { vatSummaryCsv } from '../../services/vat-csv';
 import { addIcons } from 'ionicons';
@@ -55,7 +58,7 @@ function formatMonth(ym: string): string {
   styleUrls: ['./reports.page.scss'],
   standalone: true,
   imports: [
-    CommonModule, IonButton, IonButtons, IonContent, IonHeader, IonIcon, IonMenuButton, IonSpinner,
+    CommonModule, ReactiveFormsModule, CataloguePickerComponent, IonButton, IonButtons, IonContent, IonHeader, IonIcon, IonMenuButton, IonSpinner,
     IonToolbar,
   ]
 })
@@ -72,6 +75,12 @@ export class ReportsPage implements OnInit, OnDestroy, AfterViewChecked {
 
   topCustomers: TopCustomer[] = [];
   vatRows: VatSummaryRow[]    = [];
+  ledger: PaymentLedger | null = null;
+  ledgerCustomer = new FormControl<number | null>(null);
+  ledgerFrom = '';
+  ledgerTo = '';
+  ledgerLoading = false;
+  ledgerError = '';
 
   private charts: Chart[] = [];
   private themeObserver?: MutationObserver;
@@ -124,6 +133,7 @@ export class ReportsPage implements OnInit, OnDestroy, AfterViewChecked {
 
   changeCurrency(event: Event) {
     this.selectedCurrency = (event.target as HTMLSelectElement).value;
+    this.ledger = null;
     this.loadReports();
   }
 
@@ -344,6 +354,30 @@ export class ReportsPage implements OnInit, OnDestroy, AfterViewChecked {
     const link = document.createElement('a');
     link.href = url;
     link.download = `freevoices-vat-${this.selectedCurrency}-${new Date().getFullYear()}.csv`;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 0);
+  }
+
+  loadLedger() {
+    if (this.ledgerFrom && this.ledgerTo && this.ledgerFrom > this.ledgerTo) { this.ledgerError = 'From date must be before To date.'; return; }
+    this.ledgerLoading = true;
+    this.ledgerError = '';
+    this.ledger = null;
+    this.requests.add(this.reports.getPaymentsLedger(this.selectedCurrency, this.ledgerFrom, this.ledgerTo, this.ledgerCustomer.value).subscribe({
+      next: ledger => { this.ledger = ledger; this.ledgerLoading = false; },
+      error: err => { this.ledgerLoading = false; this.ledgerError = err.error?.message || 'Could not load payment transactions.'; }
+    }));
+  }
+
+  exportLedgerCsv() {
+    if (!this.ledger) return;
+    const blob = new Blob([paymentsLedgerCsv(this.ledger)], { type: 'text/csv;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `freevoices-payments-${this.selectedCurrency}.csv`;
     document.body.appendChild(link);
     link.click();
     link.remove();

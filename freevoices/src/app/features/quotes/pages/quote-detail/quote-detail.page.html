@@ -133,6 +133,14 @@
                   <ion-icon *ngIf="!isConverting" slot="start" name="document-text-outline"></ion-icon>
                   Convert to invoice
                 </ion-button>
+                <ion-button *ngIf="canShare" expand="block" fill="outline" (click)="shareQuote()" [disabled]="isSharing">{{ isSharing ? 'Creating link...' : 'Create customer review link' }}</ion-button>
+                <div *ngIf="shareLink" class="share-link">
+                  <p>Customer review link (expires {{ shareExpiry | date:'mediumDate' }})</p>
+                  <a [href]="shareLink" target="_blank" rel="noopener">{{ shareLink }}</a>
+                  <ion-button size="small" fill="clear" (click)="copyShareLink()">Copy link</ion-button>
+                  <ion-button size="small" fill="clear" (click)="manageShare(true)">Replace link</ion-button>
+                  <ion-button size="small" fill="clear" color="danger" (click)="manageShare(false)">Revoke link</ion-button>
+                </div>
                 <ion-button *ngIf="activeInvoice as inv" expand="block" fill="solid" color="primary" [routerLink]="['/invoices', inv.id]">
                   <ion-icon slot="start" name="document-text-outline"></ion-icon>
                   View invoice {{ inv.document_number }}

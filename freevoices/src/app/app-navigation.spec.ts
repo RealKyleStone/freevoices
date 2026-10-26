@@ -32,7 +32,7 @@ class DraftPage {
   hasUnsavedChanges() { return this.form.dirty; }
 }
 
-const settingsPaths = ['profile', 'company', 'invoice', 'payment', 'notifications', 'privacy', 'legal'];
+const settingsPaths = ['profile', 'company', 'invoice', 'payment', 'notifications', 'privacy', 'legal', 'imports'];
 const testRoutes: Routes = [
   { path: 'dashboard', component: DashboardPage },
   { path: 'reports', component: ReportsPage },
@@ -151,7 +151,7 @@ describe('application navigation at the browser viewport', () => {
     await chooseMenu('/settings');
     for (const path of settingsPaths) {
       const link = fixture.nativeElement.querySelector(`.settings-nav ion-item[ng-reflect-router-link="${path}"]`) ||
-        Array.from(fixture.nativeElement.querySelectorAll('.settings-nav ion-item')).find((item: any) => item.textContent.trim() === ({ profile: 'Profile', company: 'Company', invoice: 'Invoice defaults', payment: 'Payment details', notifications: 'Notifications', privacy: 'Privacy & data', legal: 'Legal' } as any)[path]);
+        Array.from(fixture.nativeElement.querySelectorAll('.settings-nav ion-item')).find((item: any) => item.textContent.trim() === ({ profile: 'Profile', company: 'Company', invoice: 'Invoice defaults', payment: 'Payment details', notifications: 'Notifications', privacy: 'Privacy & data', legal: 'Legal', imports: 'Imports' } as any)[path]);
       expect(link).toBeTruthy(); fixture.ngZone!.run(() => (link as HTMLElement).click());
       await until(() => router.url === `/settings/${path}`, `settings ${path}`);
       expect(fixture.nativeElement.querySelectorAll('ion-menu').length).toBe(1);

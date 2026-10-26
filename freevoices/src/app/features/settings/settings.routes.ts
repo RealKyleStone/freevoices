@@ -42,6 +42,11 @@ export const SETTINGS_ROUTES: Routes = [
           .then(m => m.LegalSettingsPage)
       },
       {
+        path: 'imports',
+        loadComponent: () => import('./pages/import-settings/import-settings.page')
+          .then(m => m.ImportSettingsPage)
+      },
+      {
         path: '',
         redirectTo: 'profile',
         pathMatch: 'full'

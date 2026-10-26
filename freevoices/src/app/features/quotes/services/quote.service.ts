@@ -91,4 +91,12 @@ export class QuoteService {
   convertToInvoice(id: number): Observable<{ message: string; invoice_id: number; document_number: string }> {
     return this.db.create<{ message: string; invoice_id: number; document_number: string }>(`quotes/${id}/convert-to-invoice`, {});
   }
+
+  shareQuote(id: number, rotate = false): Observable<{ share_url: string; expires_at: string }> {
+    return this.db.create<{ share_url: string; expires_at: string }>(`quotes/${id}/share`, { rotate });
+  }
+
+  revokeShare(id: number): Observable<{ message: string }> {
+    return this.db.delete<{ message: string }>(`quotes/${id}`, 'share');
+  }
 }
