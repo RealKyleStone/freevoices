@@ -23,7 +23,12 @@ describe('catalogue picker', () => {
   let picker: CataloguePickerComponent;
   let customers: jasmine.SpyObj<CustomerService>;
   let products: jasmine.SpyObj<ProductService>;
+  let previousBodyDisplay: string;
   beforeEach(async () => {
+    // Ionic hides the document until its app shell hydrates. These standalone
+    // fixtures have no app shell; render the body so native focus can be tested.
+    previousBodyDisplay = document.body.style.display;
+    document.body.style.display = 'block';
     customers = jasmine.createSpyObj('CustomerService', ['getCustomers', 'getCustomerForSelection', 'createCustomer']);
     products = jasmine.createSpyObj('ProductService', ['getProducts', 'getProduct', 'createProduct']);
     customers.getCustomers.and.returnValue(of(page())); customers.getCustomerForSelection.and.returnValue(of(customer));
@@ -34,19 +39,20 @@ describe('catalogue picker', () => {
     fixture = TestBed.createComponent(HostComponent); fixture.detectChanges();
     picker = fixture.debugElement.query(By.directive(CataloguePickerComponent)).componentInstance;
   });
-  afterEach(() => { if (picker.dialog.nativeElement.open) picker.close(); fixture.destroy(); });
+  afterEach(() => { if (picker.dialog.nativeElement.open) picker.close(); fixture.destroy(); document.body.style.display = previousBodyDisplay; });
 
   it('loads one server page on opening and focuses search inside a labelled modal', async () => {
     expect(customers.getCustomers).not.toHaveBeenCalled();
-    picker.open(); fixture.detectChanges();
+    fixture.ngZone!.run(() => picker.open()); fixture.detectChanges();
     await fixture.whenStable();
     await new Promise(resolve => requestAnimationFrame(resolve));
     expect(customers.getCustomers).toHaveBeenCalledOnceWith('', 1, 20);
     expect(picker.dialog.nativeElement.open).toBeTrue();
+    expect(picker.searchBox.nativeElement.getBoundingClientRect().width).toBeGreaterThan(0);
     expect(document.activeElement).toBe(picker.searchBox.nativeElement);
     expect(picker.dialog.nativeElement.getAttribute('aria-labelledby')).toBe(picker.headingId);
     picker.close(); expect(picker.dialog.nativeElement.open).toBeFalse();
-    picker.open(); fixture.detectChanges(); await fixture.whenStable();
+    fixture.ngZone!.run(() => picker.open()); fixture.detectChanges(); await fixture.whenStable();
     const modal = picker.dialog.nativeElement;
     fixture.destroy(); expect(modal.open).toBeFalse();
   });
