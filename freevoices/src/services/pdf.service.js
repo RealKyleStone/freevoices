@@ -99,13 +99,15 @@ function buildInvoicePdf(invoice, items, user) {
       ['Issue Date:',    formatDate(invoice.issue_date)],
       ['Due Date:',      formatDate(invoice.due_date)],
       invoice.payment_terms != null ? ['Payment Terms:', `${invoice.payment_terms} days`] : null,
+      invoice.purchase_order_ref ? ['PO / Ref:', invoice.purchase_order_ref] : null,
     ].filter(Boolean);
 
     let metaY = detailsY;
     for (const [label, value] of metaRows) {
       doc.fillColor(MEDIUM).fontSize(9).font('Helvetica-Bold').text(label, metaX, metaY, { width: metaLabelW });
-      doc.fillColor(DARK).fontSize(9).font('Helvetica').text(value, metaValueX, metaY);
-      metaY += 16;
+      const valueWidth = col.right - metaValueX;
+      doc.fillColor(DARK).fontSize(9).font('Helvetica').text(value, metaValueX, metaY, { width: valueWidth });
+      metaY += Math.max(16, doc.heightOfString(String(value), { width: valueWidth }) + 3);
     }
 
     doc.y = Math.max(doc.y, metaY) + 20;
@@ -152,6 +154,7 @@ function buildInvoicePdf(invoice, items, user) {
     if (invoice.notes) {
       rowY = layout.section('NOTES', invoice.notes, rowY);
     }
+    if (invoice.delivery_details) rowY = layout.section('DELIVERY DETAILS', invoice.delivery_details, rowY);
     if (invoice.terms_conditions) {
       rowY = layout.section('TERMS & CONDITIONS', invoice.terms_conditions, rowY);
     }
@@ -291,13 +294,15 @@ function buildQuotePdf(quote, items, user) {
       ['Issue Date:',  formatDate(quote.issue_date)],
       ['Valid Until:', formatDate(quote.valid_until)],
       quote.payment_terms != null ? ['Payment Terms:', `${quote.payment_terms} days`] : null,
+      quote.purchase_order_ref ? ['PO / Ref:', quote.purchase_order_ref] : null,
     ].filter(Boolean);
 
     let metaY = detailsY;
     for (const [label, value] of metaRows) {
       doc.fillColor(MEDIUM).fontSize(9).font('Helvetica-Bold').text(label, metaX, metaY, { width: metaLabelW });
-      doc.fillColor(DARK).fontSize(9).font('Helvetica').text(value, metaValueX, metaY);
-      metaY += 16;
+      const valueWidth = col.right - metaValueX;
+      doc.fillColor(DARK).fontSize(9).font('Helvetica').text(value, metaValueX, metaY, { width: valueWidth });
+      metaY += Math.max(16, doc.heightOfString(String(value), { width: valueWidth }) + 3);
     }
 
     doc.y = Math.max(doc.y, metaY) + 20;
@@ -336,6 +341,7 @@ function buildQuotePdf(quote, items, user) {
     if (quote.notes) {
       rowY = layout.section('NOTES', quote.notes, rowY);
     }
+    if (quote.delivery_details) rowY = layout.section('DELIVERY DETAILS', quote.delivery_details, rowY);
     if (quote.terms_conditions) {
       rowY = layout.section('TERMS & CONDITIONS', quote.terms_conditions, rowY);
     }

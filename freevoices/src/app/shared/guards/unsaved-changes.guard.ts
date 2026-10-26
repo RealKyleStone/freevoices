@@ -9,6 +9,7 @@ import { AlertController } from '@ionic/angular/standalone';
  */
 export interface HasUnsavedChanges {
   hasUnsavedChanges(): boolean;
+  discardUnsavedChanges?(): void;
 }
 
 /**
@@ -35,5 +36,6 @@ export const unsavedChangesGuard: CanDeactivateFn<HasUnsavedChanges> = async (co
   });
   await alert.present();
   const { role } = await alert.onDidDismiss();
+  if (role === 'destructive') component.discardUnsavedChanges?.();
   return role === 'destructive';
 };

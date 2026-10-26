@@ -6,6 +6,7 @@ import { InvoiceCreatePage } from './invoice-create.page';
 import { InvoiceDetail, InvoiceService } from '../../services/invoice.service';
 import { SettingsService, UserSettings } from '../../../settings/services/settings.service';
 import { Customer, Product } from '../../../../../models/database.models';
+import { AuthService } from '../../../../core/auth/services/auth.service';
 
 describe('invoice selection defaults', () => {
   function page(source?: InvoiceDetail) {
@@ -15,7 +16,8 @@ describe('invoice selection defaults', () => {
     const invoices = jasmine.createSpyObj<InvoiceService>('InvoiceService', ['getInvoice']);
     if (source) invoices.getInvoice.and.returnValue(of(source));
     const route = { snapshot: { queryParamMap: convertToParamMap(source ? { copyFrom: String(source.id) } : {}) } } as ActivatedRoute;
-    const instance = new InvoiceCreatePage(new FormBuilder(), invoices, settings, {} as Router, {} as ToastController, route);
+    const auth = { getCurrentUser: () => null } as unknown as AuthService;
+    const instance = new InvoiceCreatePage(new FormBuilder(), invoices, settings, {} as Router, {} as ToastController, route, auth);
     instance.ngOnInit(); return instance;
   }
   it('applies zero-day customer terms without resetting the rest of the draft', () => {

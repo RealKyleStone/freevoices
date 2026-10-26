@@ -30,6 +30,7 @@
           {{ quote.status === 'SENT' ? 'Issued' : (quote.status | titlecase) }}
         </span>
       </header>
+      <p *ngIf="quote.purchase_order_ref">PO / customer reference: {{ quote.purchase_order_ref }}</p>
 
       <p class="source-link" *ngIf="activeInvoice as inv">
         Converted to invoice
@@ -77,8 +78,9 @@
                   <span class="desc">
                     {{ item.description }}
                     <small *ngIf="item.vat_rate > 0" class="vat-note">{{ item.vat_inclusive ? 'Includes ' : '+' }}{{ item.vat_rate }}% VAT</small>
+                    <small *ngIf="item.discount_percent">{{ item.discount_percent }}% discount</small>
                   </span>
-                  <span class="qty">{{ item.quantity }}</span>
+                  <span class="qty">{{ item.quantity }} {{ item.unit_label || 'each' }}</span>
                   <span class="price">{{ currencySymbol }} {{ item.unit_price | number:'1.2-2' }} <small>{{ item.vat_inclusive ? 'incl. VAT' : 'excl. VAT' }}</small></span>
                   <span class="amount">{{ currencySymbol }} {{ item.total | number:'1.2-2' }}</span>
                 </div>
@@ -91,7 +93,7 @@
             </div>
           </section>
 
-          <section *ngIf="quote.notes || quote.terms_conditions">
+          <section *ngIf="quote.notes || quote.terms_conditions || quote.delivery_details">
             <div class="section-head">
               <h2 class="fv-section-label">Notes and terms</h2>
             </div>
@@ -104,6 +106,7 @@
                 <p class="note-label">Terms &amp; conditions</p>
                 <p>{{ quote.terms_conditions }}</p>
               </div>
+              <div *ngIf="quote.delivery_details" class="mt"><p class="note-label">Delivery details</p><p>{{ quote.delivery_details }}</p></div>
             </div>
           </section>
 

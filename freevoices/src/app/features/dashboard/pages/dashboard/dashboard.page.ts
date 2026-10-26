@@ -44,6 +44,9 @@ export class DashboardPage implements OnInit, OnDestroy {
     totalCustomers: 0,
     openInvoices: 0,
     overdueInvoices: 0,
+    outstanding: 0,
+    ageing: { current: 0, days1to30: 0, days31to60: 0, days61plus: 0 },
+    actionInvoices: [],
     recentActivity: []
   };
 
@@ -73,7 +76,9 @@ export class DashboardPage implements OnInit, OnDestroy {
 
     this.dashboardService.getSummary().subscribe({
       next: (data) => {
-        this.summary = data;
+        this.summary = { ...this.summary, ...data,
+          ageing: data.ageing || this.summary.ageing,
+          actionInvoices: data.actionInvoices || [] };
         this.selectedCurrency = data.currency_code || 'ZAR';
         // Uploads are served beside the API, not under it; same base URL as
         // the company settings page uses.

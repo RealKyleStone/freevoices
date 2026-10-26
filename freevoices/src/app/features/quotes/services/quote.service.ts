@@ -42,7 +42,9 @@ export interface QuoteItemPayload {
   product_id?: number | null;
   description: string;
   quantity: number;
+  unit_label?: string;
   unit_price: number;
+  discount_percent?: number;
   vat_rate: number;
 }
 
@@ -54,6 +56,8 @@ export interface QuotePayload {
   payment_terms?: number | null;
   notes?: string | null;
   terms_conditions?: string | null;
+  purchase_order_ref?: string | null;
+  delivery_details?: string | null;
   currency_id?: number | null;
   items: QuoteItemPayload[];
 }

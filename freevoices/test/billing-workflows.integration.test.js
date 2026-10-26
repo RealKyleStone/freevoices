@@ -122,8 +122,21 @@ test('billing workflows enforce ownership, idempotency, delivery, currencies and
     const dollars=await ok('/reports/revenue-by-month?currency=USD');
     assert.equal(Number(rand[0].revenue),40);assert.equal(Number(dollars[0].revenue),20);
     assert.equal(rand[0].currency_code,'ZAR');
-    assert.equal((await ok('/dashboard/summary')).monthRevenue,40);
-    assert.equal((await ok('/dashboard/summary?currency=USD')).monthRevenue,20);
+    const zarSummary=await ok('/dashboard/summary');
+    assert.equal(zarSummary.monthRevenue,40);
+    assert.equal(zarSummary.outstanding,60);
+    assert.equal(zarSummary.ageing.current,60);
+    assert.equal(zarSummary.actionInvoices.find(row=>row.id===invoice.id).balance_due,60);
+    const usdSummary=await ok('/dashboard/summary?currency=USD');
+    assert.equal(usdSummary.monthRevenue,20);
+    assert.equal(usdSummary.outstanding,80);
+    const originalDue=(await q("SELECT DATE_FORMAT(due_date,'%Y-%m-%d') AS due FROM documents WHERE id=?",[invoice.id]))[0].due;
+    try {
+      await q('UPDATE documents SET due_date=DATE_SUB(?,INTERVAL 40 DAY) WHERE id=?',[todayIso(),invoice.id]);
+      const aged=await ok('/dashboard/summary');
+      assert.equal(aged.ageing.days31to60,60);
+      assert.equal(aged.ageing.current,0);
+    } finally { await q('UPDATE documents SET due_date=? WHERE id=?',[originalDue,invoice.id]); }
   });
   await t.test('outbox persists, retries, de-duplicates and refuses ambiguous automatic resend',async()=>{
     let calls=0;

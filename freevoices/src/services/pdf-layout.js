@@ -82,7 +82,11 @@ function createPdfLayout(doc, user, label, number) {
     }
     y = header(ensureSpace(y, 56));
     for (const [index, item] of items.entries()) {
-      let description = String(item.description ?? '');
+      const extras = [
+        item.unit_label && item.unit_label !== 'each' ? `Unit: ${item.unit_label}` : null,
+        Number(item.discount_percent) > 0 ? `Discount: ${Number(item.discount_percent)}%` : null,
+      ].filter(Boolean);
+      let description = String(item.description ?? '') + (extras.length ? `\n${extras.join(' · ')}` : '');
       const values = [String(Number(item.quantity)), fmt(item.unit_price), `${Number(item.vat_rate)}%`, fmt(item.total)];
       let firstPart = true;
       do {

@@ -45,11 +45,15 @@ function computeLine(item) {
   const rawRate = Number(item.vat_rate);
   const vat_rate = Number.isFinite(rawRate) ? rawRate : 15;
   const vat_inclusive = [true, 1, '1', 'true'].includes(item.vat_inclusive);
-  const enteredAmount = roundCents(quantity * unit_price);
+  const discount_percent = Number(item.discount_percent ?? 0);
+  if (!Number.isFinite(discount_percent) || discount_percent < 0 || discount_percent > 100) throw new Error('Discount must be between 0 and 100 percent');
+  const beforeDiscount = roundCents(quantity * unit_price);
+  const discount_amount = roundCents(beforeDiscount * discount_percent / 100);
+  const enteredAmount = roundCents(beforeDiscount - discount_amount);
   const subtotal = vat_inclusive ? roundCents(enteredAmount / (1 + vat_rate / 100)) : enteredAmount;
   const vat_amount = vat_inclusive ? roundCents(enteredAmount - subtotal) : roundCents(subtotal * vat_rate / 100);
   const total = vat_inclusive ? enteredAmount : roundCents(subtotal + vat_amount);
-  return { ...item, quantity, unit_price, vat_rate, vat_inclusive, subtotal, vat_amount, total };
+  return { ...item, quantity, unit_price, vat_rate, vat_inclusive, discount_percent, discount_amount, subtotal, vat_amount, total };
 }
 
 function computeDocumentTotals(items) {

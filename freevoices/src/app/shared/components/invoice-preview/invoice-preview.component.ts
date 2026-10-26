@@ -17,14 +17,15 @@ import { lineTotals, roundCents } from '../../utils/document-math';
         <div><dt>Bill to</dt><dd>{{ customerName || 'Choose a customer' }}</dd></div>
         <div><dt>Issued</dt><dd>{{ form.get('issue_date')?.value || '—' }}</dd></div>
         <div><dt>Due</dt><dd>{{ form.get('due_date')?.value || '—' }}</dd></div>
+        <div *ngIf="form.get('purchase_order_ref')?.value"><dt>PO / Ref</dt><dd>{{ form.get('purchase_order_ref')?.value }}</dd></div>
       </dl>
       <div class="table-wrap">
         <table>
           <thead><tr><th scope="col">Description</th><th scope="col">Qty</th><th scope="col">Price</th><th scope="col">VAT</th><th scope="col">Total</th></tr></thead>
           <tbody>
             <tr *ngFor="let item of items.controls; let i = index">
-              <td>{{ item.get('description')?.value || 'Item ' + (i + 1) }}</td>
-              <td>{{ item.get('quantity')?.value || 0 }}</td>
+              <td>{{ item.get('description')?.value || 'Item ' + (i + 1) }}<small *ngIf="item.get('discount_percent')?.value">{{ item.get('discount_percent')?.value }}% discount</small></td>
+              <td>{{ item.get('quantity')?.value || 0 }} {{ item.get('unit_label')?.value || 'each' }}</td>
               <td>{{ currencySymbol }} {{ item.get('unit_price')?.value || 0 | number:'1.2-2' }}<small *ngIf="item.get('vat_inclusive')?.value">VAT incl.</small></td>
               <td>{{ item.get('vat_rate')?.value || 0 }}%</td>
               <td>{{ currencySymbol }} {{ lineTotal(i) | number:'1.2-2' }}</td>
@@ -38,6 +39,7 @@ import { lineTotals, roundCents } from '../../utils/document-math';
         <div class="grand"><dt>Total</dt><dd>{{ currencySymbol }} {{ total | number:'1.2-2' }}</dd></div>
       </dl>
       <p *ngIf="form.get('notes')?.value"><strong>Notes</strong><br>{{ form.get('notes')?.value }}</p>
+      <p *ngIf="form.get('delivery_details')?.value"><strong>Delivery details</strong><br>{{ form.get('delivery_details')?.value }}</p>
       <p *ngIf="form.get('terms_conditions')?.value"><strong>Terms &amp; conditions</strong><br>{{ form.get('terms_conditions')?.value }}</p>
       <p class="hint">On-screen review. The final invoice number and PDF layout are set when the document is saved or issued.</p>
     </section>

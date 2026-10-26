@@ -1,7 +1,9 @@
 import { Injectable } from '@angular/core';
+import { HttpClient } from '@angular/common/http';
 import { Observable } from 'rxjs';
 import { DatabaseService } from '../../../../services/database.service';
 import { Document, DocumentItem, DocumentTracking, Payment } from '../../../../models/database.models';
+import { environment } from '../../../../environments/environment';
 
 export interface InvoiceListItem {
   id: number;
@@ -50,7 +52,9 @@ export interface InvoiceItemPayload {
   product_id?: number | null;
   description: string;
   quantity: number;
+  unit_label?: string;
   unit_price: number;
+  discount_percent?: number;
   vat_rate: number;
 }
 
@@ -62,6 +66,8 @@ export interface InvoicePayload {
   payment_terms?: number | null;
   notes?: string | null;
   terms_conditions?: string | null;
+  purchase_order_ref?: string | null;
+  delivery_details?: string | null;
   currency_id?: number | null;
   items: InvoiceItemPayload[];
   is_recurring?: boolean;
@@ -82,7 +88,11 @@ export interface MarkPaidPayload {
   providedIn: 'root'
 })
 export class InvoiceService {
-  constructor(private db: DatabaseService) {}
+  constructor(private db: DatabaseService, private http: HttpClient) {}
+
+  previewInvoice(data: InvoicePayload): Observable<Blob> {
+    return this.http.post(`${environment.apiUrl}/invoices/preview`, data, { responseType: 'blob' });
+  }
 
   getInvoices(search = '', status = '', page = 1, limit = 20): Observable<InvoiceListResponse> {
     return this.db.query<InvoiceListResponse>('invoices', { params: { search, status, page, limit } });

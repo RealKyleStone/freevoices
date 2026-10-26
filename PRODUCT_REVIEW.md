@@ -4,11 +4,9 @@
 
 ## Current status - 26 October 2026
 
-Milestone 1's automated acceptance checks pass. The first Milestone 2 slice (setup checklist and searchable, paginated customer/product pickers) is implemented; the rest of Milestone 2 is planned. The navigation regression pass also fixed a tablet menu breakpoint gap, a mobile footer overlay that stayed open, conflicting authentication router outlets/cached views and a crash when report data was empty. The last published `dev` CI run passed: 142 backend tests, 112 frontend tests, 30 responsive navigation checks, production build and lint. [CI evidence](https://github.com/RealKyleStone/freevoices/actions/runs/40297548410) and the [full regression report](REGRESSION_REPORT.md) give the tested scope and limits. No changes have been merged into `main`.
+Milestone 1's automated acceptance checks pass. The planned Milestone 2 features are implemented on `dev` and ready for external usability testing: company setup checklist, searchable customer/product pickers with inline creation, live invoice review and server rendered PDF preview, discounts and units, customer references and delivery details, browser draft recovery for invoice/quote create/edit, copy invoice as a new draft, and currency-specific outstanding balances with ageing and direct follow-up links. The navigation regression fixes are documented in the [regression report](REGRESSION_REPORT.md). No changes have been merged into `main`.
 
-The next Milestone 2 increment adds a live on-screen invoice review to create/edit: selected customer, dates, lines, VAT mode, totals, notes and terms update as the form changes. It uses the existing client/server-parity calculation helper. The review explicitly distinguishes itself from the final PDF and number. Local checks: 113 frontend tests, 30 responsive navigation checks, production build and lint pass. It has not been exercised in the live editor browser.
-
-An invoice detail now offers **Copy as new draft**. The new builder carries the current customer, currency, terms, notes and line values, dates the draft today, recalculates its due date and starts a fresh request key. It does not carry payment, delivery, share or recurrence state. The user reviews the draft before creating it; the server allocates a new number on creation. Local verification: 114 frontend tests, 30 responsive navigation checks, production build and lint pass. The live editor browser remains unverified.
+The latest local checks pass: **144 backend tests with zero skips** on a fresh migrated database, **121 frontend tests**, **30 responsive navigation checks**, production build and lint. The [Milestone 2 testing handoff](MILESTONE_2_TEST_HANDOFF.md) lists the human test journeys. Testing on real phones, keyboard and screen readers is the next gate before calling Milestone 2 accepted. The editor browser was not automated; production SMTP, PayFast, OAuth and backup recovery remain separate validation.
 
 The historical assessment and reproduced findings below describe the starting state on 24 October. They are retained as evidence, not an open defect list. The implementation notes above each milestone record subsequent fixes. Live editor-browser navigation, real devices and screen readers, production email delivery, Google OAuth, PayFast transactions and production backup/key recovery remain unverified.
 
@@ -25,7 +23,7 @@ Implemented the company setup checklist and searchable catalogues on `dev`:
 
 At the first-slice checkpoint, local verification passed **142 backend tests with zero skips** and **102 frontend tests**, plus build and lint. The current totals after navigation regressions are recorded in Current status above.
 
-This is the first Milestone 2 slice, not the whole milestone. A live on-screen invoice review and copy-as-new-draft flow have since been added. A rendered PDF preview, discounts/units/references, draft autosave/recovery, richer money/ageing dashboard actions and the full usability pass remain planned.
+This section records the first Milestone 2 checkpoint. The remaining planned feature work is now implemented as described in Current status; human usability acceptance is pending.
 
 ## Milestone 1 complete - 26 October 2026
 
@@ -198,4 +196,4 @@ No production usage baseline was available. Treat these as measurements to add, 
 
 ## Recommended next implementation
 
-Continue Milestone 2 on `dev`: a rendered PDF preview; units, discounts and references; draft autosave and recovery; and clearer outstanding-balance and ageing actions. Measure the first-invoice usability target with real users and exercise complete mobile, keyboard and screen-reader journeys. Then validate the production integrations and recovery procedures listed in Current status before treating the service as ready for routine business billing.
+Submit the `dev` build for the journeys in [MILESTONE_2_TEST_HANDOFF.md](MILESTONE_2_TEST_HANDOFF.md). Measure the first-invoice usability target with real users, record failures, and fix the issues they find. Validate production integrations and recovery procedures separately before treating the service as ready for routine business billing.

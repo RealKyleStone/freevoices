@@ -91,6 +91,27 @@
 
     </section>
 
+    <section class="balances" *ngIf="!isLoading" aria-labelledby="balances-heading">
+      <div class="section-head"><h2 id="balances-heading" class="fv-section-label">Money to collect ({{ selectedCurrency }})</h2></div>
+      <div class="panel panel-pad">
+        <p class="balance-total">{{ summary.outstanding | currency:selectedCurrency:'symbol':'1.2-2' }} outstanding</p>
+        <div class="ageing-grid" aria-label="Outstanding balance by age">
+          <div><span>Current or no due date</span><strong>{{ summary.ageing.current | currency:selectedCurrency:'symbol':'1.2-2' }}</strong></div>
+          <div><span>1–30 days overdue</span><strong>{{ summary.ageing.days1to30 | currency:selectedCurrency:'symbol':'1.2-2' }}</strong></div>
+          <div><span>31–60 days overdue</span><strong>{{ summary.ageing.days31to60 | currency:selectedCurrency:'symbol':'1.2-2' }}</strong></div>
+          <div><span>61+ days overdue</span><strong>{{ summary.ageing.days61plus | currency:selectedCurrency:'symbol':'1.2-2' }}</strong></div>
+        </div>
+        <div *ngIf="summary.actionInvoices.length" class="action-invoices">
+          <h3>Invoices to follow up</h3>
+          <a *ngFor="let invoice of summary.actionInvoices" [routerLink]="['/invoices', invoice.id]">
+            <span>{{ invoice.document_number }} · {{ invoice.customer_name }}<small *ngIf="invoice.due_date">Due {{ invoice.due_date | date:'d MMM y' }}</small></span>
+            <strong>{{ invoice.balance_due | currency:selectedCurrency:'symbol':'1.2-2' }}</strong>
+          </a>
+        </div>
+        <p *ngIf="!summary.actionInvoices.length">No issued invoices have an outstanding balance in this currency.</p>
+      </div>
+    </section>
+
     <!-- Recent activity: a section with a label, not another titled card. -->
     <section class="activity">
       <div class="section-head">

@@ -37,6 +37,8 @@ Migration 014 adds encrypted issued-party snapshots and explicit per-line VAT-in
 
 Migrations 015 and 016 add idempotent creation, pending email verification, stable share-link recovery, recurring occurrence markers and the encrypted email outbox. Run migrations before the updated API. Keep the same encryption key for outbox messages and saved links.
 
+Migration 017 adds line units and discounts plus purchase-order references and delivery details. Run migrations before testing the Milestone 2 builders or PDF preview.
+
 Invoice status `SENT` is displayed as **Issued**: it freezes the invoice, independently of email delivery. The delivery indicator and email history show queued, failed, uncertain or accepted-by-provider attempts. Known failures retry every 15 minutes, up to five automatic attempts; uncertain attempts need provider review before an explicit resend. Local SMTP is normally unavailable, so local invoice emails stay queued/failed unless a test server is running.
 
 Recurring jobs run hourly and recover on API startup. The email queue and notification processor run each minute. Customer payment reminders are off by default; enable them in Notifications to send at 1/7/14 overdue days. Invoice mute stops reminders. Current share links keep their original 30-day expiry; use Replace link to invalidate one or Revoke link to disable it.
@@ -79,7 +81,7 @@ Remove-Item Env:FREEVOICES_TEST_API_URL
 
 Set that variable when running `npm.cmd run test:server` to include the integration test in the full backend suite. Both the API URL and database host must point to localhost; production mode is rejected.
 
-Current validation: 142 backend tests (with `FREEVOICES_TEST_API_URL=http://localhost:3000/api`), 102 headless frontend tests, production build and lint pass. Integration tests create and remove their own synthetic businesses. SMTP protocol tests use an ephemeral local server; real inbox delivery, OAuth, payment-provider transactions and production disaster recovery still need separate validation. See [PRODUCT_REVIEW.md](PRODUCT_REVIEW.md) for current fix status and remaining product work.
+Current local validation: 144 backend tests with zero skips on a fresh migrated database, 121 headless frontend tests, 30 responsive navigation checks, production build and lint pass. Integration tests use synthetic businesses and a disposable test database. SMTP protocol tests use an ephemeral local server; real inbox delivery, OAuth, payment-provider transactions and production disaster recovery still need separate validation. See [PRODUCT_REVIEW.md](PRODUCT_REVIEW.md) and [MILESTONE_2_TEST_HANDOFF.md](MILESTONE_2_TEST_HANDOFF.md).
 
 The logical backup script now uses one consistent transaction and SQL-format date/time strings (`format_version: 2`). A local restore drill verified all 21 tables, 268 rows and 21 foreign keys in a disposable database. It is still an unencrypted logical export; production off-site backup scheduling, retention, encryption and separate key recovery need operational setup. Repeated API regression runs can hit the normal authentication rate limits; restart the local API between complete runs rather than disabling those limits.
 
@@ -103,14 +105,18 @@ Run `npm.cmd run test:ci` for browser tests (Chrome required), plus `npm.cmd run
 
 26 October 2026 validation: 141 backend tests pass with zero skips against a fresh migrated database; 82 frontend tests, production build and lint pass locally. The workflow YAML is parsed and its dev-only triggers checked. Milestone 1's CI completion criterion passed on `dev` at commit `37b6d7a`: [GitHub Actions run](https://github.com/RealKyleStone/freevoices/actions/runs/40285572397) confirmed all 141 backend tests with zero skips, 82 frontend tests, the production build and lint.
 
-## Milestone 2 first slice
+## Milestone 2 implementation for testing
 
 The dashboard now shows a business setup checklist linking to company, invoice and payment settings. Branding is optional, and incomplete setup does not block draft work. Progress refreshes when returning from settings.
 
 Invoice and quote create/edit forms search customers and products in server-paged dialogs. Use **Add customer/product** to create and select a record without leaving the document. Search errors offer retry; failed additions retain their entries. Existing draft selections load independently of the first search page, and products remain optional for custom lines.
 
-Latest local checks: 142 backend tests with no skips, 102 frontend tests, build and lint pass. See PRODUCT_REVIEW.md for the rest of Milestone 2 and remaining visual usability checks.
+Invoice create/edit now include a live review and a server rendered PDF preview. Units, line discounts, purchase-order references and delivery details persist through invoice/quote creation and editing, quote conversion, recurring invoices and PDFs. An invoice can be copied into a new editable draft with a fresh number on creation.
+
+Invoice and quote create/edit forms back up unsaved work in account-scoped browser storage and offer Restore or Discard when reopened. The backup expires after 30 days and is cleared after a successful save or explicit discard; closing an account clears its local backups. The dashboard shows outstanding balances and ageing in its selected currency, with direct links to invoices needing follow-up.
+
+The code is ready for the human journeys in [MILESTONE_2_TEST_HANDOFF.md](MILESTONE_2_TEST_HANDOFF.md). Mobile, keyboard and screen-reader acceptance is still pending.
 
 ## Milestone 1/2 regression checks
 
-Run `npm.cmd run test:navigation` to exercise menu navigation in three headless Chrome window sizes. The suite is also part of dev CI and checks the tablet sidebar boundary, mobile overlay dismissal, settings sections, authentication transitions, dirty drafts, picker cancellation, theme switching and empty reports. The full current frontend suite has 112 passing tests; backend checks have 142 with zero skips. See [REGRESSION_REPORT.md](REGRESSION_REPORT.md) for the fixes, test scope and live-browser limitations.
+Run `npm.cmd run test:navigation` to exercise menu navigation in three headless Chrome window sizes. The suite is also part of dev CI and checks the tablet sidebar boundary, mobile overlay dismissal, settings sections, authentication transitions, dirty drafts, picker cancellation, theme switching and empty reports. See [REGRESSION_REPORT.md](REGRESSION_REPORT.md) for the fixes, test scope and live-browser limitations.

@@ -8,6 +8,9 @@ export interface DashboardSummary {
   totalCustomers: number;
   openInvoices: number;
   overdueInvoices: number;
+  outstanding: number;
+  ageing: { current: number; days1to30: number; days31to60: number; days61plus: number };
+  actionInvoices: { id: number; document_number: string; customer_name: string; due_date: string | null; balance_due: number }[];
   recentActivity: RecentActivity[];
   /** Server-relative path, e.g. /uploads/logos/logo_x.png, or null. */
   companyLogo?: string | null;

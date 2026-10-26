@@ -14,6 +14,15 @@
 
   <form class="form-container" [formGroup]="form" (ngSubmit)="onSubmit()" *ngIf="!isFetching">
 
+    <div class="draft-recovery" *ngIf="pendingDraft" role="status">
+      <strong>Recover unsaved changes?</strong>
+      <p>Changes from {{ pendingDraft.savedAt | date:'medium' }} are stored on this device for this account. Restore them only if they should replace the loaded invoice values.</p>
+      <ion-button type="button" size="small" (click)="restoreBrowserDraft()">Restore changes</ion-button>
+      <ion-button type="button" size="small" fill="clear" (click)="discardBrowserDraft()">Discard saved changes</ion-button>
+    </div>
+    <p class="field-hint" *ngIf="draftSaved && !pendingDraft" role="status">Unsaved changes are backed up on this device.</p>
+    <p class="field-error" *ngIf="draftStorageFailed" role="alert">This browser could not store your changes. Keep this page open until you save.</p>
+
     <!-- Header details -->
     <ion-card>
       <ion-card-header><ion-card-title>Invoice details</ion-card-title></ion-card-header>
@@ -41,6 +50,8 @@
           <ion-label position="stacked">Payment terms (days)</ion-label>
           <ion-input aria-label="Payment terms (days)" formControlName="payment_terms" type="number" min="0"></ion-input>
         </ion-item>
+        <ion-item><ion-label position="stacked">Purchase order / customer reference</ion-label><ion-input aria-label="Purchase order or customer reference" formControlName="purchase_order_ref" maxlength="100"></ion-input></ion-item>
+        <p class="field-error" *ngIf="isInvalid('purchase_order_ref')">Reference must be 100 characters or fewer</p>
 
       </ion-card-content>
     </ion-card>
@@ -88,6 +99,12 @@
               <ion-input aria-label="VAT %" formControlName="vat_rate" type="number" min="0" step="0.5"></ion-input>
             </ion-item>
           </div>
+          <div class="item-row">
+            <ion-item class="flex-1"><ion-label position="stacked">Unit</ion-label><ion-input aria-label="Unit" formControlName="unit_label" maxlength="20"></ion-input></ion-item>
+            <ion-item class="flex-1"><ion-label position="stacked">Discount %</ion-label><ion-input aria-label="Discount %" formControlName="discount_percent" type="number" min="0" max="100" step="0.01"></ion-input></ion-item>
+          </div>
+          <p class="field-error" *ngIf="isItemInvalid(i, 'unit_label')">Enter a unit of 1–20 characters</p>
+          <p class="field-error" *ngIf="isItemInvalid(i, 'discount_percent')">Discount must be between 0 and 100%</p>
           <p class="field-error" *ngIf="isItemInvalid(i, 'quantity')">Quantity must be greater than 0</p>
           <p class="field-error" *ngIf="isItemInvalid(i, 'unit_price')">Unit price cannot be negative</p>
           <p class="field-error" *ngIf="isItemInvalid(i, 'vat_rate')">VAT must be between 0 and 100</p>
@@ -110,6 +127,7 @@
     <ion-card>
       <ion-card-content>
         <app-invoice-preview [form]="form" [currencySymbol]="currencySymbol" [customerName]="selectedCustomerName" [invoiceNumber]="invoiceNumber"></app-invoice-preview>
+        <app-invoice-pdf-preview [form]="form" [currencyId]="currencyId"></app-invoice-pdf-preview>
       </ion-card-content>
     </ion-card>
 
@@ -160,6 +178,8 @@
           <ion-label position="stacked">Terms & Conditions</ion-label>
           <ion-textarea aria-label="Terms &amp; Conditions" formControlName="terms_conditions" rows="3"></ion-textarea>
         </ion-item>
+        <ion-item><ion-label position="stacked">Delivery details (optional)</ion-label><ion-textarea aria-label="Delivery details" formControlName="delivery_details" rows="2" maxlength="1000"></ion-textarea></ion-item>
+        <p class="field-error" *ngIf="isInvalid('delivery_details')">Delivery details must be 1000 characters or fewer</p>
       </ion-card-content>
     </ion-card>
 

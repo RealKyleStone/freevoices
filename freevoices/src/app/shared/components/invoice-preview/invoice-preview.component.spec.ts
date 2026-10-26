@@ -26,4 +26,26 @@ describe('InvoicePreviewComponent', () => {
     expect(fixture.nativeElement.textContent).toContain('2026-11-25');
     expect(fixture.nativeElement.textContent).toContain('230.00');
   });
+  it('shows the same discounted inclusive total and reference as the server', () => {
+    TestBed.configureTestingModule({ imports: [InvoicePreviewComponent] });
+    const fb = TestBed.inject(FormBuilder);
+    const form = fb.group({
+      issue_date: ['2026-10-26'], due_date: ['2026-10-26'],
+      purchase_order_ref: ['PO-123'], delivery_details: ['Remote delivery'],
+      notes: [''], terms_conditions: [''],
+      items: fb.array([fb.group({ description: ['Consulting'], quantity: [2], unit_label: ['hours'],
+        unit_price: [115], discount_percent: [10], vat_rate: [15], vat_inclusive: [true] })])
+    });
+    const fixture = TestBed.createComponent(InvoicePreviewComponent);
+    fixture.componentInstance.form = form;
+    fixture.detectChanges();
+    const text = fixture.nativeElement.textContent;
+    expect(text).toContain('PO-123');
+    expect(text).toContain('2 hours');
+    expect(text).toContain('10% discount');
+    expect(text).toContain('180.00');
+    expect(text).toContain('27.00');
+    expect(text).toContain('207.00');
+    expect(text).toContain('Remote delivery');
+  });
 });

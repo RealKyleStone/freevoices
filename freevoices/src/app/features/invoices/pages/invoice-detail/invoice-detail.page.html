@@ -34,6 +34,7 @@
         </div>
       </header>
       <p *ngIf="invoice.delivery_status">Email: {{ invoice.delivery_status === 'ACCEPTED' ? 'Accepted by email provider' : (invoice.delivery_status | titlecase) }}</p>
+      <p *ngIf="invoice.purchase_order_ref">PO / customer reference: {{ invoice.purchase_order_ref }}</p>
       <p *ngIf="invoice.delivery_error" role="status">{{ invoice.delivery_error }}</p>
       <details *ngIf="invoice.email_deliveries?.length">
         <summary>Email history</summary>
@@ -95,8 +96,9 @@
                   <span class="desc">
                     {{ item.description }}
                     <small *ngIf="item.vat_rate > 0" class="vat-note">{{ item.vat_inclusive ? 'Includes ' : '+' }}{{ item.vat_rate }}% VAT</small>
+                    <small *ngIf="item.discount_percent">{{ item.discount_percent }}% discount</small>
                   </span>
-                  <span class="qty">{{ item.quantity }}</span>
+                  <span class="qty">{{ item.quantity }} {{ item.unit_label || 'each' }}</span>
                   <span class="price">{{ currencySymbol }} {{ item.unit_price | number:'1.2-2' }} <small>{{ item.vat_inclusive ? 'incl. VAT' : 'excl. VAT' }}</small></span>
                   <span class="amount">{{ currencySymbol }} {{ item.total | number:'1.2-2' }}</span>
                 </div>
@@ -117,7 +119,7 @@
             </div>
           </section>
 
-          <section *ngIf="invoice.notes || invoice.terms_conditions">
+          <section *ngIf="invoice.notes || invoice.terms_conditions || invoice.delivery_details">
             <div class="section-head">
               <h2 class="fv-section-label">Notes and terms</h2>
             </div>
@@ -130,6 +132,7 @@
                 <p class="note-label">Terms &amp; conditions</p>
                 <p>{{ invoice.terms_conditions }}</p>
               </div>
+              <div *ngIf="invoice.delivery_details" class="mt"><p class="note-label">Delivery details</p><p>{{ invoice.delivery_details }}</p></div>
             </div>
           </section>
 

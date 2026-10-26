@@ -18,6 +18,7 @@ import {
 
 import { AccountService, AccountStatus } from '../../services/account.service';
 import { AuthService } from '../../../../core/auth/services/auth.service';
+import { clearUserDrafts } from '../../../../shared/utils/browser-draft';
 import { LegalService } from '../../../legal/services/legal.service';
 
 @Component({
@@ -137,6 +138,8 @@ export class PrivacySettingsPage implements OnInit {
   private closeAccount(password: string): void {
     this.accountService.closeAccount(password).subscribe({
       next: async (result) => {
+        const userId = this.authService.getCurrentUser()?.id;
+        if (userId) clearUserDrafts(userId);
         // Local-only clear. Calling logout() would POST to /logout, which now
         // 401s because the sessions are already gone, and that 401 would make
         // the error interceptor navigate away before this dialog is dismissed.

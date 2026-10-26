@@ -40,7 +40,9 @@ async function prepareDocument(q, userId, type, input) {
   const currencyId = input.currency_id ?? Number(defaults.default_currency_id || 1);
   if (!(await q('SELECT id FROM currencies WHERE id=? AND is_active=1', [currencyId])).length) fail('Select a valid active currency');
   const terms = normaliseTerms(input.payment_terms !== undefined ? input.payment_terms : customer.payment_terms ?? defaults.invoice_payment_terms ?? 30);
-  const priced = computeDocumentTotals(input.items.map(item => ({ ...item, vat_rate: item.vat_rate ?? Number(defaults.invoice_vat_rate ?? 15) })));
+  const priced = computeDocumentTotals(input.items.map(item => ({ ...item,
+    unit_label: String(item.unit_label || 'each').trim(),
+    vat_rate: item.vat_rate ?? Number(defaults.invoice_vat_rate ?? 15) })));
   const recurring = type === 'INVOICE' && boolean(input.is_recurring);
   if (recurring && !['WEEKLY', 'MONTHLY', 'QUARTERLY', 'YEARLY'].includes(input.recurrence_interval)) fail('Choose a recurring interval');
   if (recurring && input.recurrence_end_date && input.recurrence_end_date < input.issue_date) fail('Recurring end date cannot precede the issue date');

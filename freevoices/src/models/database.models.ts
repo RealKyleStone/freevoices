@@ -68,6 +68,8 @@ export interface Document extends BaseModel {
   total: number;
   notes?: string;
   terms_conditions?: string;
+  purchase_order_ref?: string | null;
+  delivery_details?: string | null;
   is_recurring?: boolean;
   recurrence_interval?: 'WEEKLY' | 'MONTHLY' | 'QUARTERLY' | 'YEARLY' | null;
   recurrence_next_date?: string | null;
@@ -83,7 +85,9 @@ export interface DocumentItem extends BaseModel {
   product_id?: number;
   description: string;
   quantity: number;
+  unit_label?: string;
   unit_price: number;
+  discount_percent?: number;
   vat_rate: number;
   vat_amount: number;
   subtotal: number;

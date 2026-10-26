@@ -753,6 +753,21 @@ const MIGRATIONS = [
       return 'outbox cancellation available';
     },
   },
+  {
+    id:'017_document_commercial_fields',
+    description:'Units, line discounts and customer purchase-order/delivery references',
+    async up(q) {
+      for (const [column,definition] of [
+        ['purchase_order_ref','varchar(100) DEFAULT NULL'],
+        ['delivery_details','text DEFAULT NULL'],
+      ]) if (!(await columnExists(q,'documents',column))) await q(`ALTER TABLE documents ADD COLUMN ${column} ${definition}`);
+      for (const [column,definition] of [
+        ['unit_label',"varchar(20) NOT NULL DEFAULT 'each'"],
+        ['discount_percent','decimal(5,2) NOT NULL DEFAULT 0.00'],
+      ]) if (!(await columnExists(q,'document_items',column))) await q(`ALTER TABLE document_items ADD COLUMN ${column} ${definition}`);
+      return 'document commercial fields available';
+    },
+  },
 ];
 
 // ─── Runner ───────────────────────────────────────────────────────────────────
