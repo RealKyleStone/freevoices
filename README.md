@@ -79,7 +79,7 @@ Remove-Item Env:FREEVOICES_TEST_API_URL
 
 Set that variable when running `npm.cmd run test:server` to include the integration test in the full backend suite. Both the API URL and database host must point to localhost; production mode is rejected.
 
-Current validation: 140 backend tests (with `FREEVOICES_TEST_API_URL=http://localhost:3000/api`), 82 headless frontend tests, production build and lint pass. Integration tests create and remove their own synthetic businesses. SMTP protocol tests use an ephemeral local server; real inbox delivery, OAuth, payment-provider transactions and production disaster recovery still need separate validation. See [PRODUCT_REVIEW.md](PRODUCT_REVIEW.md) for current fix status and remaining product work.
+Current validation: 141 backend tests (with `FREEVOICES_TEST_API_URL=http://localhost:3000/api`), 82 headless frontend tests, production build and lint pass. Integration tests create and remove their own synthetic businesses. SMTP protocol tests use an ephemeral local server; real inbox delivery, OAuth, payment-provider transactions and production disaster recovery still need separate validation. See [PRODUCT_REVIEW.md](PRODUCT_REVIEW.md) for current fix status and remaining product work.
 
 The logical backup script now uses one consistent transaction and SQL-format date/time strings (`format_version: 2`). A local restore drill verified all 21 tables, 268 rows and 21 foreign keys in a disposable database. It is still an unencrypted logical export; production off-site backup scheduling, retention, encryption and separate key recovery need operational setup. Repeated API regression runs can hit the normal authentication rate limits; restart the local API between complete runs rather than disabling those limits.
 
@@ -101,4 +101,4 @@ The runner refuses remote hosts, production mode, other database names and any n
 
 Run `npm.cmd run test:ci` for browser tests (Chrome required), plus `npm.cmd run build` and `npm.cmd run lint`.
 
-26 October 2026 validation: 141 backend tests pass with zero skips against a fresh migrated database; 82 frontend tests, production build and lint pass locally. The workflow YAML is parsed and its dev-only triggers checked. The first GitHub Actions run is pending publication of these changes to `dev`; Milestone 1's CI completion criterion remains pending that run.
+26 October 2026 validation: 141 backend tests pass with zero skips against a fresh migrated database; 82 frontend tests, production build and lint pass locally. The workflow YAML is parsed and its dev-only triggers checked. Milestone 1's CI completion criterion passed on `dev` at commit `37b6d7a`: [GitHub Actions run](https://github.com/RealKyleStone/freevoices/actions/runs/40285572397) confirmed all 141 backend tests with zero skips, 82 frontend tests, the production build and lint.

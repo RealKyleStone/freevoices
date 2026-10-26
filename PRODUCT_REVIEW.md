@@ -2,7 +2,7 @@
 
 24 October 2026 · branch `dev` · initial local assessment
 
-## Milestone 1 follow-up ? 26 October 2026
+## Milestone 1 complete - 26 October 2026
 
 New work stays on `dev`; `main` is not merged. The dependable-billing fixes are already in PR_1. This follow-up adds the missing CI workflow and an isolated fresh-database test runner, plus explicit inclusive-VAT reconciliation assertions across issued PDFs, the VAT report, paid-revenue report and dashboard.
 
@@ -14,9 +14,11 @@ New work stays on `dev`; `main` is not merged. The dependable-billing fixes are 
 | Pricing agrees across preview, API, PDF and reports | Actual client helper parity plus issued-inclusive PDF/report/dashboard assertions |
 | Email failure visible and safe to retry | Outbox, local SMTP acceptance, duplicate-send and ambiguous-attempt regressions |
 | Recurring calendar, restarts and concurrent workers | Anchored monthly/leap-year fixtures, occurrence uniqueness and queue recovery checks |
-| Build, backend tests, frontend tests and lint pass in CI | Workflow implemented; first GitHub Actions run pending publication to dev |
+| Build, backend tests, frontend tests and lint pass in CI | Passed on dev: [GitHub Actions run](https://github.com/RealKyleStone/freevoices/actions/runs/40285572397) |
 
 Local validation: **141 backend tests with zero skips** on a newly imported/migrated database, **82 frontend tests**, production build and lint pass. The test database and its dedicated user used for this workstation run were removed afterwards. The runner itself never drops/replaces database contents. All 16 migrations were exercised from the base schema; ordinary `.env` credentials and the demo database were not used for integration execution.
+
+Milestone 1 automated acceptance criteria passed on GitHub Actions for commit `37b6d7a`: 141 backend tests with zero skips, 82 frontend tests, production build and lint. [Verified run](https://github.com/RealKyleStone/freevoices/actions/runs/40285572397). Production-provider and usability validation described below remains separate work.
 
 ## Fix progress
 
