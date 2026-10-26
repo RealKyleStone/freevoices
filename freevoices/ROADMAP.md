@@ -1,5 +1,18 @@
 # Freevoices — System Overview & Development Roadmap
 
+## Current delivery status — 26 October 2026
+
+All new work is on `dev`; nothing has been merged to `main`. This file's March 2026 feature inventory and phase descriptions below are historical. The current Milestones 1–4 scope is tracked in [the product review](../PRODUCT_REVIEW.md) and [Milestones 3 and 4 plan](../MILESTONES_3_4_PLAN.md). Use [the combined testing matrix](../MILESTONES_1_4_TEST_MATRIX.md) for current verification status.
+
+| Milestone | Current state | Acceptance still needed |
+|---|---|---|
+| 1 — dependable billing | Automated acceptance passed on `dev` | Real provider and device validation remains separate |
+| 2 — fast daily work | Features and automated regressions passed; external usability testing pending | Phone, tablet, keyboard, screen reader and first-invoice journeys |
+| 3 — quote to cash | Quote decision, bank CSV review/matching, configurable reminders and sharing implemented | Credit notes, refunds, part-payment receipts, complete collections and portal checks |
+| 4 — sustained business use | VAT export, ledger, ageing, statements, catalogue imports, health/metrics, encrypted backup and local restore drill implemented | Business roles/isolation, production off-site backup/monitoring, accessibility and release evidence |
+
+The owner has not chosen a software license. Treat the "open-source" wording in the historical description below as an aspiration, not a license grant. The combined Milestones 1–4 testing handoff is **not ready**.
+
 > October 2026 update: this document preserves the March baseline below. Reports, settings, account lifecycle, inclusive pricing, archived party snapshots, reliable recurring generation, a persistent email queue and opt-in customer reminders now exist. See [the current product review](../PRODUCT_REVIEW.md) for tested fixes and remaining work. Profile settings use `/api/settings`; the older `/api/profile` reference below is historical.
 
 > **Purpose of this document:** Give future contributors (including future AI assistants) a complete picture of what the system currently does, what's been scaffolded but not built, and a prioritised plan for what to build next.

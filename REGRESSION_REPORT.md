@@ -1,5 +1,7 @@
 # Milestone 1 and 2 regression pass
 
+This report records the earlier Milestones 1 and 2 navigation pass. Current Milestones 1–4 verification and outstanding gates are tracked in [the testing matrix](MILESTONES_1_4_TEST_MATRIX.md); the results below have not been rerun as a combined external acceptance pass.
+
 26 October 2026 - branch `dev`
 
 ## Findings fixed

@@ -1,5 +1,7 @@
 # Milestone 2 testing handoff
 
+This is the historical Milestone 2 handoff. For the current Milestones 1–4 scope and latest test counts, use [the combined testing matrix](MILESTONES_1_4_TEST_MATRIX.md). The combined handoff is not ready yet.
+
 26 October 2026 · branch `dev` · South African small businesses
 
 ## Build under test

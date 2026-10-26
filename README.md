@@ -39,7 +39,7 @@ Migrations 015 and 016 add idempotent creation, pending email verification, stab
 
 Migration 017 adds line units and discounts plus purchase-order references and delivery details. Run migrations before testing the Milestone 2 builders or PDF preview.
 
-Migrations 018–020 add quote decisions, repeatable catalogue CSV imports, and reviewable bank statement rows. Run migrations before testing Milestone 3/4 work. The combined Milestones 1–4 testing handoff is still pending; see [the delivery plan](MILESTONES_3_4_PLAN.md) and [operations runbook](OPERATIONS.md).
+Migrations 018–020 add quote decisions, repeatable catalogue CSV imports, and reviewable bank statement rows. Run migrations before testing Milestone 3/4 work. The combined Milestones 1–4 testing handoff is still pending; see [the delivery plan](MILESTONES_3_4_PLAN.md), [testing matrix](MILESTONES_1_4_TEST_MATRIX.md) and [operations runbook](OPERATIONS.md).
 
 Invoice status `SENT` is displayed as **Issued**: it freezes the invoice, independently of email delivery. The delivery indicator and email history show queued, failed, uncertain or accepted-by-provider attempts. Known failures retry every 15 minutes, up to five automatic attempts; uncertain attempts need provider review before an explicit resend. Local SMTP is normally unavailable, so local invoice emails stay queued/failed unless a test server is running.
 
