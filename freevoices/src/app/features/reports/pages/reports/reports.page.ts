@@ -1,13 +1,14 @@
 import { Component, OnInit, OnDestroy, AfterViewChecked, ViewChild, ElementRef } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import {
-  IonButtons, IonContent, IonHeader, IonIcon, IonMenuButton, IonSpinner, IonToolbar,
+  IonButton, IonButtons, IonContent, IonHeader, IonIcon, IonMenuButton, IonSpinner, IonToolbar,
 } from '@ionic/angular/standalone';
 import { Chart, ChartConfiguration, registerables } from 'chart.js';
 import {
   ReportsService, RevenueByMonth, InvoiceStatusBreakdown, TopCustomer, VatSummaryRow
 } from '../../services/reports.service';
 import { forkJoin, Subscription } from 'rxjs';
+import { vatSummaryCsv } from '../../services/vat-csv';
 import { addIcons } from 'ionicons';
 import {
   alertCircleOutline,
@@ -54,7 +55,7 @@ function formatMonth(ym: string): string {
   styleUrls: ['./reports.page.scss'],
   standalone: true,
   imports: [
-    CommonModule, IonButtons, IonContent, IonHeader, IonIcon, IonMenuButton, IonSpinner,
+    CommonModule, IonButton, IonButtons, IonContent, IonHeader, IonIcon, IonMenuButton, IonSpinner,
     IonToolbar,
   ]
 })
@@ -334,5 +335,18 @@ export class ReportsPage implements OnInit, OnDestroy, AfterViewChecked {
 
   get totalVatTotal(): number {
     return this.vatRows.reduce((s, r) => s + +r.total, 0);
+  }
+
+  exportVatCsv() {
+    if (!this.vatRows.length) return;
+    const blob = new Blob([vatSummaryCsv(this.vatRows, this.selectedCurrency)], { type: 'text/csv;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `freevoices-vat-${this.selectedCurrency}-${new Date().getFullYear()}.csv`;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 0);
   }
 }

@@ -1,0 +1,27 @@
+# Milestones 3 and 4 delivery plan
+
+26 October 2026. All implementation stays on `dev`. Milestone 2 is available for external testing; acceptance findings feed into this work.
+
+## Milestone 3: quote to cash
+
+1. **Quote decision.** Give each issued quote a revocable customer link, a branded mobile review page, PDF download, expiry display, and explicit Accept/Decline actions. Record decision time and evidence. Make repeat decisions idempotent; prevent a declined or expired quote from being converted accidentally. Preserve the existing one-live-invoice-per-quote rule.
+2. **Settlement documents.** Show deposits and part payments against a remaining balance. Add receipts and credit notes with immutable numbering and links to the original invoice. Define refund handling separately from credit issuance; neither should silently delete payment history.
+3. **Collections.** Extend the existing opt-in 1/7/14 day reminder and pause controls with per-invoice delivery history and safe retries. Keep payment status in the portal tied to verified ledger entries and show the last update time. Add copy/share actions initiated by the business user.
+4. **Bank reconciliation.** Import a bank CSV into a review queue. Preview rows, detect duplicate imports, suggest matches using amount/date/reference, require a human to confirm, and keep the source row plus match decision in an audit trail. Never mark an invoice paid from a suggestion alone.
+
+Acceptance: a quote can be reviewed and decided once, converted once, invoiced, partially paid and reconciled; balances, receipts, customer view and audit history agree. Automated tests cover ownership, replay, concurrent requests, expiry, wrong-currency and duplicate-bank-row cases. External testers exercise phone and keyboard flows.
+
+## Milestone 4: sustained business use
+
+1. **Reports.** Add visible definitions, date/customer/currency filters, ageing and customer statements. CSV exports must reconcile to the underlying transactions and protect spreadsheet users from formula injection. The first change exports the existing year-to-date VAT summary in its selected currency.
+2. **Imports.** Provide customer/product templates, validation previews, row-level errors, duplicate handling and safe retry.
+3. **Business access.** Introduce a business boundary and migrate existing owner data deliberately. Add owner/bookkeeper/staff roles and business-scoped audit events before allowing shared access.
+4. **Operations.** Add readiness and scheduler/delivery metrics, alerts, repeatable deployment, encrypted off-site backups and tested restore/key recovery. Keep authorization, uploads, sessions and account recovery in regression coverage.
+5. **Release evidence.** Document contribution setup and operating costs. Confirm a license with the owner. Test slow connections, phone/tablet layouts, keyboard, zoom, screen readers and exported documents.
+
+Acceptance: reports reconcile across currencies and periods; imports are safely repeatable; role tests prove isolation; restore drill recovers a recent backup with its keys; operators can detect and respond to failed jobs. Real payment, email and OAuth integrations require their own sandbox and production verification.
+
+## Current checkpoint
+
+- Milestone 3: existing invoice portal, partial payments, receipts, opt-in reminders and quote conversion provide a base; customer quote decisions and bank reconciliation are unimplemented.
+- Milestone 4: charts and a basic VAT report exist. VAT CSV export is the first delivery slice; the remaining filters, statements, imports, access model and operational readiness work are pending.

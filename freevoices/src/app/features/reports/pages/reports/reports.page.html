@@ -94,6 +94,7 @@
           <div class="section-head">
             <h2 class="fv-section-label">VAT summary</h2>
             <p class="section-note">Invoice basis: every issued invoice (sent, overdue or paid) by issue month, current year</p>
+            <ion-button size="small" fill="outline" [disabled]="vatRows.length === 0" (click)="exportVatCsv()">Export CSV</ion-button>
           </div>
           <div class="panel panel-pad">
             <p *ngIf="vatRows.length === 0" class="empty-msg">
