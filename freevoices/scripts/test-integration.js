@@ -44,6 +44,23 @@ function runTests(env) {
   });
 }
 
+function verifyEncryptedSchema(env) {
+  return new Promise((resolve, reject) => {
+    const child = spawn(process.execPath, ['scripts/encrypt-backfill.js', '--verify'],
+      { cwd: ROOT, env, windowsHide: true });
+    let output = '';
+    child.stdout.on('data', data => { output += data; });
+    child.stderr.on('data', data => { output += data; });
+    child.once('error', reject);
+    child.once('exit', code => {
+      if (code !== 0 || !output.includes('All registered columns are fully encrypted.'))
+        return reject(new Error(`Encryption preflight failed on fresh schema: ${output.slice(-2000)}`));
+      console.log('Fresh-schema encryption preflight passed.');
+      resolve();
+    });
+  });
+}
+
 async function main() {
   validateDatabase(process.env);
   const port = await unusedPort();
@@ -81,6 +98,7 @@ async function main() {
       await pause(250);
     }
     if (!ready) throw new Error('Test API did not become ready');
+    await verifyEncryptedSchema(env);
     console.log(`Fresh schema migrated; running backend checks against ${env.DB_NAME}.`);
     await runTests(env);
   } catch (error) {

@@ -932,6 +932,27 @@ const MIGRATIONS = [
       return 'bookkeeper invitations available';
     },
   },
+  {
+    id:'024_adjustment_encrypted_columns',
+    description:'Widen bank and refund fields for encrypted envelopes',
+    async up(q) {
+      const fields=[
+        ['bank_import_rows','description'],
+        ['bank_import_rows','reference'],
+        ['bank_import_rows','account_label'],
+        ['payment_refunds','reference'],
+      ];
+      let widened=0;
+      for(const [table,column] of fields) {
+        const definition=await columnDefinition(q,table,column);
+        if(definition.COLUMN_TYPE.toLowerCase()==='text') {
+          await q(`ALTER TABLE ${table} MODIFY COLUMN ${column} MEDIUMTEXT NULL`);
+          widened++;
+        }
+      }
+      return `${widened} encrypted columns widened`;
+    },
+  },
 ];
 
 // ─── Runner ───────────────────────────────────────────────────────────────────

@@ -4,7 +4,7 @@
 
 ## Status
 
-This is a working verification matrix, **not the combined external testing handoff**. Every roadmap item is in scope. Current work is on `dev`; no change has been merged to `main`. Use fictional customers, bank statements and payments. Run migrations 017–021 before testing newer workflows. Credit/refund creation requires `INVOICE_ADJUSTMENTS_ENABLED=true` in development or test; production remains closed.
+This is a working verification matrix, **not the combined external testing handoff**. Every roadmap item is in scope. Current work is on `dev`; no change has been merged to `main`. Use fictional customers, bank statements and payments. Run migrations 017–024 before testing newer workflows. Credit/refund creation requires `INVOICE_ADJUSTMENTS_ENABLED=true` in development or test; production remains closed. See the [full regression report](MILESTONES_1_4_TEST_REPORT.md).
 
 | Area | What is available on `dev` | What testers should verify | Gate |
 |---|---|---|---|
@@ -22,7 +22,7 @@ This is a working verification matrix, **not the combined external testing hando
 
 ## Latest local automated evidence
 
-At the current local checkpoint, a fresh disposable migrated database passed **157 backend tests, zero failures and zero skips**. Angular passed **127 frontend tests**; lint and development/production builds passed. The responsive navigation suite passed **30 checks** at phone, tablet and desktop sizes. An encrypted backup from the earlier checkpoint restored into a disposable local database and passed table counts and a canary check; it has not yet been repeated with migration 023. CI passed at `040eb8e`; the invitation commit awaits CI. The local demo database has migrations 018–023 and its API readiness check passes. A fictional bookkeeper accepted a preview invitation and can see the demo owner's eight invoices. Live UI inspection stopped when Computer Use could not verify the browser URL, so seller and bookkeeper screens are unverified. These checks do not prove that real devices, production SMTP, PayFast, OAuth or off-site recovery work.
+The latest local pass covered a fresh disposable database with **157 backend tests (0 failures, 0 skips)**, **127 frontend tests**, **30 responsive navigation checks**, lint and production build. The local demo database has all **24 migrations** applied; encryption verification passes with no plaintext. A recent encrypted backup restored **28 tables and 371 rows** into a disposable local database. API smoke passed **41 authenticated owner/bookkeeper route checks**, including invoice and receipt PDFs; account export passed separately before its rate limit was reached. The deployment doctor has zero failures and six expected development/sandbox warnings. Offline PayFast checks passed **39/39**. CI passed at `d45aaaf`; the migration 024 commit needs its own CI run. Live visual/assistive-technology checks, production SMTP, PayFast, OAuth and off-site recovery remain unverified. Details are in the [regression report](MILESTONES_1_4_TEST_REPORT.md).
 
 ## Combined handoff exit conditions
 

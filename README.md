@@ -8,8 +8,7 @@ The local setup uses an isolated MariaDB database, an Express API, and Angular's
 
 - App: http://localhost:4200
 - API: http://localhost:3000/api
-- Demo login: `demo@freevoices.test` / `LocalDemo2026!`
-- Demo data: one customer, one product, two draft invoices, and a converted quote.
+- Fictional test accounts and sales/bank data exist in this workstation's local demo database. Ask the project team for the current test credentials; they are not portable to a new installation.
 
 The demo credentials are only for this local database. Database credentials and the generated field-encryption key are in the ignored `freevoices/.env`. Keep that file with the database: replacing the encryption key makes encrypted records unreadable.
 
@@ -41,7 +40,7 @@ Migration 017 adds line units and discounts plus purchase-order references and d
 
 Migrations 018–020 add quote decisions, repeatable catalogue CSV imports, and reviewable bank statement rows. Run migrations before testing Milestone 3/4 work. The combined Milestones 1–4 testing handoff is still pending; see [the delivery plan](MILESTONES_3_4_PLAN.md), [testing matrix](MILESTONES_1_4_TEST_MATRIX.md) and [operations runbook](OPERATIONS.md).
 
-Migration 021 adds credit-note and refund storage. Its adjustment routes are limited to integration tests while their effects are being wired across invoices, reports, payment providers and the portal. Do not treat this migration as a completed settlement feature.
+Migration 021 adds credit-note and refund storage. Adjustment routes can be enabled in development for review; production remains gated pending tax/PDF and usability acceptance. Migrations 022–023 add read-only bookkeeper access and invitations. Migration 024 widens bank/refund columns for encrypted values. Run `npm.cmd run encrypt:verify` after migrating and backfill any older plaintext fields before treating the database as ready.
 
 Invoice status `SENT` is displayed as **Issued**: it freezes the invoice, independently of email delivery. The delivery indicator and email history show queued, failed, uncertain or accepted-by-provider attempts. Known failures retry every 15 minutes, up to five automatic attempts; uncertain attempts need provider review before an explicit resend. Local SMTP is normally unavailable, so local invoice emails stay queued/failed unless a test server is running.
 
@@ -54,7 +53,7 @@ Recurring jobs run hourly and recover on API startup. The email queue and notifi
 3. Create a local MySQL/MariaDB database and a dedicated user with access to that database. Import `database/schema.sql` into the empty database before migrations.
 4. Copy `.env.example` to `.env`. Set the local database credentials, `NODE_ENV=development`, `APP_URL=http://localhost:4200`, and `PAYFAST_MODE=sandbox`. Configure SMTP or expect email delivery to fail. Leave Google OAuth unset unless using your own development client.
 5. Generate the encryption key using the command in `.env.example` and set `DATA_ENCRYPTION_KEYS` and `DATA_ENCRYPTION_KEY_ACTIVE` as described there.
-6. Run `npm.cmd run migrate`. A fresh schema contains no currencies or banks. At minimum, insert a ZAR currency before creating invoices; the API falls back to currency ID 1:
+6. Run `npm.cmd run migrate`, then `npm.cmd run seed:legal` to publish the repository's reviewable legal documents in the local database and generate the offline copies. Run `npm.cmd run doctor` and `npm.cmd run encrypt:verify`. A fresh schema contains no currencies or banks. At minimum, insert a ZAR currency before creating invoices; the API falls back to currency ID 1:
 
 ```sql
 INSERT INTO currencies (id, code, name, symbol) VALUES (1, 'ZAR', 'South African Rand', 'R');
