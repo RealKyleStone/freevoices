@@ -14,10 +14,18 @@
 
 const fs = require('fs');
 const path = require('path');
+const { createCipheriv, randomBytes } = require('crypto');
 const { getConnection, queryOn, closePool } = require('../src/services/db.service');
 
 const args = process.argv.slice(2);
 const outIndex = args.indexOf('--out');
+const encrypted = args.includes('--encrypted');
+
+function backupKey() {
+  const key = Buffer.from(process.env.BACKUP_ENCRYPTION_KEY || '', 'base64');
+  if (key.length !== 32) throw new Error('BACKUP_ENCRYPTION_KEY must decode to exactly 32 bytes');
+  return key;
+}
 
 function timestamp() {
   return new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
@@ -52,15 +60,20 @@ function timestamp() {
 
     const outPath = outIndex !== -1 && args[outIndex + 1]
       ? path.resolve(args[outIndex + 1])
-      : path.join(__dirname, '..', 'backups', `${db}-${timestamp()}.json`);
+      : path.join(__dirname, '..', 'backups', `${db}-${timestamp()}.${encrypted ? 'fvbak' : 'json'}`);
 
     fs.mkdirSync(path.dirname(outPath), { recursive: true });
-    fs.writeFileSync(outPath, JSON.stringify(snapshot, null, 2), 'utf8');
+    if (encrypted) {
+      const iv = randomBytes(12);
+      const cipher = createCipheriv('aes-256-gcm', backupKey(), iv);
+      const body = Buffer.concat([cipher.update(JSON.stringify(snapshot), 'utf8'), cipher.final()]);
+      fs.writeFileSync(outPath, Buffer.concat([Buffer.from('FVBAK1'),iv,cipher.getAuthTag(),body]), { flag:'wx' });
+    } else fs.writeFileSync(outPath, JSON.stringify(snapshot, null, 2), { encoding:'utf8',flag:'wx' });
 
     const kb = Math.round(fs.statSync(outPath).size / 1024);
     console.log(`\nSnapshot: ${tables.length} tables, ${totalRows} rows, ${kb} KB`);
     console.log(`Written to: ${outPath}`);
-    console.log('\nUNENCRYPTED and contains personal information — delete when no longer needed.\n');
+    console.log(encrypted ? '\nEncrypted backup. Store its key separately and test a restore.\n' : '\nUNENCRYPTED and contains personal information — delete when no longer needed.\n');
 
     await q('COMMIT');
     connection.release();

@@ -51,6 +51,11 @@ test('customer quote decisions are recorded once and govern conversion', { skip:
   assert.equal(ledger.rows.length, 1);
   assert.equal(Number(ledger.rows[0].amount), 10);
   assert.equal(ledger.rows[0].transaction_reference, 'BANK-123');
+  const ageing = await ok(`/reports/ageing?currency=ZAR&customer_id=${customer.id}`);
+  assert.equal(ageing.rows.find(row => row.invoice_id === converted.data.invoice_id).balance_due, '105.00');
+  const statement = await ok(`/reports/customer-statement?currency=ZAR&customer_id=${customer.id}&from=${todayIso()}&to=${todayIso()}`);
+  assert.equal(statement.rows.length, 2);
+  assert.equal(statement.closing_balance, 105);
   assert.equal((await request('/reports/payments-ledger?currency=ZAR&from=2026-12-31&to=2026-01-01')).status, 422);
   assert.equal((await request('/reports/payments-ledger?currency=ZAR&customer_id=999999999')).status, 404);
 

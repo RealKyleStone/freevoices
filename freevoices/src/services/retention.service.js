@@ -121,6 +121,8 @@ async function anonymiseExpiredAccounts() {
         await q('DELETE FROM sessions WHERE userId = ?', [id]);
         await q('DELETE FROM password_reset_tokens WHERE user_id = ?', [id]);
         await q('DELETE FROM email_outbox WHERE user_id = ?', [id]);
+        await q('DELETE FROM bank_import_rows WHERE user_id = ?', [id]);
+        await q('DELETE FROM catalogue_import_batches WHERE user_id = ?', [id]);
         await q('DELETE s FROM document_share_links s JOIN documents d ON d.id=s.document_id WHERE d.user_id=?',[id]);
         return true;
       });

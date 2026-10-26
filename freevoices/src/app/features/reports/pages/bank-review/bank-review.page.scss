@@ -1,0 +1,7 @@
+.bank-review { max-width: 68rem; margin: 0 auto; padding: 1rem; display: grid; gap: 1rem; }
+section { padding: 1rem; border: 1px solid var(--fv-border); border-radius: var(--fv-radius-lg); }
+label { display: grid; gap: 0.4rem; max-width: 26rem; }
+input, select { min-height: 2.5rem; padding: 0.35rem; color: var(--ion-text-color); background: var(--ion-card-background); border: 1px solid var(--fv-border); }
+.table-scroll { overflow-x: auto; }
+table { width: 100%; border-collapse: collapse; }
+th, td { padding: 0.5rem; text-align: left; border-bottom: 1px solid var(--fv-border); }

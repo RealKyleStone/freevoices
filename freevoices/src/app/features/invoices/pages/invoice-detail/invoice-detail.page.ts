@@ -369,6 +369,16 @@ export class InvoiceDetailPage implements OnInit {
     await toast.present();
   }
 
+  async shareViaDevice() {
+    if (!this.shareLink) return;
+    if (!navigator.share) return this.copyShareLink();
+    try { await navigator.share({ title: `Invoice ${this.invoice?.document_number}`, url: this.shareLink }); }
+    catch (error) { if ((error as DOMException).name !== 'AbortError') {
+      const toast = await this.toastCtrl.create({ message: 'Could not open sharing. Copy the link instead.', duration: 3000, color: 'warning' });
+      await toast.present();
+    } }
+  }
+
   async confirmCancel() {
     const alert = await this.alertCtrl.create({
       header: 'Cancel Invoice',

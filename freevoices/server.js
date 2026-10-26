@@ -11,6 +11,7 @@ const { reportCurrency, report } = require('./src/services/reporting.service');
 const { shareDocument } = require('./src/services/document-share.service');
 const { actualImageType } = require('./src/services/image-upload.service');
 const { TEMPLATES, previewCatalogueCsv } = require('./src/services/catalogue-import.service');
+const { HEADER: BANK_HEADER, previewBankCsv } = require('./src/services/bank-import.service');
 const { createDocument } = require('./src/services/document-create.service');
 const { advanceDate, prepareDocument } = require('./src/services/billing-rules');
 const { captureDocumentSnapshot, hydrateDocumentSnapshots, documentSeller } = require('./src/services/document-snapshot.service');
@@ -39,7 +40,7 @@ const rateLimit = require('express-rate-limit');
 const bodyParser = require('body-parser');
 const argon2 = require('argon2');
 const { OAuth2Client } = require('google-auth-library');
-const { randomUUID } = require('crypto');
+const { randomUUID, timingSafeEqual } = require('crypto');
 const multer = require('multer');
 const { body, validationResult } = require('express-validator');
 
@@ -201,6 +202,26 @@ app.get('/api/health/ready', async (req, res) => {
     res.set('Cache-Control', 'no-store').status(503).json({ status: 'unavailable' });
   }
 });
+const schedulerStatus = Object.fromEntries(['recurring','notifications','overdue','retention'].map(name=>[name,{last_success:null,last_failure:null}]));
+async function runTrackedJob(name, work) {
+  try { await work(); schedulerStatus[name].last_success=new Date().toISOString(); }
+  catch(error) { schedulerStatus[name].last_failure=new Date().toISOString(); logger.error(`${name} job failed`,error); }
+}
+app.get('/api/ops/metrics',async(req,res)=>{
+  const expected=process.env.OPERATIONS_TOKEN;
+  if (!expected) return res.status(404).json({message:'Not found'});
+  const supplied=req.get('x-operations-token') || '';
+  const left=Buffer.from(expected),right=Buffer.from(supplied);
+  if (left.length!==right.length || !timingSafeEqual(left,right)) return res.status(403).json({message:'Forbidden'});
+  try {
+    const [outbox,recurring,bankRows]=await Promise.all([
+      executeQuery('SELECT status,COUNT(*) AS count FROM email_outbox GROUP BY status'),
+      executeQuery("SELECT COUNT(*) AS count FROM documents WHERE is_recurring=1 AND recurrence_next_date IS NOT NULL AND recurrence_next_date<=?",[todayIso()]),
+      executeQuery("SELECT COUNT(*) AS count FROM bank_import_rows WHERE status='PENDING'")
+    ]);
+    res.set('Cache-Control','no-store').json({checked_at:new Date().toISOString(),scheduler:schedulerStatus,outbox:Object.fromEntries(outbox.map(row=>[row.status,row.count])),recurring_due:recurring[0].count,bank_rows_pending:bankRows[0].count});
+  } catch(error) { logger.error('Operations metrics failed',error);res.status(503).json({message:'Metrics unavailable'}); }
+});
 
 app.use(express.static(WEB_ROOT));
 
@@ -208,7 +229,7 @@ app.use(express.static(WEB_ROOT));
 // EmailService built its own, weaker one. TLS policy now lives entirely in
 // EmailService, so there is one place to look.
 const { queueEmail, deliverEmail, processOutbox, captureEmail } = require('./src/services/outbox.service');
-const { processBillingNotifications } = require('./src/services/billing-notifications.service');
+const { processBillingNotifications, parseReminderDays } = require('./src/services/billing-notifications.service');
 const { processRecurring } = require('./src/services/recurring.service');
 const emailService = new EmailService({
   SMTP_HOST: process.env.SMTP_HOST,
@@ -1625,6 +1646,100 @@ app.post('/api/imports/commit',authenticateToken,async(req,res)=>{
   } catch(error) { logger.error('Catalogue import failed:',error); res.status(error.status || 500).json({message:error.status ? error.message : 'Import failed'}); }
 });
 
+async function reviewBankImport(q,userId,csv) {
+  const preview=previewBankCsv(csv);
+  const currencies=await q('SELECT id,code FROM currencies WHERE is_active=1');
+  const byCode=new Map(currencies.map(row=>[row.code,row.id]));
+  for (const row of preview.rows) {
+    row.currency_id=byCode.get(row.data.currency) || null;
+    if (!row.currency_id) row.errors.push('Choose an active currency');
+    const [prior]=await q('SELECT id,status FROM bank_import_rows WHERE user_id=? AND source_hash=?',[userId,row.source_hash]);
+    row.duplicate=prior ? { id:prior.id,status:prior.status } : null;
+  }
+  preview.valid=preview.rows.length>0 && preview.rows.every(row=>row.errors.length===0);
+  return preview;
+}
+
+app.get('/api/bank-imports/template',authenticateToken,(req,res)=>{
+  res.set({'Content-Type':'text/csv; charset=utf-8','Content-Disposition':'attachment; filename="freevoices-bank-template.csv"'}).send(BANK_HEADER.join(',')+'\r\n');
+});
+app.post('/api/bank-imports/preview',authenticateToken,async(req,res)=>{
+  try { res.json(await reviewBankImport(executeQuery,req.user.id,req.body?.csv)); }
+  catch(error) { res.status(error.status || 500).json({message:error.status ? error.message : 'Bank preview failed'}); }
+});
+app.post('/api/bank-imports/commit',authenticateToken,async(req,res)=>{
+  try {
+    const outcome=await withTransaction(async q=>{
+      await lockDocumentOwner(q,req.user.id);
+      const preview=await reviewBankImport(q,req.user.id,req.body?.csv);
+      if (!preview.valid) return {status:422,errors:preview.rows.filter(row=>row.errors.length)};
+      let created=0,duplicates=0;
+      for (const row of preview.rows) {
+        if (row.duplicate) {duplicates++;continue;}
+        const d=row.data;
+        await q(`INSERT INTO bank_import_rows(user_id,currency_id,transaction_date,amount,description,reference,account_label,source_hash)
+          VALUES(?,?,?,?,?,?,?,?)`,[req.user.id,row.currency_id,d.date,Number(d.amount).toFixed(2),encryptField('bank_import_rows','description',d.description || null),encryptField('bank_import_rows','reference',d.reference || null),encryptField('bank_import_rows','account_label',d.account || null),row.source_hash]);
+        created++;
+      }
+      return {created,duplicates};
+    });
+    res.status(outcome.status || 201).json(outcome.status ? {message:'Fix bank CSV errors',errors:outcome.errors} : outcome);
+  } catch(error) { logger.error('Bank CSV import failed:',error);res.status(error.status || 500).json({message:error.status ? error.message : 'Bank import failed'}); }
+});
+app.get('/api/bank-imports',authenticateToken,async(req,res)=>{
+  try {
+    const status=['PENDING','MATCHED','IGNORED'].includes(req.query.status) ? req.query.status : 'PENDING';
+    const rows=await executeQuery(`SELECT b.id,DATE_FORMAT(b.transaction_date,'%Y-%m-%d') AS transaction_date,b.amount,b.description,b.reference,b.account_label,b.status,b.invoice_id,b.payment_id,b.created_at,c.code AS currency_code
+      FROM bank_import_rows b JOIN currencies c ON c.id=b.currency_id WHERE b.user_id=? AND b.status=? ORDER BY b.transaction_date DESC,b.id DESC LIMIT 200`,[req.user.id,status]);
+    res.set('Cache-Control','no-store').json(rows.map(row=>({ ...row,description:decryptField('bank_import_rows','description',row.description),reference:decryptField('bank_import_rows','reference',row.reference),account_label:decryptField('bank_import_rows','account_label',row.account_label) })));
+  } catch(error) { logger.error('Bank review list failed:',error);res.status(500).json({message:'Could not load bank transactions'}); }
+});
+app.get('/api/bank-imports/:id/suggestions',authenticateToken,async(req,res)=>{
+  try {
+    const [row]=await executeQuery('SELECT id,currency_id,amount,reference,description,status FROM bank_import_rows WHERE id=? AND user_id=?',[req.params.id,req.user.id]);
+    if (!row) return res.status(404).json({message:'Bank transaction not found'});
+    if (row.status!=='PENDING' || Number(row.amount)<=0) return res.json([]);
+    const reference=decryptField('bank_import_rows','reference',row.reference) || '';
+    const description=decryptField('bank_import_rows','description',row.description) || '';
+    const invoices=await executeQuery(`SELECT d.id,d.document_number,d.total,c.name AS customer_name,COALESCE(p.paid,0) AS amount_paid
+      FROM documents d JOIN customers c ON c.id=d.customer_id LEFT JOIN (SELECT document_id,SUM(amount) AS paid FROM payments GROUP BY document_id) p ON p.document_id=d.id
+      WHERE d.user_id=? AND d.currency_id=? AND d.type='INVOICE' AND d.status IN ('SENT','OVERDUE','DRAFT') AND d.total>COALESCE(p.paid,0)
+      ORDER BY d.id DESC LIMIT 500`,[req.user.id,row.currency_id]);
+    const suggestions=invoices.map(invoice=>{
+      const balance=Number(invoice.total)-Number(invoice.amount_paid);
+      const match=(reference+' '+description).toLowerCase().includes(invoice.document_number.toLowerCase());
+      const exact=Math.abs(balance-Number(row.amount))<0.005;
+      return { invoice_id:invoice.id,document_number:invoice.document_number,customer_name:invoice.customer_name,balance_due:balance.toFixed(2),reason:match && exact ? 'Reference and amount' : match ? 'Invoice reference' : exact ? 'Exact balance' : null,score:(match ? 2 : 0)+(exact ? 1 : 0) };
+    }).filter(item=>item.reason).sort((a,b)=>b.score-a.score).slice(0,5);
+    res.set('Cache-Control','no-store').json(suggestions);
+  } catch(error) { logger.error('Bank match suggestions failed:',error);res.status(500).json({message:'Could not find suggestions'}); }
+});
+app.post('/api/bank-imports/:id/match',authenticateToken,validate([body('invoice_id').isInt({min:1})]),async(req,res)=>{
+  try {
+    const outcome=await withTransaction(async q=>{
+      const [row]=await q(`SELECT id,currency_id,DATE_FORMAT(transaction_date,'%Y-%m-%d') AS day,amount,reference,status
+        FROM bank_import_rows WHERE id=? AND user_id=? FOR UPDATE`,[req.params.id,req.user.id]);
+      if (!row) return {status:404,message:'Bank transaction not found'};
+      if (row.status!=='PENDING') return {status:409,message:'This transaction was already reviewed'};
+      if (Number(row.amount)<=0) return {status:422,message:'Only incoming payments can match an invoice'};
+      const [invoice]=await q("SELECT id,status,currency_id FROM documents WHERE id=? AND user_id=? AND type='INVOICE'",[req.body.invoice_id,req.user.id]);
+      if (!invoice) return {status:404,message:'Invoice not found'};
+      if (invoice.currency_id!==row.currency_id || ['CANCELLED','PAID'].includes(invoice.status)) return {status:422,message:'Choose an open invoice in the same currency'};
+      const result=await recordInvoicePayment({invoiceId:invoice.id,amount:Number(row.amount).toFixed(2),paymentDate:row.day,method:'BANK_TRANSFER',reference:decryptField('bank_import_rows','reference',row.reference) || `bank-import-${row.id}`,notes:`Matched from bank import row ${row.id}`,rejectOverpayment:true},q);
+      if (result.overpayment || result.duplicate) return {status:422,message:'Amount exceeds the remaining balance or payment already exists'};
+      await q("UPDATE bank_import_rows SET status='MATCHED',invoice_id=?,payment_id=?,decided_at=NOW() WHERE id=?",[invoice.id,result.paymentId,row.id]);
+      return {status:200,message:'Payment matched',invoice_id:invoice.id,payment_id:result.paymentId,balance_due:result.balanceAfter.toFixed(2)};
+    });
+    res.status(outcome.status).json(outcome);
+  } catch(error) { logger.error('Bank match failed:',error);res.status(error.status || 500).json({message:error.status ? error.message : 'Could not match transaction'}); }
+});
+app.post('/api/bank-imports/:id/ignore',authenticateToken,async(req,res)=>{
+  try {
+    const result=await executeQuery("UPDATE bank_import_rows SET status='IGNORED',decided_at=NOW() WHERE id=? AND user_id=? AND status='PENDING'",[req.params.id,req.user.id]);
+    res.status(result.affectedRows ? 200 : 409).json({message:result.affectedRows ? 'Transaction ignored' : 'Transaction not pending'});
+  } catch(error) { res.status(500).json({message:'Could not ignore transaction'}); }
+});
+
 // ─── Dashboard summary ────────────────────────────────────────────────────────
 
 app.get('/api/dashboard/summary', authenticateToken, async (req, res) => {
@@ -1934,8 +2049,12 @@ app.put('/api/settings/payfast', authenticateToken, validate([
 app.put('/api/settings/notifications', authenticateToken, async (req, res) => {
   try {
     const userId = req.user.id;
-    const { notify_invoice_sent, notify_payment_received, notify_invoice_overdue, customer_reminders_enabled } = req.body;
+    const { notify_invoice_sent, notify_payment_received, notify_invoice_overdue, customer_reminders_enabled, customer_reminder_days } = req.body;
+    let reminderDays;
+    try { reminderDays=parseReminderDays(customer_reminder_days); }
+    catch { return res.status(422).json({message:'Choose 1 to 5 unique reminder days between 1 and 365'}); }
     const pairs = [['notify_invoice_sent', notify_invoice_sent === true ? '1' : '0'], ['notify_payment_received', notify_payment_received === true ? '1' : '0'], ['notify_invoice_overdue', notify_invoice_overdue === true ? '1' : '0'], ['customer_reminders_enabled', customer_reminders_enabled === true ? '1' : '0']];
+    pairs.push(['customer_reminder_days',reminderDays.join(',')]);
     for (const [key, value] of pairs) await executeQuery(`INSERT INTO settings (user_id, setting_key, setting_value, updated_at) VALUES (?, ?, ?, NOW()) ON DUPLICATE KEY UPDATE setting_value = VALUES(setting_value), updated_at = NOW()`, [userId, key, value]);
     res.json({ message: 'Notification preferences updated successfully' });
   } catch (error) { logger.error('Error updating notification settings:', error); res.status(500).json({ message: 'Failed to update notification preferences' }); }
@@ -1983,6 +2102,65 @@ app.get('/api/reports/payments-ledger',authenticateToken,async(req,res)=>{
     if (rows.length > 1000) return res.status(422).json({message:'Too many payments. Narrow the date or customer filter.'});
     res.set('Cache-Control','no-store').json({ currency_code:currency.code, from:from || null,to:to || null,rows:rows.map(decryptPaymentRow) });
   } catch(error) { logger.error('Error fetching payments ledger:',error); res.status(error.status || 500).json({message:error.status ? error.message : 'Report could not be loaded'}); }
+});
+
+app.get('/api/reports/ageing',authenticateToken,async(req,res)=>{
+  try {
+    const currency = await reportCurrency(executeQuery,req.user.id,req.query.currency);
+    const customerId = req.query.customer_id;
+    if (customerId && !/^[1-9]\d*$/.test(String(customerId))) return res.status(422).json({message:'Choose a valid customer'});
+    let sql = `SELECT d.id AS invoice_id,d.document_number,d.due_date,d.total,c.id AS customer_id,c.name AS customer_name,
+      COALESCE(p.paid,0) AS amount_paid,ROUND(GREATEST(d.total-COALESCE(p.paid,0),0),2) AS balance_due,
+      CASE WHEN d.due_date IS NULL OR d.due_date>=? THEN 'current' WHEN DATEDIFF(?,d.due_date)<=30 THEN 'days1to30'
+           WHEN DATEDIFF(?,d.due_date)<=60 THEN 'days31to60' ELSE 'days61plus' END AS band
+      FROM documents d JOIN customers c ON c.id=d.customer_id
+      LEFT JOIN (SELECT document_id,SUM(amount) AS paid FROM payments GROUP BY document_id) p ON p.document_id=d.id
+      WHERE d.user_id=? AND d.currency_id=? AND d.type='INVOICE' AND
+        (d.status IN ('SENT','OVERDUE') OR (d.status='DRAFT' AND COALESCE(p.paid,0)>0)) AND d.total>COALESCE(p.paid,0)`;
+    const day = todayIso();
+    const params = [day,day,day,req.user.id,currency.id];
+    if (customerId) { sql += ' AND c.id=?'; params.push(customerId); }
+    sql += ' ORDER BY d.due_date ASC,d.id ASC LIMIT 1001';
+    const rows = await executeQuery(sql,params);
+    if (rows.length>1000) return res.status(422).json({message:'Too many open invoices. Choose a customer.'});
+    const totals = { current:0,days1to30:0,days31to60:0,days61plus:0 };
+    for (const row of rows) totals[row.band] += Number(row.balance_due);
+    res.set('Cache-Control','no-store').json({ currency_code:currency.code,as_of:day,totals,rows });
+  } catch(error) { logger.error('Error fetching ageing report:',error); res.status(error.status || 500).json({message:error.status ? error.message : 'Ageing report could not be loaded'}); }
+});
+
+app.get('/api/reports/customer-statement',authenticateToken,async(req,res)=>{
+  try {
+    const customerId = req.query.customer_id;
+    if (!/^[1-9]\d*$/.test(String(customerId || ''))) return res.status(422).json({message:'Choose a customer'});
+    const { from, to } = req.query;
+    const validDate = value => !value || (typeof value==='string' && /^\d{4}-\d{2}-\d{2}$/.test(value) && !Number.isNaN(Date.parse(`${value}T00:00:00Z`)) && new Date(`${value}T00:00:00Z`).toISOString().slice(0,10)===value);
+    if (!validDate(from) || !validDate(to) || (from && to && from>to)) return res.status(422).json({message:'Choose a valid date range'});
+    const currency = await reportCurrency(executeQuery,req.user.id,req.query.currency);
+    const [customer] = await queryDecrypted(decryptCustomerRow,'SELECT id,name FROM customers WHERE id=? AND user_id=?',[customerId,req.user.id]);
+    if (!customer) return res.status(404).json({message:'Customer not found'});
+    const end = to || todayIso();
+    const invoices = await executeQuery(`SELECT id,document_number,DATE_FORMAT(issue_date,'%Y-%m-%d') AS day,total,status FROM documents
+      WHERE user_id=? AND customer_id=? AND currency_id=? AND type='INVOICE' AND issue_date<=? AND
+      (status IN ('SENT','OVERDUE','PAID') OR EXISTS(SELECT 1 FROM payments p WHERE p.document_id=documents.id))
+      ORDER BY issue_date,id LIMIT 1001`,[req.user.id,customerId,currency.id,end]);
+    const payments = await executeQuery(`SELECT p.id,d.id AS invoice_id,d.document_number,DATE_FORMAT(p.payment_date,'%Y-%m-%d') AS day,p.amount
+      FROM payments p JOIN documents d ON d.id=p.document_id WHERE d.user_id=? AND d.customer_id=? AND d.currency_id=? AND d.type='INVOICE' AND p.payment_date<=?
+      ORDER BY p.payment_date,p.id LIMIT 1001`,[req.user.id,customerId,currency.id,end]);
+    if (invoices.length>1000 || payments.length>1000) return res.status(422).json({message:'Too many statement entries. Narrow the end date.'});
+    const entries = [
+      ...invoices.map(row => ({ day:row.day,kind:'INVOICE',invoice_id:row.id,document_number:row.document_number,debit:row.status==='CANCELLED' ? 0 : Number(row.total),credit:0,id:row.id })),
+      ...payments.map(row => ({ day:row.day,kind:'PAYMENT',invoice_id:row.invoice_id,document_number:row.document_number,debit:0,credit:Number(row.amount),id:row.id }))
+    ].sort((a,b)=>a.day.localeCompare(b.day) || (a.kind===b.kind ? a.id-b.id : a.kind==='INVOICE' ? -1 : 1));
+    let opening = 0,balance = 0;
+    const rows = [];
+    for (const entry of entries) {
+      balance += entry.debit-entry.credit;
+      if (from && entry.day<from) opening=balance;
+      else rows.push({ ...entry,balance:Number(balance.toFixed(2)) });
+    }
+    res.set('Cache-Control','no-store').json({ customer_id:customer.id,customer_name:customer.name,currency_code:currency.code,from:from || null,to:end,opening_balance:Number(opening.toFixed(2)),closing_balance:Number(balance.toFixed(2)),rows });
+  } catch(error) { logger.error('Error fetching customer statement:',error); res.status(error.status || 500).json({message:error.status ? error.message : 'Customer statement could not be loaded'}); }
 });
 
 app.get('/api/public/invoice/:token', portalLimiter, async (req, res) => {
@@ -2104,8 +2282,8 @@ async function processRecurringInvoices() {
     try {await queueInvoiceEmail(row.id,row.user_id);}catch(error){logger.error(`Recurring email #${row.id} could not be queued`,error);}
   }
 }
-cron.schedule('5 * * * *',()=>processRecurringInvoices().catch(error=>logger.error('Recurring job failed',error)),{timezone:'Africa/Johannesburg'});
-cron.schedule('* * * * *',()=>processBillingNotifications().then(()=>processOutbox(emailService.transporter)).catch(error=>logger.error('Email queue failed',error)),{timezone:'Africa/Johannesburg'});
+cron.schedule('5 * * * *',()=>runTrackedJob('recurring',processRecurringInvoices),{timezone:'Africa/Johannesburg'});
+cron.schedule('* * * * *',()=>runTrackedJob('notifications',async()=>{await processBillingNotifications();await processOutbox(emailService.transporter);}),{timezone:'Africa/Johannesburg'});
 
 async function processOverdueInvoices() {
   logger.info('Overdue invoice cron: starting');
@@ -2121,10 +2299,10 @@ async function processOverdueInvoices() {
       } catch (itemError) { logger.error(`Overdue invoice cron: failed to process invoice #${invoice.id}:`, itemError); }
     }
     logger.info('Overdue invoice cron: completed');
-  } catch (error) { logger.error('Overdue invoice cron: fatal error:', error); }
+  } catch (error) { logger.error('Overdue invoice cron: fatal error:', error); throw error; }
 }
 
-cron.schedule('10 * * * *', processOverdueInvoices, {timezone:'Africa/Johannesburg'});
+cron.schedule('10 * * * *',()=>runTrackedJob('overdue',processOverdueInvoices), {timezone:'Africa/Johannesburg'});
 
 // ─── Account anonymisation cron — runs daily at 00:20 ─────────────────────────
 // The erasure that /api/account/close promises and, until now, nothing
@@ -2133,10 +2311,7 @@ cron.schedule('10 * * * *', processOverdueInvoices, {timezone:'Africa/Johannesbu
 // database work with no HTTP in it, and out there it can be run and tested
 // without booting a server. See that file for what it deliberately leaves
 // alone and why.
-cron.schedule('20 0 * * *', () => {
-  anonymiseExpiredAccounts().catch(error =>
-    logger.error('Account anonymisation cron: fatal error:', error));
-});
+cron.schedule('20 0 * * *',()=>runTrackedJob('retention',anonymiseExpiredAccounts));
 
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -2180,7 +2355,7 @@ app.get('/api/account/export', authenticateToken, exportLimiter, async (req, res
     // doesn't fill error.log on every export.
     const hasConsents = await tableExists(executeQuery, 'marketing_consents');
 
-    const [user, settings, customers, products, documents, items, payments, tracking, emails, consents, requests] =
+    const [user, settings, customers, products, documents, items, payments, tracking, emails, consents, requests, bankRows] =
       await Promise.all([
         queryDecrypted(decryptUserRow,
           // google_id is the Google account identifier we hold about this
@@ -2208,6 +2383,7 @@ app.get('/api/account/export', authenticateToken, exportLimiter, async (req, res
           ? executeQuery('SELECT channel, source, consented_at FROM marketing_consents WHERE user_id = ?', [uid])
           : Promise.resolve([]),
         executeQuery('SELECT request_type, status, requested_at, completed_at FROM data_subject_requests WHERE user_id = ?', [uid]),
+        executeQuery('SELECT id,currency_id,transaction_date,amount,description,reference,account_label,status,invoice_id,payment_id,created_at,decided_at FROM bank_import_rows WHERE user_id=?',[uid]),
       ]);
 
     if (user.length === 0) return res.status(404).json({ message: 'User not found' });
@@ -2236,6 +2412,7 @@ app.get('/api/account/export', authenticateToken, exportLimiter, async (req, res
       documents: scrubbed,
       document_items: items,
       payments,
+      bank_import_rows: bankRows.map(row=>({ ...row,description:decryptField('bank_import_rows','description',row.description),reference:decryptField('bank_import_rows','reference',row.reference),account_label:decryptField('bank_import_rows','account_label',row.account_label) })),
       document_tracking: tracking,
       email_log: emails,
       marketing_consents: consents,
@@ -2938,8 +3115,8 @@ async function recordInvoicePayment({
   provider = null, providerPaymentId = null, status = null,
   feeAmount = null, netAmount = null, rawPayload = null,
   ip = null, userAgent = null, rejectOverpayment = false,
-}) {
-  return withTransaction(async (q) => {
+}, transactionQuery = null) {
+  const record = async (q) => {
     // Lock the invoice first, so two payments recorded at the same moment are
     // checked against the balance one after the other, not both against the
     // same stale figure.
@@ -2953,8 +3130,9 @@ async function recordInvoicePayment({
 
     await captureDocumentSnapshot(q, invoiceId);
 
+    let paymentId;
     try {
-      await q(
+      const inserted = await q(
         `INSERT INTO payments (document_id, amount, payment_date, payment_method, transaction_reference,
                                notes, provider, provider_payment_id, status, fee_amount, net_amount, raw_payload)
          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
@@ -2962,6 +3140,7 @@ async function recordInvoicePayment({
          encryptField('payments', 'transaction_reference', reference), notes,
          provider, providerPaymentId, status, feeAmount, netAmount, rawPayload]
       );
+      paymentId = inserted.insertId;
     } catch (err) {
       // PayFast re-sends a notification until it gets a 200, so the same
       // pf_payment_id legitimately arrives more than once. Caught explicitly
@@ -2987,8 +3166,9 @@ async function recordInvoicePayment({
        VALUES (?, ?, ?, ?)`,
       [invoiceId, settled ? 'PAID' : 'PAYMENT', encTracking('ip_address', ip), encTracking('user_agent', userAgent)]
     );
-    return { duplicate: false, settled, cancelled, overpayment: false, balanceBefore, balanceAfter: balanceDue(invoice.total, paidAfter) };
-  });
+    return { duplicate: false, settled, cancelled, overpayment: false, balanceBefore, balanceAfter: balanceDue(invoice.total, paidAfter), paymentId };
+  };
+  return transactionQuery ? record(transactionQuery) : withTransaction(record);
 }
 
 /**

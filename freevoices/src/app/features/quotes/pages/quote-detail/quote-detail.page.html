@@ -138,6 +138,7 @@
                   <p>Customer review link (expires {{ shareExpiry | date:'mediumDate' }})</p>
                   <a [href]="shareLink" target="_blank" rel="noopener">{{ shareLink }}</a>
                   <ion-button size="small" fill="clear" (click)="copyShareLink()">Copy link</ion-button>
+                  <ion-button size="small" fill="clear" (click)="shareViaDevice()">Share link</ion-button>
                   <ion-button size="small" fill="clear" (click)="manageShare(true)">Replace link</ion-button>
                   <ion-button size="small" fill="clear" color="danger" (click)="manageShare(false)">Revoke link</ion-button>
                 </div>

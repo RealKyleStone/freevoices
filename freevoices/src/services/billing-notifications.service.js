@@ -5,6 +5,13 @@ const {queueEmail}=require('./outbox.service');
 const {shareDocument}=require('./document-share.service');
 const {todayIso}=require('./document-math');
 
+function parseReminderDays(value) {
+  const days=String(value || '1,7,14').split(',').map(part=>Number(part.trim()));
+  if (!days.length || days.length>5 || days.some(day=>!Number.isInteger(day) || day<1 || day>365) || new Set(days).size!==days.length)
+    throw new Error('Reminder days must be 1 to 365, unique, with at most five stages');
+  return days.sort((a,b)=>a-b);
+}
+
 async function processBillingNotifications({today=todayIso(),userId=null}={}) {
   const users=await executeQuery("SELECT id,email FROM users WHERE status='ACTIVE'"+(userId?' AND id=?':''),userId?[userId]:[]);
   const from={name:process.env.SMTP_FROM_NAME || 'Freevoices',address:process.env.SMTP_FROM_ADDRESS || process.env.SMTP_FROM || process.env.SMTP_USER};
@@ -28,7 +35,9 @@ async function processBillingNotifications({today=todayIso(),userId=null}={}) {
       if(settings.notify_invoice_overdue!=='0') await own('ALERT',`alert:overdue:${doc.id}`,`Invoice overdue: ${doc.document_number}`,`Invoice ${doc.document_number} was due on ${doc.due_date}. Review it in Freevoices.`,doc.id);
       if(settings.customer_reminders_enabled!=='1') continue;
       const days=Math.floor((Date.parse(today)-Date.parse(doc.due_date))/86400000);
-      const stage=days>=14?14:days>=7?7:1;
+      const stages=parseReminderDays(settings.customer_reminder_days);
+      const stage=stages.filter(value=>days>=value).at(-1);
+      if (!stage) continue;
       // On recovery, send only the latest due reminder, not every missed stage.
       const key=`reminder:${doc.id}:${stage}`;
       if((await executeQuery('SELECT id FROM email_outbox WHERE user_id=? AND dedupe_key=?',[user.id,key])).length) continue;
@@ -43,4 +52,5 @@ async function processBillingNotifications({today=todayIso(),userId=null}={}) {
     }
   }
 }
-module.exports={processBillingNotifications};
+
+module.exports={processBillingNotifications,parseReminderDays};

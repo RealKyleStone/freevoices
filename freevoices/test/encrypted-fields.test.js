@@ -269,12 +269,12 @@ test('null rows survive the mappers', (t) => {
 
 // ─── Registry shape ───────────────────────────────────────────────────────────
 
-test('the registry covers exactly the POPIA phase 6 scope', () => {
+test('the registry covers the protected business and bank import fields', () => {
   // Pinned so that adding a column without widening it in a migration, or
   // without wiring its call sites, shows up as a failing test rather than as
   // truncated ciphertext in production.
   assert.deepStrictEqual(Object.keys(ef.REGISTRY).sort(),
-    ['customers', 'document_share_links', 'document_snapshots', 'document_tracking', 'email_outbox', 'payments', 'users']);
+    ['bank_import_rows', 'customers', 'document_share_links', 'document_snapshots', 'document_tracking', 'email_outbox', 'payments', 'users']);
 
   assert.deepStrictEqual([...ef.REGISTRY.users], [
     'payfast_merchant_id', 'payfast_merchant_key', 'payfast_passphrase',
@@ -285,6 +285,7 @@ test('the registry covers exactly the POPIA phase 6 scope', () => {
     ['phone', 'vat_number', 'billing_address', 'shipping_address', 'notes']);
   assert.deepStrictEqual([...ef.REGISTRY.document_tracking], ['ip_address', 'user_agent']);
   assert.deepStrictEqual([...ef.REGISTRY.payments], ['transaction_reference']);
+  assert.deepStrictEqual([...ef.REGISTRY.bank_import_rows], ['description', 'reference', 'account_label']);
   assert.deepStrictEqual([...ef.REGISTRY.document_snapshots], ['payload']);
 });
 

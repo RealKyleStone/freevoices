@@ -147,6 +147,16 @@ export class QuoteDetailPage implements OnInit {
     }
   }
 
+  async shareViaDevice() {
+    if (!this.shareLink) return;
+    if (!navigator.share) return this.copyShareLink();
+    try { await navigator.share({ title: `Quote ${this.quote?.document_number}`, url: this.shareLink }); }
+    catch (error) { if ((error as DOMException).name !== 'AbortError') {
+      const toast = await this.toastCtrl.create({ message: 'Could not open sharing. Copy the link instead.', duration: 3000, color: 'warning' });
+      await toast.present();
+    } }
+  }
+
   async manageShare(rotate: boolean) {
     const alert = await this.alertCtrl.create({ header: rotate ? 'Replace quote link?' : 'Revoke quote link?', message: 'The current customer link will stop working.', buttons: [
       { text: 'Keep link', role: 'cancel' },

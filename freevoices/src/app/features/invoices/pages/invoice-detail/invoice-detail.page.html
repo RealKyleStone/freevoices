@@ -214,6 +214,7 @@
               <div class="share-panel" *ngIf="shareLink">
                 <p class="share-label">Customer portal link (expires {{ shareExpiry | date:'medium' }})</p>
                 <ion-button size="small" fill="clear" (click)="manageShare(true)">Replace link</ion-button>
+                <ion-button size="small" fill="clear" (click)="shareViaDevice()">Share link</ion-button>
                 <ion-button size="small" fill="clear" color="danger" (click)="manageShare(false)">Revoke link</ion-button>
                 <div class="share-link-row">
                   <span class="share-url">{{ shareLink }}</span>

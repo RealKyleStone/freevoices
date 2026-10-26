@@ -26,6 +26,7 @@
         <div class="page-head-text">
           <h1>Reports</h1>
           <p>What the business has been paid, and the VAT on what it has invoiced.</p>
+          <a href="/reports/bank">Import and match bank transactions</a>
         </div>
         <label>Currency <select aria-label="Report currency" [value]="selectedCurrency" (change)="changeCurrency($event)"><option *ngFor="let c of currencies" [value]="c.code">{{ c.code }} - {{ c.name }}</option></select></label>
       </header>
@@ -68,6 +69,35 @@
                 <tbody><tr *ngFor="let row of ledger.rows"><td>{{ row.payment_date | date:'mediumDate' }}</td><td>{{ row.customer_name }}</td><td><a [href]="'/invoices/' + row.invoice_id">{{ row.document_number }}</a></td><td>{{ row.payment_method }}</td><td class="num">{{ selectedCurrency }} {{ row.amount | number:'1.2-2' }}</td></tr></tbody>
               </table>
             </div>
+          </div>
+        </section>
+
+        <section class="report report-wide">
+          <div class="section-head"><h2 class="fv-section-label">Outstanding balance ageing</h2><p class="section-note">Remaining balances on issued invoices, grouped by days past due as of today. Uses the selected currency and optional customer above.</p></div>
+          <div class="panel panel-pad">
+            <ion-button (click)="loadAgeing()">Load ageing</ion-button>
+            <p role="alert" *ngIf="accountingError">{{ accountingError }}</p>
+            <ng-container *ngIf="ageing as a">
+              <p>As of {{ a.as_of | date:'mediumDate' }}: Current {{ selectedCurrency }} {{ a.totals.current | number:'1.2-2' }}; 1–30 days {{ selectedCurrency }} {{ a.totals.days1to30 | number:'1.2-2' }}; 31–60 days {{ selectedCurrency }} {{ a.totals.days31to60 | number:'1.2-2' }}; 61+ days {{ selectedCurrency }} {{ a.totals.days61plus | number:'1.2-2' }}.</p>
+              <p class="empty-msg" *ngIf="a.rows.length === 0">No outstanding invoices match these filters.</p>
+              <div class="vat-table-scroll" *ngIf="a.rows.length"><table class="vat-table"><thead><tr><th scope="col">Invoice</th><th scope="col">Customer</th><th scope="col">Due</th><th scope="col">Age</th><th scope="col" class="num">Balance</th></tr></thead>
+                <tbody><tr *ngFor="let row of a.rows"><td><a [href]="'/invoices/' + row.invoice_id">{{ row.document_number }}</a></td><td>{{ row.customer_name }}</td><td>{{ row.due_date | date:'mediumDate' }}</td><td>{{ row.band }}</td><td class="num">{{ selectedCurrency }} {{ row.balance_due | number:'1.2-2' }}</td></tr></tbody>
+              </table></div>
+            </ng-container>
+          </div>
+        </section>
+
+        <section class="report report-wide">
+          <div class="section-head"><h2 class="fv-section-label">Customer statement</h2><p class="section-note">Issued invoice charges and recorded payments, with opening and closing balances. Choose a customer and optional dates above.</p></div>
+          <div class="panel panel-pad">
+            <ion-button (click)="loadStatement()">Load statement</ion-button>
+            <ion-button fill="outline" (click)="exportStatementCsv()" [disabled]="!statement">Export CSV</ion-button>
+            <ng-container *ngIf="statement as s">
+              <p>{{ s.customer_name }} · Opening {{ selectedCurrency }} {{ s.opening_balance | number:'1.2-2' }} · Closing {{ selectedCurrency }} {{ s.closing_balance | number:'1.2-2' }}</p>
+              <div class="vat-table-scroll"><table class="vat-table"><thead><tr><th scope="col">Date</th><th scope="col">Type</th><th scope="col">Invoice</th><th scope="col" class="num">Debit</th><th scope="col" class="num">Credit</th><th scope="col" class="num">Balance</th></tr></thead>
+                <tbody><tr *ngFor="let row of s.rows"><td>{{ row.day | date:'mediumDate' }}</td><td>{{ row.kind | titlecase }}</td><td><a [href]="'/invoices/' + row.invoice_id">{{ row.document_number }}</a></td><td class="num">{{ selectedCurrency }} {{ row.debit | number:'1.2-2' }}</td><td class="num">{{ selectedCurrency }} {{ row.credit | number:'1.2-2' }}</td><td class="num">{{ selectedCurrency }} {{ row.balance | number:'1.2-2' }}</td></tr></tbody>
+              </table></div>
+            </ng-container>
           </div>
         </section>
 

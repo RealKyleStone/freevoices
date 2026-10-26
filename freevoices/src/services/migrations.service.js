@@ -800,6 +800,35 @@ const MIGRATIONS = [
       return 'catalogue import batches available';
     },
   },
+  {
+    id:'020_bank_import_rows',
+    description:'Reviewable bank statement rows and payment matches',
+    async up(q) {
+      if (!(await tableExists(q,'bank_import_rows'))) await q(`CREATE TABLE bank_import_rows (
+        id bigint NOT NULL AUTO_INCREMENT PRIMARY KEY,
+        user_id bigint NOT NULL,
+        currency_id bigint NOT NULL,
+        transaction_date date NOT NULL,
+        amount decimal(15,2) NOT NULL,
+        description text DEFAULT NULL,
+        reference text DEFAULT NULL,
+        account_label text DEFAULT NULL,
+        source_hash char(64) NOT NULL,
+        status enum('PENDING','MATCHED','IGNORED') NOT NULL DEFAULT 'PENDING',
+        invoice_id bigint DEFAULT NULL,
+        payment_id bigint DEFAULT NULL,
+        decided_at timestamp NULL DEFAULT NULL,
+        created_at timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        UNIQUE KEY uq_bank_import_row(user_id,source_hash),
+        KEY idx_bank_import_status(user_id,status,transaction_date),
+        CONSTRAINT fk_bank_import_owner FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE,
+        CONSTRAINT fk_bank_import_currency FOREIGN KEY(currency_id) REFERENCES currencies(id),
+        CONSTRAINT fk_bank_import_invoice FOREIGN KEY(invoice_id) REFERENCES documents(id) ON DELETE SET NULL,
+        CONSTRAINT fk_bank_import_payment FOREIGN KEY(payment_id) REFERENCES payments(id) ON DELETE SET NULL
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`);
+      return 'bank import review rows available';
+    },
+  },
 ];
 
 // ─── Runner ───────────────────────────────────────────────────────────────────

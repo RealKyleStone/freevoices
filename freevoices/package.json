@@ -19,6 +19,8 @@
     "check:payfast": "node scripts/payfast-check.js",
     "encrypt:backfill": "node scripts/encrypt-backfill.js",
     "encrypt:verify": "node scripts/encrypt-backfill.js --verify",
+    "restore:drill": "node scripts/restore-drill.js",
+    "backup:retention": "node scripts/backup-retention.js",
     "seed:legal": "node scripts/seed-legal.js",
     "seed:legal:check": "node scripts/seed-legal.js --check",
     "migrate": "node scripts/migrate.js",

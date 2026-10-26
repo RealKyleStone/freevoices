@@ -6,10 +6,11 @@ import {
 } from '@ionic/angular/standalone';
 import { Chart, ChartConfiguration, registerables } from 'chart.js';
 import {
-  ReportsService, RevenueByMonth, InvoiceStatusBreakdown, TopCustomer, VatSummaryRow, PaymentLedger
+  ReportsService, RevenueByMonth, InvoiceStatusBreakdown, TopCustomer, VatSummaryRow, PaymentLedger, AgeingReport, CustomerStatement
 } from '../../services/reports.service';
 import { CataloguePickerComponent } from '../../../../shared/components/catalogue-picker/catalogue-picker.component';
 import { paymentsLedgerCsv } from '../../services/payments-ledger-csv';
+import { customerStatementCsv } from '../../services/statement-csv';
 import { forkJoin, Subscription } from 'rxjs';
 import { vatSummaryCsv } from '../../services/vat-csv';
 import { addIcons } from 'ionicons';
@@ -76,11 +77,14 @@ export class ReportsPage implements OnInit, OnDestroy, AfterViewChecked {
   topCustomers: TopCustomer[] = [];
   vatRows: VatSummaryRow[]    = [];
   ledger: PaymentLedger | null = null;
+  ageing: AgeingReport | null = null;
+  statement: CustomerStatement | null = null;
   ledgerCustomer = new FormControl<number | null>(null);
   ledgerFrom = '';
   ledgerTo = '';
   ledgerLoading = false;
   ledgerError = '';
+  accountingError = '';
 
   private charts: Chart[] = [];
   private themeObserver?: MutationObserver;
@@ -134,6 +138,8 @@ export class ReportsPage implements OnInit, OnDestroy, AfterViewChecked {
   changeCurrency(event: Event) {
     this.selectedCurrency = (event.target as HTMLSelectElement).value;
     this.ledger = null;
+    this.ageing = null;
+    this.statement = null;
     this.loadReports();
   }
 
@@ -382,5 +388,36 @@ export class ReportsPage implements OnInit, OnDestroy, AfterViewChecked {
     link.click();
     link.remove();
     setTimeout(() => URL.revokeObjectURL(url), 0);
+  }
+
+  loadAgeing() {
+    this.accountingError = '';
+    this.ageing = null;
+    this.requests.add(this.reports.getAgeing(this.selectedCurrency, this.ledgerCustomer.value).subscribe({
+      next: report => this.ageing = report,
+      error: err => this.accountingError = err.error?.message || 'Could not load ageing report.'
+    }));
+  }
+
+  loadStatement() {
+    if (!this.ledgerCustomer.value) { this.accountingError = 'Choose a customer for the statement.'; return; }
+    if (this.ledgerFrom && this.ledgerTo && this.ledgerFrom > this.ledgerTo) { this.accountingError = 'From date must be before To date.'; return; }
+    this.accountingError = '';
+    this.statement = null;
+    this.requests.add(this.reports.getCustomerStatement(this.selectedCurrency, this.ledgerCustomer.value, this.ledgerFrom, this.ledgerTo).subscribe({
+      next: statement => this.statement = statement,
+      error: err => this.accountingError = err.error?.message || 'Could not load customer statement.'
+    }));
+  }
+
+  exportStatementCsv() {
+    if (!this.statement) return;
+    const blob = new Blob([customerStatementCsv(this.statement)], { type:'text/csv;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `freevoices-statement-${this.statement.customer_id}-${this.selectedCurrency}.csv`;
+    document.body.appendChild(link); link.click(); link.remove();
+    setTimeout(()=>URL.revokeObjectURL(url),0);
   }
 }
