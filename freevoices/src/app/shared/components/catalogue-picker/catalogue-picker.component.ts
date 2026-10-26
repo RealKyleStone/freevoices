@@ -155,5 +155,11 @@ export class CataloguePickerComponent implements ControlValueAccessor, OnDestroy
   }
   secondary(row: RecordRow) { return this.kind === 'customer' ? (row as Customer).email : `Price: ${Number((row as Product).price).toFixed(2)}${(row as Product).vat_inclusive ? ' incl. VAT' : ' excl. VAT'}`; }
   trackRow(_index: number, row: RecordRow) { return row.id; }
-  ngOnDestroy() { clearTimeout(this.focusTimer); this.cancelSearch.next(); this.cancelSearch.complete(); this.lookup?.unsubscribe(); this.subscriptions.unsubscribe(); this.requests.complete(); }
+  ngOnDestroy() {
+    clearTimeout(this.focusTimer);
+    // Release the browser's modal/inert state before Angular removes the DOM.
+    if (this.dialog?.nativeElement.open) this.dialog.nativeElement.close();
+    this.cancelSearch.next(); this.cancelSearch.complete(); this.lookup?.unsubscribe();
+    this.subscriptions.unsubscribe(); this.requests.complete();
+  }
 }

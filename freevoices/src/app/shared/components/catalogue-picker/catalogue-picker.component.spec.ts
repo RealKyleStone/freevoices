@@ -34,7 +34,7 @@ describe('catalogue picker', () => {
     fixture = TestBed.createComponent(HostComponent); fixture.detectChanges();
     picker = fixture.debugElement.query(By.directive(CataloguePickerComponent)).componentInstance;
   });
-  afterEach(() => fixture.destroy());
+  afterEach(() => { if (picker.dialog.nativeElement.open) picker.close(); fixture.destroy(); });
 
   it('loads one server page on opening and focuses search inside a labelled modal', async () => {
     expect(customers.getCustomers).not.toHaveBeenCalled();
@@ -46,6 +46,9 @@ describe('catalogue picker', () => {
     expect(document.activeElement).toBe(picker.searchBox.nativeElement);
     expect(picker.dialog.nativeElement.getAttribute('aria-labelledby')).toBe(picker.headingId);
     picker.close(); expect(picker.dialog.nativeElement.open).toBeFalse();
+    picker.open(); fixture.detectChanges(); await fixture.whenStable();
+    const modal = picker.dialog.nativeElement;
+    fixture.destroy(); expect(modal.open).toBeFalse();
   });
 
   it('cancels stale searches immediately and debounces typing', fakeAsync(() => {
