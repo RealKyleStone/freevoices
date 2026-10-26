@@ -19,12 +19,8 @@
       <ion-card-header><ion-card-title>Invoice details</ion-card-title></ion-card-header>
       <ion-card-content>
 
-        <ion-item [class.ion-invalid]="isInvalid('customer_id')" [class.ion-touched]="isInvalid('customer_id')">
-          <ion-label position="stacked">Customer <ion-text color="danger">*</ion-text></ion-label>
-          <ion-select aria-label="Customer" formControlName="customer_id" interface="popover" placeholder="Select customer">
-            <ion-select-option *ngFor="let c of customers" [value]="c.id">{{ c.name }}</ion-select-option>
-          </ion-select>
-        </ion-item>
+        <app-catalogue-picker kind="customer" formControlName="customer_id" [invalid]="isInvalid('customer_id')"
+          (customerChosen)="onCustomerSelected($event)"></app-catalogue-picker>
         <p class="field-error" *ngIf="isInvalid('customer_id')">Customer is required</p>
 
         <ion-item [class.ion-invalid]="isInvalid('issue_date')" [class.ion-touched]="isInvalid('issue_date')">
@@ -62,14 +58,8 @@
             </ion-button>
           </div>
 
-          <ion-item *ngIf="products.length > 0">
-            <ion-label position="stacked">Product (optional)</ion-label>
-            <ion-select aria-label="Product (optional)" formControlName="product_id" interface="popover" placeholder="Custom / ad-hoc"
-                        (ionChange)="onProductChange(i)">
-              <ion-select-option [value]="null">Custom / ad-hoc</ion-select-option>
-              <ion-select-option *ngFor="let p of products" [value]="p.id">{{ p.name }}</ion-select-option>
-            </ion-select>
-          </ion-item>
+          <app-catalogue-picker kind="product" formControlName="product_id"
+            (productChosen)="onProductSelected(i, $event)"></app-catalogue-picker>
 
           <ion-item [class.ion-invalid]="isItemInvalid(i, 'description')" [class.ion-touched]="isItemInvalid(i, 'description')">
             <ion-label position="stacked">Description <ion-text color="danger">*</ion-text></ion-label>

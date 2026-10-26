@@ -79,6 +79,30 @@ test('billing workflows enforce ownership, idempotency, delivery, currencies and
     assert.equal((await request('/quotes','POST',bad)).status,422);
     assert.equal((await request(`/invoices/${invoice.id}`,'PUT',bad)).status,422);
   });
+  await t.test('catalogue search and pagination include records beyond 100 without crossing businesses',async()=>{
+    const customers=Array.from({length:107},(_,i)=>[uid,'M2CAT customer',`m2.${i}@example.test`,'Synthetic address']);
+    const products=Array.from({length:107},(_,i)=>[uid,'M2CAT product',`M2SKU${i}`,115,1]);
+    await q('INSERT INTO customers(user_id,name,email,billing_address) VALUES ?',[customers]);
+    await q('INSERT INTO products(user_id,name,description,price,vat_inclusive) VALUES ?',[products]);
+    await q("INSERT INTO customers(user_id,name,email) VALUES(?,'M2CAT customer','m2.106@example.test')",[other]);
+    await q("INSERT INTO products(user_id,name,description,price) VALUES(?,'M2CAT product','M2SKU106',100)",[other]);
+    for(const resource of ['customers','products']) {
+      const ids=[];
+      for(let page=1;page<=6;page++) {
+        const rows=await ok(`/${resource}?search=M2CAT&page=${page}&limit=20`);
+        assert.equal(rows.total,107);ids.push(...rows.data.map(row=>row.id));
+        assert.ok(rows.data.every(row=>row.user_id===uid));
+      }
+      assert.equal(new Set(ids).size,107);assert.deepEqual(ids,[...ids].sort((a,b)=>a-b));
+    }
+    const foundCustomer=await ok('/customers?search=m2.106%40example.test');
+    assert.equal(foundCustomer.total,1);assert.equal(foundCustomer.data[0].user_id,uid);
+    const lightweight=await ok(`/customers/${foundCustomer.data[0].id}?include_documents=false`);
+    assert.equal(lightweight.id,foundCustomer.data[0].id);assert.ok(!('documents' in lightweight));
+    const foundProduct=await ok('/products?search=M2SKU106');
+    assert.equal(foundProduct.total,1);assert.equal(foundProduct.data[0].user_id,uid);
+    assert.equal(foundProduct.data[0].vat_inclusive,1);
+  });
   await t.test('share link reuse, explicit rotation and revocation',async()=>{
     const first=await ok(`/invoices/${invoice.id}/share`,'POST',{});
     const reused=await ok(`/invoices/${invoice.id}/share`,'POST',{});

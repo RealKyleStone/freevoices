@@ -898,7 +898,7 @@ app.get('/api/customers', authenticateToken, async (req, res) => {
     let cntSql = 'SELECT COUNT(*) AS total FROM customers WHERE user_id = ? AND active = 1';
     const params = [req.user.id], cntParams = [req.user.id];
     if (search) { const clause = ' AND (name LIKE ? OR email LIKE ?)'; sql += clause; cntSql += clause; params.push(`%${search}%`, `%${search}%`); cntParams.push(`%${search}%`, `%${search}%`); }
-    sql += ' ORDER BY name ASC LIMIT ? OFFSET ?'; params.push(limit, offset);
+    sql += ' ORDER BY name ASC, id ASC LIMIT ? OFFSET ?'; params.push(limit, offset);
     const [customers, countResult] = await Promise.all([queryDecrypted(decryptCustomerRow, sql, params), executeQuery(cntSql, cntParams)]);
     res.json({ data: customers, total: countResult[0].total, page, limit });
   } catch (error) { logger.error('Error fetching customers:', error); res.status(500).json({ message: 'Failed to fetch customers' }); }
@@ -925,6 +925,7 @@ app.get('/api/customers/:id', authenticateToken, async (req, res) => {
     const { id } = req.params;
     const customers = await queryDecrypted(decryptCustomerRow, 'SELECT * FROM customers WHERE id = ? AND user_id = ? AND active = 1', [id, req.user.id]);
     if (customers.length === 0) return res.status(404).json({ message: 'Customer not found' });
+    if (req.query.include_documents === 'false') return res.json(customers[0]);
     const documents = await executeQuery('SELECT d.*,cur.code AS currency_code FROM documents d LEFT JOIN currencies cur ON cur.id=d.currency_id WHERE d.customer_id=? AND d.user_id=? ORDER BY d.created_at DESC', [id, req.user.id]);
     res.json({ ...customers[0], documents });
   } catch (error) { logger.error('Error fetching customer:', error); res.status(500).json({ message: 'Failed to fetch customer' }); }
@@ -1452,7 +1453,7 @@ app.get('/api/products', authenticateToken, async (req, res) => {
     let sql = 'SELECT * FROM products WHERE user_id = ? AND is_active = 1', cntSql = 'SELECT COUNT(*) AS total FROM products WHERE user_id = ? AND is_active = 1';
     const params = [req.user.id], cntParams = [req.user.id];
     if (search) { const clause = ' AND (name LIKE ? OR description LIKE ?)'; sql += clause; cntSql += clause; params.push(`%${search}%`, `%${search}%`); cntParams.push(`%${search}%`, `%${search}%`); }
-    sql += ' ORDER BY name ASC LIMIT ? OFFSET ?'; params.push(limit, offset);
+    sql += ' ORDER BY name ASC, id ASC LIMIT ? OFFSET ?'; params.push(limit, offset);
     const [products, countResult] = await Promise.all([executeQuery(sql, params), executeQuery(cntSql, cntParams)]);
     res.json({ data: products, total: countResult[0].total, page, limit });
   } catch (error) { logger.error('Error fetching products:', error); res.status(500).json({ message: 'Failed to fetch products' }); }
@@ -1523,8 +1524,8 @@ app.get('/api/dashboard/summary', authenticateToken, async (req, res) => {
       executeQuery(`SELECT COUNT(*) AS total FROM documents WHERE user_id = ? AND type = 'INVOICE' AND status = 'OVERDUE' AND notifications_muted = 0`, [userId]),
       // FIX: changed c.company_name to c.name — customers table has 'name' not 'company_name'
       executeQuery(`SELECT dt.event_type, dt.event_date, d.document_number, d.type AS document_type, c.name AS customer_name FROM document_tracking dt JOIN documents d ON dt.document_id = d.id JOIN customers c ON d.customer_id = c.id WHERE d.user_id = ? ORDER BY dt.event_date DESC LIMIT 5`, [userId]),
-      // Just the logo, not GET /api/settings: that also returns banking
-      // details, which the dashboard has no reason to load.
+      // Logo for the dashboard identity. The setup checklist separately
+      // checks the authenticated owner's saved business settings.
       executeQuery("SELECT setting_value FROM settings WHERE user_id = ? AND setting_key = 'company_logo'", [userId])
     ]);
     res.json({ currency_code:currency.code, monthRevenue: parseFloat(revenueRows[0].monthRevenue), totalCustomers: customersRows[0].total, openInvoices: openRows[0].total, overdueInvoices: overdueRows[0].total, recentActivity: recentRows, companyLogo: logoRows[0]?.setting_value || null });

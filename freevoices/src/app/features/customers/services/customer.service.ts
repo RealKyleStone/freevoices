@@ -32,6 +32,10 @@ export class CustomerService {
     );
   }
 
+  getCustomerForSelection(id: number): Observable<Customer> {
+    return this.db.query<Customer>(`customers/${id}`, { params: { include_documents: false } });
+  }
+
   getCustomer(id: number): Observable<CustomerWithDocuments> {
     return this.db.query<CustomerWithDocuments>(`customers/${id}`);
   }

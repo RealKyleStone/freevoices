@@ -1,10 +1,11 @@
-import { Component, OnInit, OnDestroy } from '@angular/core';
+import { Component, OnInit, OnDestroy, ViewChild } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { RouterModule, Router } from '@angular/router';
 import {
   AlertController, IonButton, IonButtons, IonContent, IonHeader, IonIcon, IonItem, IonLabel,
   IonList, IonMenuButton, IonRouterLink, IonSkeletonText, IonToolbar,
 } from '@ionic/angular/standalone';
+import { SetupChecklistComponent } from '../../../../shared/components/setup-checklist/setup-checklist.component';
 import { CurrencyPipe } from '@angular/common';
 import { DashboardService, DashboardSummary } from '../../services/dashboard.service';
 import { AuthService } from 'src/app/core/auth/services/auth.service';
@@ -22,11 +23,14 @@ import {
   styleUrls: ['./dashboard.page.scss'],
   standalone: true,
   imports: [
-    CommonModule, RouterModule, IonButton, IonButtons, IonContent, IonHeader, IonIcon, IonItem,
+    CommonModule, RouterModule, SetupChecklistComponent, IonButton, IonButtons, IonContent, IonHeader, IonIcon, IonItem,
     IonLabel, IonList, IonMenuButton, IonRouterLink, IonSkeletonText, IonToolbar, CurrencyPipe,
   ]
 })
 export class DashboardPage implements OnInit, OnDestroy {
+  @ViewChild(SetupChecklistComponent) setupChecklist?: SetupChecklistComponent;
+  ionViewWillEnter() { this.setupChecklist?.refresh(); }
+
   selectedCurrency = 'ZAR';
   isLoading = true;
   today = new Date();

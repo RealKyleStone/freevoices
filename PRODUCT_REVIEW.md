@@ -2,6 +2,21 @@
 
 24 October 2026 · branch `dev` · initial local assessment
 
+## Milestone 2 first slice - 26 October 2026
+
+Implemented the company setup checklist and searchable catalogues on `dev`:
+
+- The dashboard checklist derives progress from saved business identity, VAT defaults, active currency, payment information and invoice defaults. A logo is optional. Zero VAT and immediate terms are valid. It offers links to the existing settings pages, retries loading failures and refreshes on return to the dashboard. It does not block invoicing or certify tax compliance/provider readiness.
+- All four invoice/quote create/edit screens now use server-paged customer/product pickers. Opening a builder no longer downloads every catalogue page. Pickers search after a short debounce, cancel stale requests, load more results on demand and retain an existing selection even outside the results.
+- Customers and products can be added inside the picker and immediately selected. Required fields are validated; requests in progress cannot be double-submitted; failed saves keep the entered details. Cancelling leaves the document unchanged. A custom line can retain its description and price after clearing its catalogue reference.
+- Customer selection applies the customer's payment terms, including zero. Product selection copies its inclusive/exclusive pricing mode while preserving the line's VAT rate.
+- Native modal dialogs provide keyboard focus containment, labelled search, selectable results and explicit Close actions. Enter in search cannot accidentally submit the enclosing invoice. Broader mobile and screen-reader usability testing remains pending.
+- Customer selection can request a lightweight detail response (`include_documents=false`) instead of downloading the customer's invoice history. Catalogue ordering uses name plus ID so equal names paginate consistently.
+
+Local verification: **142 backend tests with zero skips**, including paged/search results beyond 100 records and tenant isolation; **102 frontend tests**, including picker keyboard/focus, cancellation, inline creation, selection/defaults and checklist refresh; production build and lint pass. Publication to `dev` triggers the existing GitHub Actions checks.
+
+This is the first Milestone 2 slice, not the whole milestone. Live invoice preview, discounts/units/references, draft autosave/recovery, copying invoices, richer money/ageing dashboard actions and the full usability pass remain planned.
+
 ## Milestone 1 complete - 26 October 2026
 
 New work stays on `dev`; `main` is not merged. The dependable-billing fixes are already in PR_1. This follow-up adds the missing CI workflow and an isolated fresh-database test runner, plus explicit inclusive-VAT reconciliation assertions across issued PDFs, the VAT report, paid-revenue report and dashboard.

@@ -1,0 +1,52 @@
+<div class="picker-field">
+  <span class="field-label">{{ kind === 'customer' ? 'Customer *' : 'Product (optional)' }}</span>
+  <button type="button" class="picker-trigger" [disabled]="disabled" [attr.aria-label]="'Choose ' + kind + (kind === 'customer' ? ' (required)' : '') + (selectedName ? ': ' + selectedName : '')"
+    [attr.aria-invalid]="invalid" aria-haspopup="dialog" (click)="open()">
+    {{ selectedName || (kind === 'customer' ? 'Search or add a customer' : 'Custom item / search products') }}
+  </button>
+  <p class="error" role="status" *ngIf="selectionError">{{ selectionError }}</p>
+</div>
+
+<dialog #dialog [attr.aria-labelledby]="headingId" (cancel)="onCancel($event)" (keydown.enter)="onEnter($event)">
+  <header><h2 [id]="headingId">{{ creating ? 'Add ' : 'Choose ' }}{{ kind }}</h2>
+    <button type="button" (click)="close()" [disabled]="saving">Close</button>
+  </header>
+  <div [hidden]="creating">
+    <label class="search-label">Search {{ kind }}s
+      <input #searchBox type="search" autocomplete="off" (input)="search(searchBox.value)" />
+    </label>
+    <div class="picker-actions">
+      <button type="button" (click)="beginCreate()">+ Add {{ kind }}</button>
+      <button type="button" *ngIf="kind === 'product'" (click)="choose(null)">Use a custom item</button>
+    </div>
+    <p role="status" aria-live="polite">{{ loading ? 'Searching...' : rows.length + ' of ' + total + ' results' }}</p>
+    <ul [attr.aria-busy]="loading">
+      <li *ngFor="let row of rows; trackBy: trackRow"><button type="button" class="result" (click)="choose(row)" [attr.aria-current]="row.id === value ? 'true' : null">
+        <strong>{{ row.name }}</strong><span>{{ secondary(row) }}</span>
+      </button></li>
+    </ul>
+    <p *ngIf="!loading && !error && !rows.length">No {{ kind }}s found. Try another search or add one above.</p>
+    <button type="button" *ngIf="rows.length < total && !error" [disabled]="loading" (click)="more()">{{ loading ? 'Loading...' : 'Load more' }}</button>
+  </div>
+  <div *ngIf="creating" [formGroup]="createForm" class="create-fields">
+    <label>Name *<input formControlName="name" maxlength="100" autocomplete="organization" /></label>
+    <p class="error" *ngIf="createForm.controls.name.touched && createForm.controls.name.invalid">Enter a name.</p>
+    <ng-container *ngIf="kind === 'customer'">
+      <label>Email *<input formControlName="email" type="email" autocomplete="email" /></label>
+      <p class="error" *ngIf="createForm.controls.email.touched && createForm.controls.email.invalid">Enter a valid email address.</p>
+      <label>Billing address *<textarea formControlName="billing_address" rows="3" autocomplete="street-address"></textarea></label>
+      <p class="error" *ngIf="createForm.controls.billing_address.touched && createForm.controls.billing_address.invalid">Enter the billing address.</p>
+    </ng-container>
+    <ng-container *ngIf="kind === 'product'">
+      <label>Unit price *<input formControlName="price" type="number" min="0" step="0.01" /></label>
+      <p class="error" *ngIf="createForm.controls.price.touched && createForm.controls.price.invalid">Enter a price of zero or more.</p>
+      <label class="checkbox"><input formControlName="vat_inclusive" type="checkbox" /> Unit price includes VAT</label>
+      <p>The invoice or quote's currency and VAT rate apply to this price.</p>
+    </ng-container>
+    <div class="picker-actions">
+      <button type="button" [disabled]="saving" (click)="saveNew()">{{ saving ? 'Adding...' : 'Add and select' }}</button>
+      <button type="button" [disabled]="saving" (click)="backToSearch()">Back to search</button>
+    </div>
+  </div>
+  <p class="error" role="alert" *ngIf="error">{{ error }} <button type="button" *ngIf="!creating" (click)="retry()">Retry</button></p>
+</dialog>

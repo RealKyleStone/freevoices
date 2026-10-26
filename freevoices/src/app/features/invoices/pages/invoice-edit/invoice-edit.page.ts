@@ -9,11 +9,10 @@ import {
   IonSelectOption, IonSpinner, IonText, IonTextarea, IonTitle, IonToggle, IonToolbar,
 } from '@ionic/angular/standalone';
 import { forkJoin } from 'rxjs';
+import { CataloguePickerComponent } from '../../../../shared/components/catalogue-picker/catalogue-picker.component';
 import { addIcons } from 'ionicons';
 import { trashOutline, addOutline } from 'ionicons/icons';
 import { InvoiceService, InvoicePayload } from '../../services/invoice.service';
-import { CustomerService } from '../../../customers/services/customer.service';
-import { ProductService } from '../../../products/services/product.service';
 import { SettingsService } from '../../../settings/services/settings.service';
 import { Customer, Product } from '../../../../../models/database.models';
 import { lineTotals, roundCents, dueDateFromTerms } from '../../../../shared/utils/document-math';
@@ -31,7 +30,7 @@ function dueNotBeforeIssue(ctrl: AbstractControl): ValidationErrors | null {
   styleUrls: ['./invoice-edit.page.scss'],
   standalone: true,
   imports: [
-    CommonModule, ReactiveFormsModule,
+    CommonModule, ReactiveFormsModule, CataloguePickerComponent,
     IonBackButton, IonButton, IonButtons, IonCard, IonCardContent, IonCardHeader, IonCardTitle,
     IonContent, IonHeader, IonIcon, IonInput, IonItem, IonLabel, IonNote, IonSelect,
     IonSelectOption, IonSpinner, IonText, IonTextarea, IonTitle, IonToggle, IonToolbar,
@@ -39,8 +38,6 @@ function dueNotBeforeIssue(ctrl: AbstractControl): ValidationErrors | null {
 })
 export class InvoiceEditPage implements OnInit, HasUnsavedChanges {
   form: FormGroup;
-  customers: Customer[] = [];
-  products: Product[] = [];
   isLoading = false;
   isFetching = true;
   submitted = false;
@@ -59,8 +56,6 @@ export class InvoiceEditPage implements OnInit, HasUnsavedChanges {
     private route: ActivatedRoute,
     private router: Router,
     private invoiceService: InvoiceService,
-    private customerService: CustomerService,
-    private productService: ProductService,
     private settingsService: SettingsService,
     private toastCtrl: ToastController
   ) {
@@ -111,11 +106,9 @@ export class InvoiceEditPage implements OnInit, HasUnsavedChanges {
 
     forkJoin({
       invoice:   this.invoiceService.getInvoice(this.invoiceId),
-      customers: this.customerService.getAllCustomers(),
-      products:  this.productService.getAllProducts(),
       settings: this.settingsService.getSettings()
     }).subscribe({
-      next: ({ invoice, customers, products, settings }) => {
+      next: ({ invoice, settings }) => {
         if (invoice.status !== 'DRAFT') {
           this.showToast('Only DRAFT invoices can be edited', 'warning');
           this.router.navigate(['/invoices', this.invoiceId]);
@@ -129,8 +122,6 @@ export class InvoiceEditPage implements OnInit, HasUnsavedChanges {
 
         this.defaultVatRate = Number(settings.invoice_vat_rate ?? 15);
         this.defaultTerms = Number(settings.invoice_payment_terms ?? 30);
-        this.customers = customers;
-        this.products  = products;
 
         this.currencySymbol = invoice.currency_symbol || 'R';
         // Dates arrive as 'YYYY-MM-DD'. They used to arrive as a UTC
@@ -168,10 +159,6 @@ export class InvoiceEditPage implements OnInit, HasUnsavedChanges {
         });
 
         if (this.items.length === 0) this.addItem();
-        this.form.get('customer_id')!.valueChanges.subscribe(id => {
-          const customer = this.customers.find(c => c.id === +id);
-          this.form.patchValue({payment_terms:customer?.payment_terms ?? this.defaultTerms});
-        });
         this.isFetching = false;
       },
       error: async () => {
@@ -206,12 +193,16 @@ export class InvoiceEditPage implements OnInit, HasUnsavedChanges {
     if (this.items.length > 1) { this.items.removeAt(i); this.form.markAsDirty(); }
   }
 
-  onProductChange(index: number) {
-    const productId = this.items.at(index).get('product_id')?.value;
-    if (!productId) return;
-    const product = this.products.find(p => p.id === +productId);
+  onCustomerSelected(customer: Customer) {
+    this.form.patchValue({ payment_terms: customer.payment_terms ?? this.defaultTerms });
+  }
+
+  onProductSelected(index: number, product: Product | null) {
     if (!product) return;
-    this.items.at(index).patchValue({ description: product.name, unit_price: product.price, vat_inclusive: !!product.vat_inclusive, vat_rate: this.items.at(index).get('vat_rate')?.value ?? this.defaultVatRate });
+    this.items.at(index).patchValue({
+      description: product.name, unit_price: product.price, vat_inclusive: !!product.vat_inclusive,
+      vat_rate: this.items.at(index).get('vat_rate')?.value ?? this.defaultVatRate
+    });
   }
 
   // Rounded per line, half-up, exactly as the server stores them.
