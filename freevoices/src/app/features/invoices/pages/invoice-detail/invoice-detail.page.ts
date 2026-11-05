@@ -80,6 +80,20 @@ export class InvoiceDetailPage implements OnInit {
     return this.paymentMethods.find(m => m.value === value)?.label ?? value;
   }
 
+  /** Readable text for documents.delivery_status; unknown values fall through unchanged. */
+  deliveryStatusLabel(value: string): string {
+    const labels: Record<string, string> = {
+      UNKNOWN: 'Not recorded',
+      NOT_SENT: 'Not emailed yet',
+      QUEUED: 'Queued to send',
+      SENDING: 'Sending',
+      ACCEPTED: 'Accepted by email provider',
+      FAILED: 'Failed to send',
+      UNCERTAIN: 'Delivery uncertain',
+    };
+    return labels[value] ?? value;
+  }
+
   constructor(
     private route: ActivatedRoute,
     private router: Router,

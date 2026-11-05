@@ -75,10 +75,17 @@
   --background: var(--fv-surface-subtle);
   border-radius: var(--fv-radius-md);
   padding: 3px;
-  /* Stacked mode: equal columns filling the row. */
-  width: 100%;
+  /*
+   * Stacked mode: equal columns filling the row when the labels fit, and
+   * never narrower than a label when they don't. Plain 1fr columns crushed
+   * the eight quote filters to ~40px each at phone width, overprinting the
+   * labels; with max-content as the floor the track grows past the row and
+   * .list-filter scrolls it horizontally instead.
+   */
+  width: max-content;
+  min-width: 100%;
   grid-auto-flow: column;
-  grid-auto-columns: 1fr;
+  grid-auto-columns: minmax(max-content, 1fr);
 
   ion-segment-button {
     --background-checked: var(--ion-card-background);
@@ -129,6 +136,7 @@
    */
   .list-filter ion-segment {
     width: auto;
+    min-width: 0;
     grid-auto-flow: column;
     grid-auto-columns: max-content;
   }

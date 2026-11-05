@@ -33,7 +33,7 @@
           <span class="doc-status badge-warning" *ngIf="isPartlyPaid">Partly paid</span>
         </div>
       </header>
-      <p *ngIf="invoice.delivery_status">Email: {{ invoice.delivery_status === 'ACCEPTED' ? 'Accepted by email provider' : (invoice.delivery_status | titlecase) }}</p>
+      <p *ngIf="invoice.delivery_status">Email: {{ deliveryStatusLabel(invoice.delivery_status) }}</p>
       <p *ngIf="invoice.purchase_order_ref">PO / customer reference: {{ invoice.purchase_order_ref }}</p>
       <p *ngIf="invoice.delivery_error" role="status">{{ invoice.delivery_error }}</p>
       <details *ngIf="invoice.email_deliveries?.length">
