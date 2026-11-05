@@ -42,6 +42,7 @@ export interface UserSettings {
   notify_payment_received: string;
   notify_invoice_overdue: string;
   customer_reminders_enabled?: string;
+  customer_reminder_days?: string;
 }
 
 @Injectable({ providedIn: 'root' })
@@ -176,6 +177,7 @@ export class SettingsService {
     notify_payment_received: boolean;
     notify_invoice_overdue: boolean;
     customer_reminders_enabled?: boolean;
+    customer_reminder_days?: string;
   }): Observable<{ message: string }> {
     return this.http.put<{ message: string }>(`${this.apiUrl}/settings/notifications`, data, {
       headers: this.getHeaders()

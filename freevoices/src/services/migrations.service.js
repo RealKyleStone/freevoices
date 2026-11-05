@@ -753,6 +753,206 @@ const MIGRATIONS = [
       return 'outbox cancellation available';
     },
   },
+  {
+    id:'017_document_commercial_fields',
+    description:'Units, line discounts and customer purchase-order/delivery references',
+    async up(q) {
+      for (const [column,definition] of [
+        ['purchase_order_ref','varchar(100) DEFAULT NULL'],
+        ['delivery_details','text DEFAULT NULL'],
+      ]) if (!(await columnExists(q,'documents',column))) await q(`ALTER TABLE documents ADD COLUMN ${column} ${definition}`);
+      for (const [column,definition] of [
+        ['unit_label',"varchar(20) NOT NULL DEFAULT 'each'"],
+        ['discount_percent','decimal(5,2) NOT NULL DEFAULT 0.00'],
+      ]) if (!(await columnExists(q,'document_items',column))) await q(`ALTER TABLE document_items ADD COLUMN ${column} ${definition}`);
+      return 'document commercial fields available';
+    },
+  },
+  {
+    id:'018_quote_decisions',
+    description:'Recorded customer quote acceptance and decline',
+    async up(q) {
+      const status = await columnDefinition(q, 'documents', 'status');
+      if (!status.COLUMN_TYPE.includes("'ACCEPTED'") || !status.COLUMN_TYPE.includes("'DECLINED'")) {
+        await q("ALTER TABLE documents MODIFY status ENUM('DRAFT','SENT','PAID','OVERDUE','CANCELLED','CONVERTED','ACCEPTED','DECLINED') NOT NULL DEFAULT 'DRAFT'");
+      }
+      const event = await columnDefinition(q, 'document_tracking', 'event_type');
+      if (!event.COLUMN_TYPE.includes("'ACCEPTED'") || !event.COLUMN_TYPE.includes("'DECLINED'")) {
+        await q("ALTER TABLE document_tracking MODIFY event_type ENUM('CREATED','SENT','VIEWED','DOWNLOADED','PAID','CANCELLED','OVERDUE','PAYMENT','CONVERTED','ACCEPTED','DECLINED') NOT NULL");
+      }
+      return 'quote decision statuses and tracking available';
+    },
+  },
+  {
+    id:'019_catalogue_import_batches',
+    description:'Idempotent customer and product CSV import batches',
+    async up(q) {
+      if (!(await tableExists(q,'catalogue_import_batches'))) await q(`CREATE TABLE catalogue_import_batches (
+        id bigint NOT NULL AUTO_INCREMENT PRIMARY KEY,
+        user_id bigint NOT NULL,
+        kind enum('customers','products') NOT NULL,
+        content_hash char(64) NOT NULL,
+        created_count int NOT NULL,
+        created_at timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        UNIQUE KEY uq_catalogue_import(user_id,kind,content_hash),
+        CONSTRAINT fk_catalogue_import_owner FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`);
+      return 'catalogue import batches available';
+    },
+  },
+  {
+    id:'020_bank_import_rows',
+    description:'Reviewable bank statement rows and payment matches',
+    async up(q) {
+      if (!(await tableExists(q,'bank_import_rows'))) await q(`CREATE TABLE bank_import_rows (
+        id bigint NOT NULL AUTO_INCREMENT PRIMARY KEY,
+        user_id bigint NOT NULL,
+        currency_id bigint NOT NULL,
+        transaction_date date NOT NULL,
+        amount decimal(15,2) NOT NULL,
+        description text DEFAULT NULL,
+        reference text DEFAULT NULL,
+        account_label text DEFAULT NULL,
+        source_hash char(64) NOT NULL,
+        status enum('PENDING','MATCHED','IGNORED') NOT NULL DEFAULT 'PENDING',
+        invoice_id bigint DEFAULT NULL,
+        payment_id bigint DEFAULT NULL,
+        decided_at timestamp NULL DEFAULT NULL,
+        created_at timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        UNIQUE KEY uq_bank_import_row(user_id,source_hash),
+        KEY idx_bank_import_status(user_id,status,transaction_date),
+        CONSTRAINT fk_bank_import_owner FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE,
+        CONSTRAINT fk_bank_import_currency FOREIGN KEY(currency_id) REFERENCES currencies(id),
+        CONSTRAINT fk_bank_import_invoice FOREIGN KEY(invoice_id) REFERENCES documents(id) ON DELETE SET NULL,
+        CONSTRAINT fk_bank_import_payment FOREIGN KEY(payment_id) REFERENCES payments(id) ON DELETE SET NULL
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`);
+      return 'bank import review rows available';
+    },
+  },
+  {
+    id:'021_invoice_adjustments',
+    description:'Immutable invoice credit notes and payment refunds',
+    async up(q) {
+      const status=await columnDefinition(q,'documents','status');
+      if (!status.COLUMN_TYPE.includes("'CREDITED'")) await q("ALTER TABLE documents MODIFY status ENUM('DRAFT','SENT','PAID','OVERDUE','CANCELLED','CONVERTED','ACCEPTED','DECLINED','CREDITED') NOT NULL DEFAULT 'DRAFT'");
+      const event=await columnDefinition(q,'document_tracking','event_type');
+      if (!event.COLUMN_TYPE.includes("'CREDIT_NOTE'") || !event.COLUMN_TYPE.includes("'REFUND'")) await q("ALTER TABLE document_tracking MODIFY event_type ENUM('CREATED','SENT','VIEWED','DOWNLOADED','PAID','CANCELLED','OVERDUE','PAYMENT','CONVERTED','ACCEPTED','DECLINED','CREDIT_NOTE','REFUND') NOT NULL");
+      if (!(await tableExists(q,'credit_notes'))) await q(`CREATE TABLE credit_notes (
+        id bigint NOT NULL AUTO_INCREMENT PRIMARY KEY,
+        user_id bigint NOT NULL,
+        invoice_id bigint NOT NULL,
+        request_key char(36) NOT NULL,
+        document_number varchar(40) DEFAULT NULL,
+        issue_date date NOT NULL,
+        reason varchar(500) NOT NULL,
+        description varchar(1000) NOT NULL,
+        subtotal decimal(15,2) NOT NULL,
+        vat_amount decimal(15,2) NOT NULL,
+        total decimal(15,2) NOT NULL,
+        created_at timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        UNIQUE KEY uq_credit_note_number(document_number),
+        UNIQUE KEY uq_credit_request(user_id,request_key),
+        KEY idx_credit_invoice(invoice_id,issue_date),
+        CONSTRAINT fk_credit_owner FOREIGN KEY(user_id) REFERENCES users(id),
+        CONSTRAINT fk_credit_invoice FOREIGN KEY(invoice_id) REFERENCES documents(id)
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`);
+      if (!(await tableExists(q,'payment_refunds'))) await q(`CREATE TABLE payment_refunds (
+        id bigint NOT NULL AUTO_INCREMENT PRIMARY KEY,
+        user_id bigint NOT NULL,
+        invoice_id bigint NOT NULL,
+        payment_id bigint NOT NULL,
+        request_key char(36) NOT NULL,
+        amount decimal(15,2) NOT NULL,
+        refund_date date NOT NULL,
+        method varchar(40) NOT NULL,
+        reference text DEFAULT NULL,
+        reason varchar(500) NOT NULL,
+        created_at timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        KEY idx_refund_invoice(invoice_id,refund_date),
+        UNIQUE KEY uq_refund_request(user_id,request_key),
+        CONSTRAINT fk_refund_owner FOREIGN KEY(user_id) REFERENCES users(id),
+        CONSTRAINT fk_refund_invoice FOREIGN KEY(invoice_id) REFERENCES documents(id),
+        CONSTRAINT fk_refund_payment FOREIGN KEY(payment_id) REFERENCES payments(id)
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`);
+      return 'credit notes and refunds available';
+    },
+  },
+  {
+    id:'022_bookkeeper_access',
+    description:'Explicit read-only bookkeeper access to an owner business',
+    async up(q) {
+      if (!(await tableExists(q,'business_bookkeepers'))) await q(`CREATE TABLE business_bookkeepers (
+        id bigint NOT NULL AUTO_INCREMENT PRIMARY KEY,
+        owner_id bigint NOT NULL,
+        member_id bigint NOT NULL,
+        granted_at timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        revoked_at timestamp NULL DEFAULT NULL,
+        UNIQUE KEY uq_bookkeeper_member(member_id),
+        KEY idx_bookkeeper_owner(owner_id,revoked_at),
+        CONSTRAINT fk_bookkeeper_owner FOREIGN KEY(owner_id) REFERENCES users(id),
+        CONSTRAINT fk_bookkeeper_member FOREIGN KEY(member_id) REFERENCES users(id),
+        CONSTRAINT chk_bookkeeper_distinct CHECK (owner_id<>member_id)
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`);
+      if (!(await tableExists(q,'business_access_events'))) await q(`CREATE TABLE business_access_events (
+        id bigint NOT NULL AUTO_INCREMENT PRIMARY KEY,
+        owner_id bigint NOT NULL,
+        member_id bigint NOT NULL,
+        actor_id bigint NOT NULL,
+        action enum('GRANTED','REVOKED') NOT NULL,
+        created_at timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        KEY idx_business_access_events(owner_id,created_at),
+        CONSTRAINT fk_access_event_owner FOREIGN KEY(owner_id) REFERENCES users(id),
+        CONSTRAINT fk_access_event_member FOREIGN KEY(member_id) REFERENCES users(id),
+        CONSTRAINT fk_access_event_actor FOREIGN KEY(actor_id) REFERENCES users(id)
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`);
+      return 'bookkeeper access available';
+    },
+  },
+  {
+    id:'023_bookkeeper_invitations',
+    description:'Single-slot expiring bookkeeper invitations',
+    async up(q) {
+      const duplicates=await q(`SELECT owner_id,COUNT(*) AS total FROM business_bookkeepers
+        WHERE revoked_at IS NULL GROUP BY owner_id HAVING COUNT(*)>1 LIMIT 1`);
+      if(duplicates.length) throw new Error(`Owner ${duplicates[0].owner_id} has multiple active bookkeepers; revoke extras before migration 023`);
+      if (!(await tableExists(q,'bookkeeper_invitations'))) await q(`CREATE TABLE bookkeeper_invitations (
+        id bigint NOT NULL AUTO_INCREMENT PRIMARY KEY,
+        owner_id bigint NOT NULL,
+        email varchar(255) NOT NULL,
+        token_hash char(64) NOT NULL,
+        expires_at datetime NOT NULL,
+        delivery_status enum('PENDING','SENT','FAILED') NOT NULL DEFAULT 'PENDING',
+        accepted_at datetime NULL DEFAULT NULL,
+        revoked_at datetime NULL DEFAULT NULL,
+        created_at timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        UNIQUE KEY uq_bookkeeper_invite_token(token_hash),
+        KEY idx_bookkeeper_invite_owner(owner_id,expires_at),
+        CONSTRAINT fk_bookkeeper_invite_owner FOREIGN KEY(owner_id) REFERENCES users(id)
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`);
+      return 'bookkeeper invitations available';
+    },
+  },
+  {
+    id:'024_adjustment_encrypted_columns',
+    description:'Widen bank and refund fields for encrypted envelopes',
+    async up(q) {
+      const fields=[
+        ['bank_import_rows','description'],
+        ['bank_import_rows','reference'],
+        ['bank_import_rows','account_label'],
+        ['payment_refunds','reference'],
+      ];
+      let widened=0;
+      for(const [table,column] of fields) {
+        const definition=await columnDefinition(q,table,column);
+        if(definition.COLUMN_TYPE.toLowerCase()==='text') {
+          await q(`ALTER TABLE ${table} MODIFY COLUMN ${column} MEDIUMTEXT NULL`);
+          widened++;
+        }
+      }
+      return `${widened} encrypted columns widened`;
+    },
+  },
 ];
 
 // ─── Runner ───────────────────────────────────────────────────────────────────

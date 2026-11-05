@@ -3,13 +3,17 @@ const axios = require('axios');
 const cron = require('node-cron');
 
 const EmailService = require('./src/services/email.service');
-const { buildInvoicePdf, buildQuotePdf, buildReceiptPdf } = require('./src/services/pdf.service');
+const { buildInvoicePdf, buildQuotePdf, buildReceiptPdf, buildCreditNotePdf, buildPaymentReceiptPdf } = require('./src/services/pdf.service');
 // The pool, the logger and the query helpers live in db.service so that CLI
 // tooling can share them without booting an HTTP listener.
 const { logger, executeQuery, getConnection, queryOn, withTransaction, closePool } = require('./src/services/db.service');
 const { reportCurrency, report } = require('./src/services/reporting.service');
 const { shareDocument } = require('./src/services/document-share.service');
+const { actualImageType } = require('./src/services/image-upload.service');
+const { TEMPLATES, previewCatalogueCsv } = require('./src/services/catalogue-import.service');
+const { HEADER: BANK_HEADER, previewBankCsv } = require('./src/services/bank-import.service');
 const { createDocument } = require('./src/services/document-create.service');
+const { money: adjustmentMoney, validDate: validAdjustmentDate, settlement: adjustmentSettlement, invoiceSettlement } = require('./src/services/invoice-adjustments.service');
 const { advanceDate, prepareDocument } = require('./src/services/billing-rules');
 const { captureDocumentSnapshot, hydrateDocumentSnapshots, documentSeller } = require('./src/services/document-snapshot.service');
 const { getNextDocumentNumber, lockDocumentOwner } = require('./src/services/document-number.service');
@@ -17,7 +21,7 @@ const { runMigrations, tableExists } = require('./src/services/migrations.servic
 const { anonymiseExpiredAccounts } = require('./src/services/retention.service');
 const {
   computeDocumentTotals, todayIso, normaliseTerms, resolveDueDate, formatDisplayDate,
-  balanceDue, isSettled, SETTLED_TOLERANCE,
+  SETTLED_TOLERANCE,
 } = require('./src/services/document-math');
 const {
   decryptUserRow, encryptField, decryptField, isEncryptionConfigured, verifyCanary,
@@ -37,7 +41,7 @@ const rateLimit = require('express-rate-limit');
 const bodyParser = require('body-parser');
 const argon2 = require('argon2');
 const { OAuth2Client } = require('google-auth-library');
-const { randomUUID } = require('crypto');
+const { randomUUID, timingSafeEqual } = require('crypto');
 const multer = require('multer');
 const { body, validationResult } = require('express-validator');
 
@@ -69,6 +73,15 @@ const logoUpload = multer({
 });
 
 const app = express();
+const adjustmentsEnabled = () => process.env.INVOICE_ADJUSTMENTS_ENABLED === 'true'
+  && ['development','test'].includes(process.env.NODE_ENV);
+
+async function withInvoiceFinancials(q, invoice) {
+  if (!invoice?.id) return invoice;
+  const state=await invoiceSettlement(q,invoice.id);
+  return { ...invoice,amount_paid:state.netPaid.toFixed(2),credit_total:state.creditTotal.toFixed(2),refund_total:state.refundTotal.toFixed(2),
+    adjusted_total:state.adjustedTotal.toFixed(2),balance_due:state.balanceDue.toFixed(2),refund_due:state.refundDue.toFixed(2) };
+}
 
 // Angular builds to `www` (angular.json outputPath, and capacitor.config.ts webDir).
 const WEB_ROOT = path.join(__dirname, 'www');
@@ -189,13 +202,44 @@ const apiLimiter = limiter(15, 1000, 'Too many requests. Please slow down.');
 
 app.use('/api', apiLimiter);
 
+app.get('/api/health/live', (req, res) => res.json({ status: 'live' }));
+app.get('/api/health/ready', async (req, res) => {
+  try {
+    await executeQuery('SELECT 1 AS ok');
+    res.set('Cache-Control', 'no-store').json({ status: 'ready' });
+  } catch (error) {
+    logger.error('Readiness check failed', error);
+    res.set('Cache-Control', 'no-store').status(503).json({ status: 'unavailable' });
+  }
+});
+const schedulerStatus = Object.fromEntries(['recurring','notifications','overdue','retention'].map(name=>[name,{last_success:null,last_failure:null}]));
+async function runTrackedJob(name, work) {
+  try { await work(); schedulerStatus[name].last_success=new Date().toISOString(); }
+  catch(error) { schedulerStatus[name].last_failure=new Date().toISOString(); logger.error(`${name} job failed`,error); }
+}
+app.get('/api/ops/metrics',async(req,res)=>{
+  const expected=process.env.OPERATIONS_TOKEN;
+  if (!expected) return res.status(404).json({message:'Not found'});
+  const supplied=req.get('x-operations-token') || '';
+  const left=Buffer.from(expected),right=Buffer.from(supplied);
+  if (left.length!==right.length || !timingSafeEqual(left,right)) return res.status(403).json({message:'Forbidden'});
+  try {
+    const [outbox,recurring,bankRows]=await Promise.all([
+      executeQuery('SELECT status,COUNT(*) AS count FROM email_outbox GROUP BY status'),
+      executeQuery("SELECT COUNT(*) AS count FROM documents WHERE is_recurring=1 AND recurrence_next_date IS NOT NULL AND recurrence_next_date<=?",[todayIso()]),
+      executeQuery("SELECT COUNT(*) AS count FROM bank_import_rows WHERE status='PENDING'")
+    ]);
+    res.set('Cache-Control','no-store').json({checked_at:new Date().toISOString(),scheduler:schedulerStatus,outbox:Object.fromEntries(outbox.map(row=>[row.status,row.count])),recurring_due:recurring[0].count,bank_rows_pending:bankRows[0].count});
+  } catch(error) { logger.error('Operations metrics failed',error);res.status(503).json({message:'Metrics unavailable'}); }
+});
+
 app.use(express.static(WEB_ROOT));
 
 // The `tls` block that used to be passed here was silently discarded —
 // EmailService built its own, weaker one. TLS policy now lives entirely in
 // EmailService, so there is one place to look.
 const { queueEmail, deliverEmail, processOutbox, captureEmail } = require('./src/services/outbox.service');
-const { processBillingNotifications } = require('./src/services/billing-notifications.service');
+const { processBillingNotifications, parseReminderDays } = require('./src/services/billing-notifications.service');
 const { processRecurring } = require('./src/services/recurring.service');
 const emailService = new EmailService({
   SMTP_HOST: process.env.SMTP_HOST,
@@ -318,7 +362,22 @@ const authenticateToken = async (req, res, next) => {
       return res.status(403).json({ message: 'This account is closed.', code: 'ACCOUNT_CLOSED' });
     }
 
-    req.user = { id: sessions[0].userId };
+    const actorId = sessions[0].userId;
+    const [access] = await executeQuery(`SELECT b.owner_id,u.status AS owner_status
+      FROM business_bookkeepers b JOIN users u ON u.id=b.owner_id
+      WHERE b.member_id=? AND b.revoked_at IS NULL`,[actorId]);
+    if (access) {
+      const ownAccount = (req.method === 'GET' && ['/api/account/status','/api/account/export'].includes(req.path))
+        || (req.method === 'POST' && req.path === '/api/account/close');
+      if (ownAccount) req.user = {id:actorId,actorId,role:'BOOKKEEPER'};
+      else {
+      if (access.owner_status !== 'ACTIVE') return res.status(403).json({message:'Business access is unavailable'});
+      const readable = req.method === 'GET' && /^\/api\/(?:dashboard\/summary|customers(?:\/|$)|products(?:\/|$)|invoices(?:\/|$)|quotes(?:\/|$)|reports(?:\/|$)|bank-imports(?:\/|$)|currencies(?:\/|$))/.test(req.path);
+      if (!readable && req.path !== '/api/logout' && req.path !== '/api/business/access')
+        return res.status(403).json({message:'Bookkeeper access is read only'});
+      req.user = { id: access.owner_id, actorId, role:'BOOKKEEPER' };
+      }
+    } else req.user = { id: actorId, actorId, role:'OWNER' };
 
     // Slide the idle window, clamped to the absolute ceiling. The guard on
     // `expires` means this only writes once the window has actually moved by
@@ -519,7 +578,11 @@ async function completeSignIn(req, res, user, eventType) {
   await executeQuery('UPDATE users SET last_login_at = NOW() WHERE id = ?', [user.id]);
   await recordSecurityEvent(req, eventType, user.id);
   logger.info('User logged in successfully', { userId: user.id });
-  res.json({ token, user: { id: user.id, email: user.email, company_name: user.company_name } });
+  const [access] = await executeQuery(`SELECT b.owner_id,u.company_name FROM business_bookkeepers b
+    JOIN users u ON u.id=b.owner_id AND u.status='ACTIVE'
+    WHERE b.member_id=? AND b.revoked_at IS NULL`,[user.id]);
+  res.json({ token, user: { id: user.id, email: user.email, company_name: access?.company_name || user.company_name,
+    role: access ? 'BOOKKEEPER' : 'OWNER' } });
   return true;
 }
 
@@ -660,6 +723,167 @@ app.post('/api/logout', authenticateToken, async (req, res) => {
     await executeQuery('DELETE FROM sessions WHERE token = ?', [hashToken(token)]);
     res.json({ message: 'Logged out successfully' });
   } catch (error) { logger.error('Logout error:', error); res.status(500).json({ message: 'Logout error' }); }
+});
+
+app.get('/api/business/access',authenticateToken,async(req,res)=>{
+  if(req.user.role==='BOOKKEEPER') return res.json({role:'BOOKKEEPER',business_id:req.user.id});
+  res.json({role:'OWNER',business_id:req.user.id});
+});
+
+app.get('/api/business/bookkeepers',authenticateToken,async(req,res)=>{
+  try {
+    const rows=await executeQuery(`SELECT b.id,u.email,b.granted_at FROM business_bookkeepers b
+      JOIN users u ON u.id=b.member_id WHERE b.owner_id=? AND b.revoked_at IS NULL ORDER BY u.email`,[req.user.id]);
+    res.json(rows);
+  } catch(error) { logger.error('Bookkeeper list failed',error);res.status(500).json({message:'Could not load bookkeepers'}); }
+});
+
+app.get('/api/business/bookkeeper-invitations',authenticateToken,async(req,res)=>{
+  try {
+    const rows=await executeQuery(`SELECT id,email,expires_at,delivery_status,created_at FROM bookkeeper_invitations
+      WHERE owner_id=? AND accepted_at IS NULL AND revoked_at IS NULL AND expires_at>NOW()
+      ORDER BY id DESC`,[req.user.id]);
+    res.set('Cache-Control','no-store').json(rows);
+  } catch(error) {logger.error('Bookkeeper invitation list failed',error);res.status(500).json({message:'Could not load invitations'});}
+});
+
+app.post('/api/business/bookkeeper-invitations',authenticateToken,validate([
+  body('email').isEmail().normalizeEmail(),
+  body('password').optional().isString(),
+  body('idToken').optional().isString(),
+]),async(req,res)=>{
+  try {
+    const [owner]=await executeQuery('SELECT * FROM users WHERE id=?',[req.user.id]);
+    if(!(await reauthenticateForSensitiveAction(req,res,owner,'BOOKKEEPER_INVITE_REAUTH_FAILED'))) return;
+    if(req.body.email===owner.email) return res.status(422).json({message:'Choose a different email address'});
+    const token=randomUUID();
+    const outcome=await withTransaction(async q=>{
+      await q('SELECT id FROM users WHERE id=? FOR UPDATE',[owner.id]);
+      const [active]=await q('SELECT id FROM business_bookkeepers WHERE owner_id=? AND revoked_at IS NULL',[owner.id]);
+      if(active) return {status:409,message:'This business already has a bookkeeper. Revoke access before inviting another.'};
+      const [pending]=await q(`SELECT id,email FROM bookkeeper_invitations WHERE owner_id=? AND accepted_at IS NULL
+        AND revoked_at IS NULL AND expires_at>NOW() ORDER BY id DESC LIMIT 1 FOR UPDATE`,[owner.id]);
+      if(pending && pending.email!==req.body.email) return {status:409,message:'Cancel the pending invitation before inviting another bookkeeper.'};
+      if(pending) {
+        await q(`UPDATE bookkeeper_invitations SET token_hash=?,expires_at=DATE_ADD(NOW(),INTERVAL 7 DAY),
+          delivery_status='PENDING',created_at=NOW() WHERE id=?`,[hashToken(token),pending.id]);
+        return {id:pending.id};
+      }
+      const result=await q(`INSERT INTO bookkeeper_invitations(owner_id,email,token_hash,expires_at)
+        VALUES(?,?,?,DATE_ADD(NOW(),INTERVAL 7 DAY))`,[owner.id,req.body.email,hashToken(token)]);
+      return {id:result.insertId};
+    });
+    if(outcome.status) return res.status(outcome.status).json({message:outcome.message});
+    const inviteUrl=`${(process.env.APP_URL || 'http://localhost:4200').replace(/\/+$/,'')}/bookkeeper-invite?token=${token}`;
+    let sent=false;
+    if(process.env.BOOKKEEPER_INVITE_DELIVERY!=='preview' || process.env.NODE_ENV==='production') {
+      try { await emailService.sendBookkeeperInviteEmail(req.body.email,owner.company_name,inviteUrl); sent=true; }
+      catch(error) {logger.error('Bookkeeper invitation email failed',error);}
+    }
+    await executeQuery('UPDATE bookkeeper_invitations SET delivery_status=? WHERE id=?',[sent?'SENT':'FAILED',outcome.id]);
+    res.status(sent?201:202).json({message:sent?'Invitation emailed to the bookkeeper':'Invitation saved but email delivery failed. Retry after checking SMTP.',
+      email_sent:sent,...(process.env.NODE_ENV==='production'?{}:{preview_url:inviteUrl})});
+  } catch(error) {logger.error('Bookkeeper invitation failed',error);res.status(500).json({message:'Could not create invitation'});}
+});
+
+app.delete('/api/business/bookkeeper-invitations/:id',authenticateToken,async(req,res)=>{
+  try {
+    const [owner]=await executeQuery('SELECT * FROM users WHERE id=?',[req.user.id]);
+    if(!(await reauthenticateForSensitiveAction(req,res,owner,'BOOKKEEPER_INVITE_CANCEL_REAUTH_FAILED'))) return;
+    const result=await withTransaction(async q=>{
+      await q('SELECT id FROM users WHERE id=? FOR UPDATE',[owner.id]);
+      return q(`UPDATE bookkeeper_invitations SET revoked_at=NOW() WHERE id=? AND owner_id=?
+        AND accepted_at IS NULL AND revoked_at IS NULL`,[req.params.id,owner.id]);
+    });
+    if(!result.affectedRows) return res.status(404).json({message:'Invitation not found'});
+    res.json({message:'Invitation cancelled'});
+  } catch(error) {logger.error('Bookkeeper invitation cancellation failed',error);res.status(500).json({message:'Could not cancel invitation'});}
+});
+
+app.get('/api/bookkeeper-invitations/:token',async(req,res)=>{
+  try {
+    const [row]=await executeQuery(`SELECT b.email,b.expires_at,u.company_name FROM bookkeeper_invitations b
+      JOIN users u ON u.id=b.owner_id AND u.status='ACTIVE' WHERE b.token_hash=? AND b.accepted_at IS NULL
+      AND b.revoked_at IS NULL AND b.expires_at>NOW()`,[hashToken(req.params.token)]);
+    res.set('Cache-Control','no-store');
+    if(!row) return res.status(404).json({message:'Invitation expired or unavailable'});
+    res.json({email:row.email,business_name:row.company_name,expires_at:row.expires_at});
+  } catch(error) {logger.error('Bookkeeper invitation lookup failed',error);res.status(500).json({message:'Could not load invitation'});}
+});
+
+app.post('/api/bookkeeper-invitations/:token/accept',authenticateToken,async(req,res)=>{
+  try {
+    const result=await withTransaction(async q=>{
+      const [candidate]=await q('SELECT owner_id FROM bookkeeper_invitations WHERE token_hash=?',[hashToken(req.params.token)]);
+      if(!candidate) return {status:404,message:'Invitation expired or unavailable'};
+      await q('SELECT id FROM users WHERE id=? FOR UPDATE',[candidate.owner_id]);
+      const [invite]=await q(`SELECT id,owner_id,email FROM bookkeeper_invitations WHERE token_hash=? AND
+        accepted_at IS NULL AND revoked_at IS NULL AND expires_at>NOW() FOR UPDATE`,[hashToken(req.params.token)]);
+      if(!invite) return {status:404,message:'Invitation expired or unavailable'};
+      const [member]=await q('SELECT id,email,email_verified,status FROM users WHERE id=?',[req.user.actorId]);
+      if(!member || member.status!=='ACTIVE' || !member.email_verified || member.email!==invite.email)
+        return {status:403,message:'Sign in with the verified email address on the invitation'};
+      const [active]=await q('SELECT id FROM business_bookkeepers WHERE owner_id=? AND revoked_at IS NULL',[invite.owner_id]);
+      if(active) return {status:409,message:'This business already has a bookkeeper'};
+      const [ownData]=await q(`SELECT (SELECT COUNT(*) FROM customers WHERE user_id=?) AS customers,
+        (SELECT COUNT(*) FROM documents WHERE user_id=?) AS documents,
+        (SELECT COUNT(*) FROM products WHERE user_id=?) AS products`,[member.id,member.id,member.id]);
+      if(ownData.customers || ownData.documents || ownData.products) return {status:409,message:'This account already owns business data'};
+      const [prior]=await q('SELECT id,owner_id,revoked_at FROM business_bookkeepers WHERE member_id=?',[member.id]);
+      if(prior && prior.owner_id!==invite.owner_id) return {status:409,message:'This account already belongs to another business'};
+      if(prior && !prior.revoked_at) return {status:409,message:'Bookkeeper already has access'};
+      if(prior) await q('UPDATE business_bookkeepers SET revoked_at=NULL,granted_at=NOW() WHERE id=?',[prior.id]);
+      else await q('INSERT INTO business_bookkeepers(owner_id,member_id) VALUES(?,?)',[invite.owner_id,member.id]);
+      await q('UPDATE bookkeeper_invitations SET accepted_at=NOW() WHERE id=?',[invite.id]);
+      await q("INSERT INTO business_access_events(owner_id,member_id,actor_id,action) VALUES(?,?,?,'GRANTED')",[invite.owner_id,member.id,member.id]);
+      await q('DELETE FROM sessions WHERE userId=?',[member.id]);
+      return {status:200,message:'Access accepted. Sign in again to view the business.'};
+    });
+    res.status(result.status).json({message:result.message});
+  } catch(error) {logger.error('Bookkeeper invitation acceptance failed',error);res.status(error.code==='ER_DUP_ENTRY'?409:500).json({message:'Could not accept invitation'});}
+});
+
+app.post('/api/bookkeeper-invitations/:token/register',registerLimiter,validate([
+  body('name').trim().isLength({min:2,max:255}),
+  body('password').isLength({min:8}),
+]),async(req,res)=>{
+  try {
+    const passwordHash=await argon2.hash(req.body.password);
+    const result=await withTransaction(async q=>{
+      const [candidate]=await q('SELECT owner_id FROM bookkeeper_invitations WHERE token_hash=?',[hashToken(req.params.token)]);
+      if(!candidate) return {status:404,message:'Invitation expired or unavailable'};
+      await q('SELECT id FROM users WHERE id=? FOR UPDATE',[candidate.owner_id]);
+      const [invite]=await q(`SELECT id,owner_id,email FROM bookkeeper_invitations WHERE token_hash=? AND
+        accepted_at IS NULL AND revoked_at IS NULL AND expires_at>NOW() FOR UPDATE`,[hashToken(req.params.token)]);
+      if(!invite) return {status:404,message:'Invitation expired or unavailable'};
+      const [existing]=await q('SELECT id FROM users WHERE email=?',[invite.email]);
+      if(existing) return {status:409,message:'This email already has an account. Sign in to accept the invitation.'};
+      const [active]=await q('SELECT id FROM business_bookkeepers WHERE owner_id=? AND revoked_at IS NULL',[invite.owner_id]);
+      if(active) return {status:409,message:'This business already has a bookkeeper'};
+      const member=await q(`INSERT INTO users(email,password_hash,contact_person,email_verified)
+        VALUES(?,?,?,1)`,[invite.email,passwordHash,req.body.name]);
+      await q('INSERT INTO business_bookkeepers(owner_id,member_id) VALUES(?,?)',[invite.owner_id,member.insertId]);
+      await q('UPDATE bookkeeper_invitations SET accepted_at=NOW() WHERE id=?',[invite.id]);
+      await q("INSERT INTO business_access_events(owner_id,member_id,actor_id,action) VALUES(?,?,?,'GRANTED')",[invite.owner_id,member.insertId,member.insertId]);
+      return {status:201,message:'Bookkeeper account created. Sign in to view the business.'};
+    });
+    res.status(result.status).json({message:result.message});
+  } catch(error) {logger.error('Bookkeeper invitation registration failed',error);res.status(error.code==='ER_DUP_ENTRY'?409:500).json({message:'Could not create bookkeeper account'});}
+});
+
+app.delete('/api/business/bookkeepers/:id',authenticateToken,async(req,res)=>{
+  try {
+    const [owner]=await executeQuery('SELECT * FROM users WHERE id=?',[req.user.id]);
+    if(!(await reauthenticateForSensitiveAction(req,res,owner,'BOOKKEEPER_REVOKE_REAUTH_FAILED'))) return;
+    const [entry]=await executeQuery('SELECT id,member_id FROM business_bookkeepers WHERE id=? AND owner_id=? AND revoked_at IS NULL',[req.params.id,owner.id]);
+    if(!entry) return res.status(404).json({message:'Bookkeeper access not found'});
+    await withTransaction(async q=>{
+      await q('UPDATE business_bookkeepers SET revoked_at=NOW() WHERE id=? AND owner_id=?',[entry.id,owner.id]);
+      await q("INSERT INTO business_access_events(owner_id,member_id,actor_id,action) VALUES(?,?,?,'REVOKED')",[owner.id,entry.member_id,owner.id]);
+      await q('DELETE FROM sessions WHERE userId=?',[entry.member_id]);
+    });
+    res.json({message:'Bookkeeper access revoked'});
+  } catch(error) {logger.error('Bookkeeper revoke failed',error);res.status(500).json({message:'Could not revoke bookkeeper access'});}
 });
 
 process.on('SIGINT', () => {
@@ -898,7 +1122,7 @@ app.get('/api/customers', authenticateToken, async (req, res) => {
     let cntSql = 'SELECT COUNT(*) AS total FROM customers WHERE user_id = ? AND active = 1';
     const params = [req.user.id], cntParams = [req.user.id];
     if (search) { const clause = ' AND (name LIKE ? OR email LIKE ?)'; sql += clause; cntSql += clause; params.push(`%${search}%`, `%${search}%`); cntParams.push(`%${search}%`, `%${search}%`); }
-    sql += ' ORDER BY name ASC LIMIT ? OFFSET ?'; params.push(limit, offset);
+    sql += ' ORDER BY name ASC, id ASC LIMIT ? OFFSET ?'; params.push(limit, offset);
     const [customers, countResult] = await Promise.all([queryDecrypted(decryptCustomerRow, sql, params), executeQuery(cntSql, cntParams)]);
     res.json({ data: customers, total: countResult[0].total, page, limit });
   } catch (error) { logger.error('Error fetching customers:', error); res.status(500).json({ message: 'Failed to fetch customers' }); }
@@ -925,6 +1149,7 @@ app.get('/api/customers/:id', authenticateToken, async (req, res) => {
     const { id } = req.params;
     const customers = await queryDecrypted(decryptCustomerRow, 'SELECT * FROM customers WHERE id = ? AND user_id = ? AND active = 1', [id, req.user.id]);
     if (customers.length === 0) return res.status(404).json({ message: 'Customer not found' });
+    if (req.query.include_documents === 'false') return res.json(customers[0]);
     const documents = await executeQuery('SELECT d.*,cur.code AS currency_code FROM documents d LEFT JOIN currencies cur ON cur.id=d.currency_id WHERE d.customer_id=? AND d.user_id=? ORDER BY d.created_at DESC', [id, req.user.id]);
     res.json({ ...customers[0], documents });
   } catch (error) { logger.error('Error fetching customer:', error); res.status(500).json({ message: 'Failed to fetch customer' }); }
@@ -965,7 +1190,12 @@ app.get('/api/invoices', authenticateToken, async (req, res) => {
   try {
     const search = req.query.search || '', status = req.query.status || '';
     const page = Math.max(1, parseInt(req.query.page) || 1), limit = Math.max(1, Math.min(100, parseInt(req.query.limit) || 20)), offset = (page - 1) * limit;
-    let sql = `SELECT d.id, d.document_number, d.status, d.issue_date, d.due_date, d.subtotal, d.vat_amount, d.total, d.created_at, d.notifications_muted, (SELECT code FROM currencies WHERE id=d.currency_id) AS currency_code, c.name AS customer_name, (SELECT COALESCE(SUM(p.amount), 0) FROM payments p WHERE p.document_id = d.id) AS amount_paid FROM documents d JOIN customers c ON c.id = d.customer_id WHERE d.user_id = ? AND d.type = 'INVOICE'`;
+    let sql = `SELECT d.id, d.document_number, d.status, d.issue_date, d.due_date, d.subtotal, d.vat_amount, d.total, d.created_at, d.notifications_muted,
+      (SELECT code FROM currencies WHERE id=d.currency_id) AS currency_code,c.name AS customer_name,
+      (SELECT COALESCE(SUM(p.amount),0) FROM payments p WHERE p.document_id=d.id)
+        -(SELECT COALESCE(SUM(r.amount),0) FROM payment_refunds r WHERE r.invoice_id=d.id) AS amount_paid,
+      (SELECT COALESCE(SUM(cn.total),0) FROM credit_notes cn WHERE cn.invoice_id=d.id) AS credit_total
+      FROM documents d JOIN customers c ON c.id=d.customer_id WHERE d.user_id=? AND d.type='INVOICE'`;
     let cntSql = `SELECT COUNT(*) AS total FROM documents d JOIN customers c ON c.id = d.customer_id WHERE d.user_id = ? AND d.type = 'INVOICE'`;
     const params = [req.user.id], cntParams = [req.user.id];
     if (status) { sql += ' AND d.status = ?'; cntSql += ' AND d.status = ?'; params.push(status); cntParams.push(status); }
@@ -993,6 +1223,10 @@ const documentRules = [
   body('items.*.vat_inclusive').optional().isBoolean().withMessage('VAT-inclusive mode must be true or false').toBoolean(),
   body('items.*.product_id').optional({ nullable: true }).isInt({ min: 1 }).withMessage('Invalid product'),
   body('items.*.vat_rate').optional().isFloat({ min: 0, max: 100 }).withMessage('VAT rate must be between 0 and 100'),
+  body('items.*.discount_percent').optional().isFloat({ min: 0, max: 100 }).withMessage('Discount must be between 0 and 100 percent'),
+  body('items.*.unit_label').optional().isString().trim().isLength({ min: 1, max: 20 }).withMessage('Unit must be 1 to 20 characters'),
+  body('purchase_order_ref').optional({ values: 'falsy' }).isString().trim().isLength({ max: 100 }),
+  body('delivery_details').optional({ values: 'falsy' }).isString().trim().isLength({ max: 1000 }),
 ];
 const invoiceRules = [
   ...documentRules,
@@ -1014,23 +1248,56 @@ app.post('/api/invoices', authenticateToken, validate(invoiceRules), async (req,
   } catch (error) { logger.error('Document creation failed:', error); res.status(error.status || 500).json({ message: error.status ? error.message : 'Failed to create document' }); }
 });
 
+app.post('/api/invoices/preview', authenticateToken, validate(invoiceRules), async (req, res) => {
+  try {
+    const data = await prepareDocument(executeQuery, req.user.id, 'INVOICE', req.body);
+    const [customers, users, currencies, logoRows] = await Promise.all([
+      queryDecrypted(decryptCustomerRow, 'SELECT * FROM customers WHERE id=? AND user_id=? AND active=1', [req.body.customer_id, req.user.id]),
+      queryDecrypted(decryptUserRow, 'SELECT * FROM users WHERE id=?', [req.user.id]),
+      executeQuery('SELECT symbol FROM currencies WHERE id=?', [data.currencyId]),
+      executeQuery("SELECT setting_value FROM settings WHERE user_id=? AND setting_key='company_logo'", [req.user.id]),
+    ]);
+    if (!customers.length || !users.length) return res.status(404).json({ message: 'Customer or account not found' });
+    const customer = customers[0], logo = logoRows[0]?.setting_value;
+    const invoice = {
+      document_number: 'PREVIEW', status: 'DRAFT', issue_date: req.body.issue_date,
+      due_date: data.due_date, payment_terms: data.payment_terms,
+      customer_name: customer.name, customer_email: customer.email,
+      customer_billing_address: customer.billing_address, customer_vat_number: customer.vat_number,
+      currency_symbol: currencies[0]?.symbol || 'R',
+      subtotal: data.subtotal, vat_amount: data.vat_amount, total: data.total, amount_paid: 0,
+      notes: data.notes, terms_conditions: data.terms_conditions,
+      purchase_order_ref: req.body.purchase_order_ref || null, delivery_details: req.body.delivery_details || null,
+    };
+    const seller = { ...users[0], logo_path: logo ? path.join(__dirname, logo) : null };
+    const pdf = await buildInvoicePdf(invoice, data.lines, seller);
+    res.set({ 'Content-Type': 'application/pdf', 'Content-Disposition': 'inline; filename="invoice-preview.pdf"', 'Cache-Control': 'no-store' });
+    res.send(pdf);
+  } catch (error) { logger.error('Invoice preview failed:', error); res.status(error.status || 500).json({ message: error.status ? error.message : 'Failed to preview invoice' }); }
+});
+
 app.get('/api/invoices/:id', authenticateToken, async (req, res) => {
   try {
     const { id } = req.params;
-    const [invoices, items, tracking, payments, deliveries] = await Promise.all([
+    const [invoices, items, tracking, payments, deliveries, settlement, credits, refunds] = await Promise.all([
       queryDecrypted(decryptCustomerJoin, `SELECT d.*, d.notifications_muted, c.name AS customer_name, c.email AS customer_email, c.billing_address AS customer_billing_address, c.vat_number AS customer_vat_number, cur.symbol AS currency_symbol, cur.code AS currency_code, q.document_number AS source_quote_number FROM documents d JOIN customers c ON c.id = d.customer_id LEFT JOIN currencies cur ON cur.id = d.currency_id LEFT JOIN documents q ON q.id = d.source_quote_id AND q.user_id = d.user_id WHERE d.id = ? AND d.user_id = ? AND d.type = 'INVOICE'`, [id, req.user.id]),
       executeQuery('SELECT * FROM document_items WHERE document_id = ? ORDER BY id ASC', [id]),
       executeQuery('SELECT id, document_id, event_type, event_date FROM document_tracking WHERE document_id = ? ORDER BY event_date ASC', [id]),
       queryDecrypted(decryptPaymentRow, 'SELECT * FROM payments WHERE document_id = ? ORDER BY payment_date DESC', [id]),
-      executeQuery('SELECT id,kind,status,attempts,last_error,created_at,accepted_at FROM email_outbox WHERE document_id=? AND user_id=? ORDER BY id DESC LIMIT 30',[id,req.user.id])
+      executeQuery('SELECT id,kind,status,attempts,last_error,created_at,accepted_at FROM email_outbox WHERE document_id=? AND user_id=? ORDER BY id DESC LIMIT 30',[id,req.user.id]),
+      invoiceSettlement(executeQuery,id),
+      executeQuery('SELECT id,document_number,issue_date,reason,description,subtotal,vat_amount,total FROM credit_notes WHERE invoice_id=? ORDER BY id',[id]),
+      executeQuery('SELECT id,payment_id,amount,refund_date,method,reference,reason FROM payment_refunds WHERE invoice_id=? ORDER BY id',[id])
     ]);
     if (invoices.length === 0) return res.status(404).json({ message: 'Invoice not found' });
     // Computed here rather than in the client so every screen agrees on what
     // is still owed.
-    const amount_paid = payments.reduce((s, p) => s + Number(p.amount), 0);
     res.json({
-      ...invoices[0], notifications_muted: !!invoices[0].notifications_muted, items, tracking, payments, email_deliveries: deliveries,
-      amount_paid: amount_paid.toFixed(2), balance_due: balanceDue(invoices[0].total, amount_paid).toFixed(2),
+      ...invoices[0], notifications_muted: !!invoices[0].notifications_muted, items, tracking, payments, email_deliveries: deliveries,credits,
+      adjustments_available:adjustmentsEnabled(),
+      refunds:refunds.map(row=>({...row,reference:decryptField('payment_refunds','reference',row.reference)})),
+      amount_paid: settlement.netPaid.toFixed(2), credit_total:settlement.creditTotal.toFixed(2),refund_total:settlement.refundTotal.toFixed(2),
+      adjusted_total:settlement.adjustedTotal.toFixed(2),balance_due:settlement.balanceDue.toFixed(2),refund_due:settlement.refundDue.toFixed(2),
     });
   } catch (error) { logger.error('Error fetching invoice:', error); res.status(500).json({ message: 'Failed to fetch invoice' }); }
 });
@@ -1053,12 +1320,28 @@ app.get('/api/invoices/:id/pdf', authenticateToken, async (req, res) => {
     // this invoice will have by the time a customer reads the PDF.
     const effectiveStatus = markSent && invoices[0].status === 'DRAFT' ? 'SENT' : invoices[0].status;
     const pay_url = await resolvePayUrl({ ...invoices[0], status: effectiveStatus }, user);
-    const pdfBuffer = await buildInvoicePdf({ ...invoices[0], pay_url }, items, user);
+    const pdfBuffer = await buildInvoicePdf({ ...await withInvoiceFinancials(executeQuery,invoices[0]), pay_url }, items, user);
     await executeQuery(`INSERT INTO document_tracking (document_id, event_type) VALUES (?, 'DOWNLOADED')`, [id]);
 
     res.set({ 'Content-Type': 'application/pdf', 'Content-Disposition': `attachment; filename="${invoices[0].document_number}.pdf"`, 'Content-Length': pdfBuffer.length });
     res.send(pdfBuffer);
   } catch (error) { logger.error('Error generating invoice PDF:', error); res.status(error.status || 500).json({ message: error.status ? error.message : 'Failed to generate PDF' }); }
+});
+
+app.get('/api/invoices/:id/payments/:paymentId/receipt',authenticateToken,async(req,res)=>{
+  try {
+    const [invoice]=await queryDecrypted(decryptCustomerJoin,`SELECT d.id,d.document_number,d.issue_date,c.name AS customer_name,c.billing_address AS customer_billing_address,cur.symbol AS currency_symbol
+      FROM documents d JOIN customers c ON c.id=d.customer_id JOIN currencies cur ON cur.id=d.currency_id
+      WHERE d.id=? AND d.user_id=? AND d.type='INVOICE'`,[req.params.id,req.user.id]);
+    if (!invoice) return res.status(404).json({message:'Invoice not found'});
+    const [payment]=await queryDecrypted(decryptPaymentRow,'SELECT id,amount,payment_date,payment_method,transaction_reference FROM payments WHERE id=? AND document_id=?',[req.params.paymentId,invoice.id]);
+    if (!payment) return res.status(404).json({message:'Payment not found'});
+    const [user]=await queryDecrypted(decryptUserRow,'SELECT * FROM users WHERE id=?',[req.user.id]);
+    const seller=await documentSeller(executeQuery,invoice.id,user);
+    const [historical]=await hydrateDocumentSnapshots(executeQuery,[invoice]);
+    const pdf=await buildPaymentReceiptPdf(payment,historical,seller);
+    res.set({'Content-Type':'application/pdf','Content-Disposition':`attachment; filename="RCPT-${payment.id}.pdf"`,'Content-Length':pdf.length,'Cache-Control':'no-store'}).send(pdf);
+  } catch(error) { logger.error('Payment receipt failed:',error); res.status(500).json({message:'Could not generate payment receipt'}); }
 });
 
 app.get('/api/invoices/:id/receipt', authenticateToken, async (req, res) => {
@@ -1072,10 +1355,11 @@ app.get('/api/invoices/:id/receipt', authenticateToken, async (req, res) => {
       queryDecrypted(decryptPaymentRow, 'SELECT * FROM payments WHERE document_id = ? ORDER BY payment_date DESC', [id])
     ]);
     if (invoices.length === 0) return res.status(404).json({ message: 'Invoice not found' });
-    if (invoices[0].status !== 'PAID') return res.status(400).json({ message: 'Receipt is only available for paid invoices' });
+    const invoice=await withInvoiceFinancials(executeQuery,invoices[0]);
+    if (invoice.status !== 'PAID' || Number(invoice.amount_paid)<=0) return res.status(400).json({ message: 'A paid invoice with a recorded payment is required for a full receipt' });
     const logoRelPath = logoRows[0]?.setting_value || null;
     const user = await documentSeller(executeQuery, id, { ...decryptUserRow(users[0]), logo_path: logoRelPath ? path.join(__dirname, logoRelPath) : null });
-    const pdfBuffer = await buildReceiptPdf(invoices[0], items, user, payments);
+    const pdfBuffer = await buildReceiptPdf(invoice, items, user, payments);
     res.set({ 'Content-Type': 'application/pdf', 'Content-Disposition': `attachment; filename="RECEIPT-${invoices[0].document_number}.pdf"`, 'Content-Length': pdfBuffer.length });
     res.send(pdfBuffer);
   } catch (error) { logger.error('Error generating receipt PDF:', error); res.status(500).json({ message: 'Failed to generate receipt' }); }
@@ -1092,8 +1376,8 @@ app.post('/api/invoices/:id/send-receipt', authenticateToken, validate([body('re
       queryDecrypted(decryptPaymentRow, 'SELECT * FROM payments WHERE document_id = ? ORDER BY payment_date DESC', [id])
     ]);
     if (invoices.length === 0) return res.status(404).json({ message: 'Invoice not found' });
-    const invoice = invoices[0];
-    if (invoice.status !== 'PAID') return res.status(400).json({ message: 'Receipt can only be sent for paid invoices' });
+    const invoice = await withInvoiceFinancials(executeQuery,invoices[0]);
+    if (invoice.status !== 'PAID' || Number(invoice.amount_paid)<=0) return res.status(400).json({ message: 'A paid invoice with a recorded payment is required for a full receipt' });
     if (!invoice.customer_email) return res.status(400).json({ message: 'This customer has no email address on file' });
     const logoRelPath = logoRows[0]?.setting_value || null;
     const user = await documentSeller(executeQuery, id, { ...decryptUserRow(users[0]), logo_path: logoRelPath ? path.join(__dirname, logoRelPath) : null });
@@ -1154,12 +1438,12 @@ app.put('/api/invoices/:id', authenticateToken, validate(invoiceRules), async (r
         }
       }
       await new Promise((resolve, reject) => conn.query(
-        `UPDATE documents SET customer_id=?, issue_date=?, due_date=?, payment_terms=?, currency_id=?, subtotal=?, vat_amount=?, total=?, notes=?, terms_conditions=?${recurSql}, updated_at=NOW() WHERE id=? AND user_id=?`,
-        [customer_id, issue_date, due_date, payment_terms, newCurrencyId, subtotal.toFixed(2), vat_amount.toFixed(2), total.toFixed(2), effectiveNotes || null, terms_conditions || null, ...recurParams, id, req.user.id],
+        `UPDATE documents SET customer_id=?, issue_date=?, due_date=?, payment_terms=?, currency_id=?, subtotal=?, vat_amount=?, total=?, notes=?, terms_conditions=?, purchase_order_ref=?, delivery_details=?${recurSql}, updated_at=NOW() WHERE id=? AND user_id=?`,
+        [customer_id, issue_date, due_date, payment_terms, newCurrencyId, subtotal.toFixed(2), vat_amount.toFixed(2), total.toFixed(2), effectiveNotes || null, terms_conditions || null, req.body.purchase_order_ref || null, req.body.delivery_details || null, ...recurParams, id, req.user.id],
         (err, r) => err ? reject(err) : resolve(r)
       ));
       await new Promise((resolve, reject) => conn.query('DELETE FROM document_items WHERE document_id = ?', [id], (err, r) => err ? reject(err) : resolve(r)));
-      for (const item of lineItems) { await new Promise((resolve, reject) => conn.query('INSERT INTO document_items (document_id, product_id, description, quantity, unit_price, vat_rate, vat_inclusive, vat_amount, subtotal, total) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)', [id, item.product_id || null, item.description, item.quantity, item.unit_price, item.vat_rate, item.vat_inclusive ? 1 : 0, item.vat_amount.toFixed(2), item.subtotal.toFixed(2), item.total.toFixed(2)], (err, r) => err ? reject(err) : resolve(r))); }
+      for (const item of lineItems) { await new Promise((resolve, reject) => conn.query('INSERT INTO document_items (document_id, product_id, description, quantity, unit_label, unit_price, discount_percent, vat_rate, vat_inclusive, vat_amount, subtotal, total) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)', [id, item.product_id || null, item.description, item.quantity, item.unit_label, item.unit_price, item.discount_percent, item.vat_rate, item.vat_inclusive ? 1 : 0, item.vat_amount.toFixed(2), item.subtotal.toFixed(2), item.total.toFixed(2)], (err, r) => err ? reject(err) : resolve(r))); }
       await new Promise((resolve, reject) => conn.commit(err => err ? reject(err) : resolve()));
       conn.release();
       const invoice = await executeQuery(`SELECT d.*, c.name AS customer_name FROM documents d JOIN customers c ON c.id = d.customer_id WHERE d.id = ?`, [id]);
@@ -1178,7 +1462,7 @@ async function queueInvoiceEmail(id,userId,key=`invoice:${id}:initial`) {
       executeQuery("SELECT setting_value FROM settings WHERE user_id = ? AND setting_key = 'company_logo'", [userId])
     ]);
     if (invoices.length === 0) throw Object.assign(new Error('Invoice not found'),{status:404});
-    const invoice = invoices[0];
+    const invoice = await withInvoiceFinancials(executeQuery,invoices[0]);
     const logoRelPath = logoRows[0]?.setting_value || null;
     const user = await documentSeller(executeQuery, id, { ...decryptUserRow(users[0]), logo_path: logoRelPath ? path.join(__dirname, logoRelPath) : null });
     if (!['SENT','OVERDUE'].includes(invoice.status)) throw Object.assign(new Error('Only unpaid issued invoices can be emailed'),{status:400});
@@ -1225,7 +1509,7 @@ app.post('/api/invoices/:id/mark-paid', authenticateToken, validate([
     const invoices = await executeQuery(`SELECT id, total, status FROM documents WHERE id = ? AND user_id = ? AND type = 'INVOICE'`, [id, req.user.id]);
     if (invoices.length === 0) return res.status(404).json({ message: 'Invoice not found' });
     if (invoices[0].status === 'CANCELLED') return res.status(400).json({ message: 'Cannot record payment on a cancelled invoice' });
-    if (invoices[0].status === 'PAID') return res.status(400).json({ message: 'This invoice is already paid in full' });
+    if (['PAID','CREDITED'].includes(invoices[0].status)) return res.status(400).json({ message: 'This invoice is already settled' });
     // Ownership was established by the SELECT above, so the shared helper does
     // not re-check user_id. It runs all three writes in one transaction, which
     // this route previously did not.
@@ -1251,13 +1535,114 @@ app.post('/api/invoices/:id/mark-paid', authenticateToken, validate([
   } catch (error) { logger.error('Error recording payment:', error); res.status(error.status || 500).json({ message: error.status ? error.message : 'Failed to record payment' }); }
 });
 
+// Allow local settlement review while production acceptance is pending.
+const adjustmentGate = (_req,res,next) => adjustmentsEnabled()
+  ? next() : res.status(503).json({message:'Invoice adjustments are not available yet'});
+const validAdjustmentKey = value => typeof value==='string' && /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value);
+
+app.get('/api/invoices/:id/adjustments', authenticateToken, adjustmentGate, async (req,res) => {
+  try {
+    const [invoice] = await executeQuery("SELECT id FROM documents WHERE id=? AND user_id=? AND type='INVOICE'",[req.params.id,req.user.id]);
+    if (!invoice) return res.status(404).json({message:'Invoice not found'});
+    const [credits,refunds,summary] = await Promise.all([
+      executeQuery('SELECT id,document_number,issue_date,reason,description,subtotal,vat_amount,total,created_at FROM credit_notes WHERE invoice_id=? ORDER BY id',[invoice.id]),
+      executeQuery('SELECT id,payment_id,amount,refund_date,method,reference,reason,created_at FROM payment_refunds WHERE invoice_id=? ORDER BY id',[invoice.id]),
+      invoiceSettlement(executeQuery,invoice.id),
+    ]);
+    res.json({credits,refunds:refunds.map(row=>({...row,reference:decryptField('payment_refunds','reference',row.reference)})),summary});
+  } catch(error) { logger.error('Error loading invoice adjustments:',error); res.status(500).json({message:'Could not load adjustments'}); }
+});
+
+app.get('/api/invoices/:id/credit-notes/:noteId/pdf',authenticateToken,adjustmentGate,async(req,res)=>{
+  try {
+    const [row]=await queryDecrypted(decryptCustomerJoin,`SELECT cn.*,d.document_number AS invoice_number,d.issue_date AS invoice_issue_date,
+      c.name AS customer_name,c.billing_address AS customer_billing_address,cur.symbol AS currency_symbol
+      FROM credit_notes cn JOIN documents d ON d.id=cn.invoice_id JOIN customers c ON c.id=d.customer_id
+      JOIN currencies cur ON cur.id=d.currency_id WHERE cn.id=? AND cn.invoice_id=? AND cn.user_id=? AND d.user_id=?`,[req.params.noteId,req.params.id,req.user.id,req.user.id]);
+    if (!row) return res.status(404).json({message:'Credit note not found'});
+    const [user]=await queryDecrypted(decryptUserRow,'SELECT * FROM users WHERE id=?',[req.user.id]);
+    const seller=await documentSeller(executeQuery,req.params.id,user);
+    const [invoice]=await hydrateDocumentSnapshots(executeQuery,[{id:Number(req.params.id),document_number:row.invoice_number,issue_date:row.invoice_issue_date,customer_name:row.customer_name,customer_billing_address:row.customer_billing_address,currency_symbol:row.currency_symbol}]);
+    const pdf=await buildCreditNotePdf(row,invoice,seller);
+    res.set({'Content-Type':'application/pdf','Content-Disposition':`attachment; filename="${row.document_number}.pdf"`,'Content-Length':pdf.length,'Cache-Control':'no-store'}).send(pdf);
+  } catch(error) { logger.error('Error generating credit note PDF:',error); res.status(500).json({message:'Could not generate credit note'}); }
+});
+
+app.post('/api/invoices/:id/credit-notes', authenticateToken, adjustmentGate, async (req,res) => {
+  try {
+    if (!validAdjustmentKey(req.body.request_key)) return res.status(422).json({message:'A request key is required'});
+    const result=await withTransaction(async q => {
+      const [invoice]=await q("SELECT id,status,subtotal,vat_amount,total FROM documents WHERE id=? AND user_id=? AND type='INVOICE' FOR UPDATE",[req.params.id,req.user.id]);
+      if (!invoice) throw Object.assign(new Error('Invoice not found'),{status:404});
+      if (['DRAFT','CANCELLED'].includes(invoice.status)) throw Object.assign(new Error('Issue the invoice before crediting it'),{status:422});
+      const subtotal=adjustmentMoney(req.body.subtotal,'Subtotal');
+      const vat=adjustmentMoney(req.body.vat_amount,'VAT');
+      const total=adjustmentMoney(req.body.total,'Total');
+      if (total<=0 || Math.round((subtotal+vat)*100)!==Math.round(total*100)) throw Object.assign(new Error('Subtotal plus VAT must equal a positive total'),{status:422});
+      const reason=String(req.body.reason || '').trim();
+      const description=String(req.body.description || '').trim();
+      if (!reason || reason.length>500 || !description || description.length>1000) throw Object.assign(new Error('A reason and description are required'),{status:422});
+      const [existing]=await q('SELECT id,invoice_id,document_number,subtotal,vat_amount,total,reason,description FROM credit_notes WHERE user_id=? AND request_key=?',[req.user.id,req.body.request_key]);
+      if (existing) {
+        if (Number(existing.invoice_id)!==Number(invoice.id) || Number(existing.subtotal)!==subtotal || Number(existing.vat_amount)!==vat || Number(existing.total)!==total || existing.reason!==reason || existing.description!==description) throw Object.assign(new Error('Request key was used for a different credit note'),{status:409});
+        return {id:existing.id,document_number:existing.document_number,summary:await invoiceSettlement(q,invoice.id),replayed:true};
+      }
+      const [prior]=await q('SELECT COALESCE(SUM(subtotal),0) AS subtotal,COALESCE(SUM(vat_amount),0) AS vat,COALESCE(SUM(total),0) AS total FROM credit_notes WHERE invoice_id=?',[invoice.id]);
+      if (subtotal+Number(prior.subtotal)>Number(invoice.subtotal)+0.001 || vat+Number(prior.vat)>Number(invoice.vat_amount)+0.001 || total+Number(prior.total)>Number(invoice.total)+0.001) throw Object.assign(new Error('Credit exceeds the original invoice amounts'),{status:422});
+      await captureDocumentSnapshot(q,invoice.id);
+      const issued=await q('INSERT INTO credit_notes(user_id,invoice_id,request_key,issue_date,reason,description,subtotal,vat_amount,total) VALUES(?,?,?,?,?,?,?,?,?)',[req.user.id,invoice.id,req.body.request_key,todayIso(),reason,description,subtotal.toFixed(2),vat.toFixed(2),total.toFixed(2)]);
+      const number=`CN-${String(issued.insertId).padStart(8,'0')}`;
+      await q('UPDATE credit_notes SET document_number=? WHERE id=?',[number,issued.insertId]);
+      await q("INSERT INTO document_tracking(document_id,event_type) VALUES(?,'CREDIT_NOTE')",[invoice.id]);
+      const summary=await invoiceSettlement(q,invoice.id);
+      await q("UPDATE documents SET status=CASE WHEN ?=0 AND ?=0 THEN 'CREDITED' WHEN ?=0 THEN 'PAID' WHEN due_date<CURDATE() THEN 'OVERDUE' ELSE 'SENT' END,updated_at=NOW() WHERE id=?",[summary.balanceDue,summary.adjustedTotal,summary.balanceDue,invoice.id]);
+      return {id:issued.insertId,document_number:number,summary};
+    });
+    res.status(result.replayed ? 200 : 201).json(result);
+  } catch(error) { logger.error('Error issuing credit note:',error); res.status(error.status || 500).json({message:error.status ? error.message : 'Could not issue credit note'}); }
+});
+
+app.post('/api/invoices/:id/refunds', authenticateToken, adjustmentGate, async (req,res) => {
+  try {
+    if (!validAdjustmentKey(req.body.request_key)) return res.status(422).json({message:'A request key is required'});
+    const result=await withTransaction(async q => {
+      const [invoice]=await q("SELECT id,status FROM documents WHERE id=? AND user_id=? AND type='INVOICE' FOR UPDATE",[req.params.id,req.user.id]);
+      if (!invoice) throw Object.assign(new Error('Invoice not found'),{status:404});
+      const [payment]=await q('SELECT id,amount FROM payments WHERE id=? AND document_id=?',[req.body.payment_id,invoice.id]);
+      if (!payment) throw Object.assign(new Error('Payment not found on this invoice'),{status:404});
+      const amount=adjustmentMoney(req.body.amount,'Refund');
+      const reason=String(req.body.reason || '').trim();
+      const method=String(req.body.method || '').trim();
+      const reference=String(req.body.reference || '').trim();
+      if (!reason || reason.length>500 || !['BANK_TRANSFER','PAYFAST','CARD','CASH','OTHER'].includes(method) || reference.length>255) throw Object.assign(new Error('A reason and valid refund method are required'),{status:422});
+      const date=String(req.body.refund_date || '');
+      if (!validAdjustmentDate(date)) throw Object.assign(new Error('A valid refund date is required'),{status:422});
+      const [existing]=await q("SELECT id,invoice_id,payment_id,amount,DATE_FORMAT(refund_date,'%Y-%m-%d') AS refund_date,method,reference,reason FROM payment_refunds WHERE user_id=? AND request_key=?",[req.user.id,req.body.request_key]);
+      if (existing) {
+        if (Number(existing.invoice_id)!==Number(invoice.id) || Number(existing.payment_id)!==Number(payment.id) || Number(existing.amount)!==amount || existing.refund_date!==date || existing.method!==method || (decryptField('payment_refunds','reference',existing.reference) || '')!==reference || existing.reason!==reason) throw Object.assign(new Error('Request key was used for a different refund'),{status:409});
+        return {id:existing.id,summary:await invoiceSettlement(q,invoice.id),replayed:true};
+      }
+      const [prior]=await q('SELECT COALESCE(SUM(amount),0) AS amount FROM payment_refunds WHERE payment_id=?',[payment.id]);
+      if (amount<=0 || amount+Number(prior.amount)>Number(payment.amount)+0.001) throw Object.assign(new Error('Refund exceeds the unrefunded payment'),{status:422});
+      const inserted=await q('INSERT INTO payment_refunds(user_id,invoice_id,payment_id,request_key,amount,refund_date,method,reference,reason) VALUES(?,?,?,?,?,?,?,?,?)',[req.user.id,invoice.id,payment.id,req.body.request_key,amount.toFixed(2),date,method,encryptField('payment_refunds','reference',reference || null),reason]);
+      await q("INSERT INTO document_tracking(document_id,event_type) VALUES(?,'REFUND')",[invoice.id]);
+      const summary=await invoiceSettlement(q,invoice.id);
+      await q("UPDATE documents SET status=CASE WHEN ?=0 AND ?=0 THEN 'CREDITED' WHEN ?=0 THEN 'PAID' WHEN due_date<CURDATE() THEN 'OVERDUE' ELSE 'SENT' END,updated_at=NOW() WHERE id=?",[summary.balanceDue,summary.adjustedTotal,summary.balanceDue,invoice.id]);
+      return {id:inserted.insertId,summary};
+    });
+    res.status(result.replayed ? 200 : 201).json(result);
+  } catch(error) { logger.error('Error recording refund:',error); res.status(error.status || 500).json({message:error.status ? error.message : 'Could not record refund'}); }
+});
+
 app.post('/api/invoices/:id/cancel', authenticateToken, async (req, res) => {
   try {
     await withTransaction(async q => {
       const [invoice] = await q("SELECT id,status FROM documents WHERE id=? AND user_id=? AND type='INVOICE' FOR UPDATE", [req.params.id, req.user.id]);
       if (!invoice) throw Object.assign(new Error('Invoice not found'), { status: 404 });
       const [{ paid }] = await q('SELECT COALESCE(SUM(amount),0) AS paid FROM payments WHERE document_id=?', [invoice.id]);
-      if (Number(paid)>0 || invoice.status==='PAID') throw Object.assign(new Error('This invoice has payments. Resolve the payment with a credit/refund before cancellation.'), { status: 400 });
+      if (Number(paid)>0 || ['PAID','CREDITED'].includes(invoice.status)) throw Object.assign(new Error('This invoice has payments or credits and cannot be cancelled'), { status: 400 });
+      const [{ credits }] = await q('SELECT COUNT(*) AS credits FROM credit_notes WHERE invoice_id=?',[invoice.id]);
+      if (Number(credits)>0) throw Object.assign(new Error('This invoice has issued credit notes and cannot be cancelled'),{status:400});
       if (invoice.status==='CANCELLED') throw Object.assign(new Error('Invoice is already cancelled'), { status: 400 });
       await q("UPDATE documents SET status='CANCELLED',is_recurring=0,recurrence_next_date=NULL,updated_at=NOW() WHERE id=?", [invoice.id]);
       await q("INSERT INTO document_tracking(document_id,event_type) VALUES(?,'CANCELLED')", [invoice.id]);
@@ -1295,10 +1680,16 @@ app.get('/api/quotes', authenticateToken, async (req, res) => {
   try {
     const search = req.query.search || '', status = req.query.status || '';
     const page = Math.max(1, parseInt(req.query.page) || 1), limit = Math.max(1, Math.min(100, parseInt(req.query.limit) || 20)), offset = (page - 1) * limit;
-    let sql = `SELECT d.id, d.document_number, d.status, d.issue_date, d.due_date, d.valid_until, d.subtotal, d.vat_amount, d.total, d.created_at, (SELECT code FROM currencies WHERE id=d.currency_id) AS currency_code, c.name AS customer_name FROM documents d JOIN customers c ON c.id = d.customer_id WHERE d.user_id = ? AND d.type = 'QUOTE'`;
+    const currentDay = todayIso();
+    let sql = `SELECT d.id, d.document_number, CASE WHEN d.status='SENT' AND d.valid_until < ? THEN 'EXPIRED' ELSE d.status END AS status, d.issue_date, d.due_date, d.valid_until, d.subtotal, d.vat_amount, d.total, d.created_at, (SELECT code FROM currencies WHERE id=d.currency_id) AS currency_code, c.name AS customer_name FROM documents d JOIN customers c ON c.id = d.customer_id WHERE d.user_id = ? AND d.type = 'QUOTE'`;
     let cntSql = `SELECT COUNT(*) AS total FROM documents d JOIN customers c ON c.id = d.customer_id WHERE d.user_id = ? AND d.type = 'QUOTE'`;
-    const params = [req.user.id], cntParams = [req.user.id];
-    if (status) { sql += ' AND d.status = ?'; cntSql += ' AND d.status = ?'; params.push(status); cntParams.push(status); }
+    const params = [currentDay, req.user.id], cntParams = [req.user.id];
+    if (status) {
+      const clause = status === 'EXPIRED' ? " AND d.status='SENT' AND d.valid_until < ?" : status === 'SENT' ? " AND d.status='SENT' AND (d.valid_until IS NULL OR d.valid_until >= ?)" : ' AND d.status = ?';
+      sql += clause; cntSql += clause;
+      params.push(status === 'EXPIRED' || status === 'SENT' ? currentDay : status);
+      cntParams.push(status === 'EXPIRED' || status === 'SENT' ? currentDay : status);
+    }
     if (search) { const clause = ' AND (d.document_number LIKE ? OR c.name LIKE ?)'; sql += clause; cntSql += clause; params.push(`%${search}%`, `%${search}%`); cntParams.push(`%${search}%`, `%${search}%`); }
     sql += ' ORDER BY d.created_at DESC LIMIT ? OFFSET ?'; params.push(limit, offset);
     const [quotes, countResult] = await Promise.all([executeQuery(sql, params), executeQuery(cntSql, cntParams)]);
@@ -1316,13 +1707,14 @@ app.get('/api/quotes/:id', authenticateToken, async (req, res) => {
   try {
     const { id } = req.params;
     const [quotes, items, tracking, converted_invoices] = await Promise.all([
-      queryDecrypted(decryptCustomerJoin, `SELECT d.*, c.name AS customer_name, c.email AS customer_email, c.billing_address AS customer_billing_address, c.vat_number AS customer_vat_number, cur.symbol AS currency_symbol, cur.code AS currency_code FROM documents d JOIN customers c ON c.id = d.customer_id LEFT JOIN currencies cur ON cur.id = d.currency_id WHERE d.id = ? AND d.user_id = ? AND d.type = 'QUOTE'`, [id, req.user.id]),
+      queryDecrypted(decryptCustomerJoin, `SELECT d.*, DATE_FORMAT(d.valid_until,'%Y-%m-%d') AS valid_until_iso, c.name AS customer_name, c.email AS customer_email, c.billing_address AS customer_billing_address, c.vat_number AS customer_vat_number, cur.symbol AS currency_symbol, cur.code AS currency_code FROM documents d JOIN customers c ON c.id = d.customer_id LEFT JOIN currencies cur ON cur.id = d.currency_id WHERE d.id = ? AND d.user_id = ? AND d.type = 'QUOTE'`, [id, req.user.id]),
       executeQuery('SELECT * FROM document_items WHERE document_id = ? ORDER BY id ASC', [id]),
       executeQuery('SELECT id, document_id, event_type, event_date FROM document_tracking WHERE document_id = ? ORDER BY event_date ASC', [id]),
       executeQuery(`SELECT id, document_number, status, created_at FROM documents WHERE source_quote_id = ? AND user_id = ? AND type = 'INVOICE' ORDER BY id ASC`, [id, req.user.id])
     ]);
     if (quotes.length === 0) return res.status(404).json({ message: 'Quote not found' });
-    res.json({ ...quotes[0], items, tracking, converted_invoices });
+    const quote = quotes[0];
+    res.json({ ...quote, status: quote.status === 'SENT' && quote.valid_until_iso && quote.valid_until_iso < todayIso() ? 'EXPIRED' : quote.status, items, tracking, converted_invoices });
   } catch (error) { logger.error('Error fetching quote:', error); res.status(500).json({ message: 'Failed to fetch quote' }); }
 });
 
@@ -1370,12 +1762,12 @@ app.put('/api/quotes/:id', authenticateToken, validate(quoteRules), async (req, 
       let newCurrencyId = existing[0].currency_id;
       if (reqCurrencyId) { const currRows = await executeQuery('SELECT id FROM currencies WHERE id = ? AND is_active = 1', [reqCurrencyId]); if (currRows.length > 0) newCurrencyId = reqCurrencyId; }
       await new Promise((resolve, reject) => conn.query(
-        `UPDATE documents SET customer_id=?, issue_date=?, valid_until=?, payment_terms=?, currency_id=?, subtotal=?, vat_amount=?, total=?, notes=?, terms_conditions=?, updated_at=NOW() WHERE id=? AND user_id=?`,
-        [customer_id, issue_date, valid_until || null, payment_terms, newCurrencyId, subtotal.toFixed(2), vat_amount.toFixed(2), total.toFixed(2), effectiveNotes || null, terms_conditions || null, id, req.user.id],
+        `UPDATE documents SET customer_id=?, issue_date=?, valid_until=?, payment_terms=?, currency_id=?, subtotal=?, vat_amount=?, total=?, notes=?, terms_conditions=?, purchase_order_ref=?, delivery_details=?, updated_at=NOW() WHERE id=? AND user_id=?`,
+        [customer_id, issue_date, valid_until || null, payment_terms, newCurrencyId, subtotal.toFixed(2), vat_amount.toFixed(2), total.toFixed(2), effectiveNotes || null, terms_conditions || null, req.body.purchase_order_ref || null, req.body.delivery_details || null, id, req.user.id],
         (err, r) => err ? reject(err) : resolve(r)
       ));
       await new Promise((resolve, reject) => conn.query('DELETE FROM document_items WHERE document_id = ?', [id], (err, r) => err ? reject(err) : resolve(r)));
-      for (const item of lineItems) { await new Promise((resolve, reject) => conn.query('INSERT INTO document_items (document_id, product_id, description, quantity, unit_price, vat_rate, vat_inclusive, vat_amount, subtotal, total) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)', [id, item.product_id || null, item.description, item.quantity, item.unit_price, item.vat_rate, item.vat_inclusive ? 1 : 0, item.vat_amount.toFixed(2), item.subtotal.toFixed(2), item.total.toFixed(2)], (err, r) => err ? reject(err) : resolve(r))); }
+      for (const item of lineItems) { await new Promise((resolve, reject) => conn.query('INSERT INTO document_items (document_id, product_id, description, quantity, unit_label, unit_price, discount_percent, vat_rate, vat_inclusive, vat_amount, subtotal, total) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)', [id, item.product_id || null, item.description, item.quantity, item.unit_label, item.unit_price, item.discount_percent, item.vat_rate, item.vat_inclusive ? 1 : 0, item.vat_amount.toFixed(2), item.subtotal.toFixed(2), item.total.toFixed(2)], (err, r) => err ? reject(err) : resolve(r))); }
       await new Promise((resolve, reject) => conn.commit(err => err ? reject(err) : resolve()));
       conn.release();
       const quote = await executeQuery(`SELECT d.*, c.name AS customer_name FROM documents d JOIN customers c ON c.id = d.customer_id WHERE d.id = ?`, [id]);
@@ -1392,6 +1784,23 @@ app.post('/api/quotes/:id/send', authenticateToken, async (req, res) => {
   } catch (error) { logger.error('Error sending quote:', error); res.status(error.status || 500).json({ message: error.status ? error.message : 'Failed to send quote' }); }
 });
 
+app.post('/api/quotes/:id/share', authenticateToken, validate([body('rotate').optional().isBoolean().toBoolean()]), async (req, res) => {
+  try {
+    const [date] = await executeQuery("SELECT status,DATE_FORMAT(valid_until,'%Y-%m-%d') AS valid_until FROM documents WHERE id=? AND user_id=? AND type='QUOTE'", [req.params.id,req.user.id]);
+    if (!date) return res.status(404).json({ message:'Quote not found' });
+    if (date?.valid_until && date.valid_until < todayIso()) return res.status(400).json({ message:'Cannot share an expired quote' });
+    if (!['DRAFT','SENT','ACCEPTED'].includes(date.status)) return res.status(400).json({ message:'This quote can no longer be shared' });
+    if (date.status !== 'ACCEPTED') await issueDocument(req.params.id, req.user.id, 'QUOTE');
+    const link = await shareDocument(req.user.id, req.params.id, { rotate: req.body.rotate === true, type: 'QUOTE' });
+    const origin = (process.env.APP_URL || 'http://localhost:4200').replace(/\/$/, '');
+    res.json({ ...link, share_url: `${origin}/portal/quote/${link.token}` });
+  } catch (error) { res.status(error.status || 500).json({ message: error.status ? error.message : 'Failed to create quote link' }); }
+});
+app.delete('/api/quotes/:id/share', authenticateToken, async (req, res) => {
+  try { res.json(await shareDocument(req.user.id, req.params.id, { revoke: true, type: 'QUOTE' })); }
+  catch (error) { res.status(error.status || 500).json({ message: error.status ? error.message : 'Failed to revoke quote link' }); }
+});
+
 app.post('/api/quotes/:id/convert-to-invoice', authenticateToken, async (req, res) => {
   try {
     const { id } = req.params;
@@ -1399,10 +1808,11 @@ app.post('/api/quotes/:id/convert-to-invoice', authenticateToken, async (req, re
       await lockDocumentOwner(q, req.user.id);
       // Locked so a double-click, or a retry after a dropped connection, waits
       // for the first conversion to commit and then sees its invoice.
-      const quotes = await q(`SELECT * FROM documents WHERE id = ? AND user_id = ? AND type = 'QUOTE' FOR UPDATE`, [id, req.user.id]);
+      const quotes = await q(`SELECT d.*, DATE_FORMAT(d.valid_until,'%Y-%m-%d') AS valid_until_iso FROM documents d WHERE d.id = ? AND d.user_id = ? AND d.type = 'QUOTE' FOR UPDATE`, [id, req.user.id]);
       if (quotes.length === 0) return { status: 404, body: { message: 'Quote not found' } };
       const quote = quotes[0];
-      if (quote.status === 'CANCELLED') return { status: 400, body: { message: 'Cannot convert a cancelled quote' } };
+      if (['CANCELLED', 'DECLINED'].includes(quote.status)) return { status: 400, body: { message: 'Cannot convert a cancelled or declined quote' } };
+      if (quote.valid_until_iso && quote.valid_until_iso < todayIso()) return { status: 400, body: { message: 'Cannot convert an expired quote' } };
 
       // One live invoice per quote. Converting again is allowed only once
       // every earlier invoice from it has been cancelled.
@@ -1417,13 +1827,13 @@ app.post('/api/quotes/:id/convert-to-invoice', authenticateToken, async (req, re
       const issue_date = todayIso();
       const due_date = resolveDueDate(issue_date, null, quote.payment_terms);
       const docResult = await q(
-        `INSERT INTO documents (user_id, customer_id, type, document_number, currency_id, status, issue_date, due_date, payment_terms, subtotal, vat_amount, total, notes, terms_conditions, source_quote_id) VALUES (?, ?, 'INVOICE', ?, ?, 'DRAFT', ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-        [req.user.id, quote.customer_id, invoice_number, quote.currency_id, issue_date, due_date, quote.payment_terms, quote.subtotal, quote.vat_amount, quote.total, quote.notes || null, quote.terms_conditions || null, quote.id]
+        `INSERT INTO documents (user_id, customer_id, type, document_number, currency_id, status, issue_date, due_date, payment_terms, subtotal, vat_amount, total, notes, terms_conditions, purchase_order_ref, delivery_details, source_quote_id) VALUES (?, ?, 'INVOICE', ?, ?, 'DRAFT', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        [req.user.id, quote.customer_id, invoice_number, quote.currency_id, issue_date, due_date, quote.payment_terms, quote.subtotal, quote.vat_amount, quote.total, quote.notes || null, quote.terms_conditions || null, quote.purchase_order_ref, quote.delivery_details, quote.id]
       );
       const invoiceId = docResult.insertId;
       await q("UPDATE documents SET delivery_status='NOT_SENT' WHERE id=?",[invoiceId]);
       for (const item of quoteItems) {
-        await q('INSERT INTO document_items (document_id, product_id, description, quantity, unit_price, vat_rate, vat_inclusive, vat_amount, subtotal, total) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)', [invoiceId, item.product_id || null, item.description, item.quantity, item.unit_price, item.vat_rate, item.vat_inclusive ? 1 : 0, item.vat_amount, item.subtotal, item.total]);
+        await q('INSERT INTO document_items (document_id, product_id, description, quantity, unit_label, unit_price, discount_percent, vat_rate, vat_inclusive, vat_amount, subtotal, total) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)', [invoiceId, item.product_id || null, item.description, item.quantity, item.unit_label, item.unit_price, item.discount_percent, item.vat_rate, item.vat_inclusive ? 1 : 0, item.vat_amount, item.subtotal, item.total]);
       }
       await q(`INSERT INTO document_tracking (document_id, event_type) VALUES (?, 'CREATED')`, [invoiceId]);
       // CONVERTED, not SENT: conversion says nothing about whether the
@@ -1452,7 +1862,7 @@ app.get('/api/products', authenticateToken, async (req, res) => {
     let sql = 'SELECT * FROM products WHERE user_id = ? AND is_active = 1', cntSql = 'SELECT COUNT(*) AS total FROM products WHERE user_id = ? AND is_active = 1';
     const params = [req.user.id], cntParams = [req.user.id];
     if (search) { const clause = ' AND (name LIKE ? OR description LIKE ?)'; sql += clause; cntSql += clause; params.push(`%${search}%`, `%${search}%`); cntParams.push(`%${search}%`, `%${search}%`); }
-    sql += ' ORDER BY name ASC LIMIT ? OFFSET ?'; params.push(limit, offset);
+    sql += ' ORDER BY name ASC, id ASC LIMIT ? OFFSET ?'; params.push(limit, offset);
     const [products, countResult] = await Promise.all([executeQuery(sql, params), executeQuery(cntSql, cntParams)]);
     res.json({ data: products, total: countResult[0].total, page, limit });
   } catch (error) { logger.error('Error fetching products:', error); res.status(500).json({ message: 'Failed to fetch products' }); }
@@ -1507,27 +1917,195 @@ app.delete('/api/products/:id', authenticateToken, async (req, res) => {
   } catch (error) { logger.error('Error deleting product:', error); res.status(500).json({ message: 'Failed to delete product' }); }
 });
 
+async function reviewCatalogueImport(q, userId, kind, csv) {
+  const preview = previewCatalogueCsv(kind,csv);
+  const [prior] = await q('SELECT created_count FROM catalogue_import_batches WHERE user_id=? AND kind=? AND content_hash=?',[userId,preview.kind,preview.hash]);
+  if (prior) return { ...preview,valid:false,replayed:true,previous_count:prior.created_count };
+  for (const row of preview.rows) {
+    if (row.errors.length) continue;
+    const duplicate = kind === 'customers'
+      ? await q('SELECT id FROM customers WHERE user_id=? AND active=1 AND LOWER(email)=? LIMIT 1',[userId,row.data.email.toLowerCase()])
+      : await q('SELECT id FROM products WHERE user_id=? AND is_active=1 AND LOWER(name)=? LIMIT 1',[userId,row.data.name.toLowerCase()]);
+    if (duplicate.length) row.errors.push(`Already exists: ${kind === 'customers' ? row.data.email : row.data.name}`);
+  }
+  preview.valid = preview.rows.length > 0 && preview.rows.every(row => row.errors.length === 0);
+  return preview;
+}
+
+app.get('/api/imports/:kind/template',authenticateToken,(req,res)=>{
+  const columns = TEMPLATES[req.params.kind];
+  if (!columns) return res.status(404).json({message:'Import template not found'});
+  res.set({ 'Content-Type':'text/csv; charset=utf-8','Content-Disposition':`attachment; filename="freevoices-${req.params.kind}-template.csv"` }).send(columns.join(',')+'\r\n');
+});
+app.post('/api/imports/preview',authenticateToken,async(req,res)=>{
+  try { res.json(await reviewCatalogueImport(executeQuery,req.user.id,req.body?.kind,req.body?.csv)); }
+  catch(error) { res.status(error.status || 500).json({message:error.status ? error.message : 'Import preview failed'}); }
+});
+app.post('/api/imports/commit',authenticateToken,async(req,res)=>{
+  try {
+    const outcome = await withTransaction(async q => {
+      await lockDocumentOwner(q,req.user.id);
+      const parsed = previewCatalogueCsv(req.body?.kind,req.body?.csv);
+      const [prior] = await q('SELECT created_count FROM catalogue_import_batches WHERE user_id=? AND kind=? AND content_hash=?',[req.user.id,parsed.kind,parsed.hash]);
+      if (prior) return { count:prior.created_count,replayed:true };
+      const preview = await reviewCatalogueImport(q,req.user.id,req.body.kind,req.body.csv);
+      if (!preview.valid) return { errors:preview.rows.filter(row => row.errors.length),status:422 };
+      for (const row of preview.rows) {
+        const d = row.data;
+        if (preview.kind === 'customers') await q('INSERT INTO customers(user_id,name,email,billing_address,phone,payment_terms) VALUES(?,?,?,?,?,?)',
+          [req.user.id,d.name,d.email.toLowerCase(),encCustomer('billing_address',d.billing_address),encCustomer('phone',d.phone || null),d.payment_terms ? Number(d.payment_terms) : null]);
+        else await q('INSERT INTO products(user_id,name,price,description,vat_inclusive) VALUES(?,?,?,?,?)',
+          [req.user.id,d.name,Number(d.price).toFixed(2),d.description || null,['true','1'].includes(d.vat_inclusive.toLowerCase()) ? 1 : 0]);
+      }
+      await q('INSERT INTO catalogue_import_batches(user_id,kind,content_hash,created_count) VALUES(?,?,?,?)',[req.user.id,preview.kind,preview.hash,preview.rows.length]);
+      return { count:preview.rows.length,replayed:false };
+    });
+    res.status(outcome.status || 201).json(outcome.status ? {message:'Fix import errors before saving',errors:outcome.errors} : outcome);
+  } catch(error) { logger.error('Catalogue import failed:',error); res.status(error.status || 500).json({message:error.status ? error.message : 'Import failed'}); }
+});
+
+async function reviewBankImport(q,userId,csv) {
+  const preview=previewBankCsv(csv);
+  const currencies=await q('SELECT id,code FROM currencies WHERE is_active=1');
+  const byCode=new Map(currencies.map(row=>[row.code,row.id]));
+  for (const row of preview.rows) {
+    row.currency_id=byCode.get(row.data.currency) || null;
+    if (!row.currency_id) row.errors.push('Choose an active currency');
+    const [prior]=await q('SELECT id,status FROM bank_import_rows WHERE user_id=? AND source_hash=?',[userId,row.source_hash]);
+    row.duplicate=prior ? { id:prior.id,status:prior.status } : null;
+  }
+  preview.valid=preview.rows.length>0 && preview.rows.every(row=>row.errors.length===0);
+  return preview;
+}
+
+app.get('/api/bank-imports/template',authenticateToken,(req,res)=>{
+  res.set({'Content-Type':'text/csv; charset=utf-8','Content-Disposition':'attachment; filename="freevoices-bank-template.csv"'}).send(BANK_HEADER.join(',')+'\r\n');
+});
+app.post('/api/bank-imports/preview',authenticateToken,async(req,res)=>{
+  try { res.json(await reviewBankImport(executeQuery,req.user.id,req.body?.csv)); }
+  catch(error) { res.status(error.status || 500).json({message:error.status ? error.message : 'Bank preview failed'}); }
+});
+app.post('/api/bank-imports/commit',authenticateToken,async(req,res)=>{
+  try {
+    const outcome=await withTransaction(async q=>{
+      await lockDocumentOwner(q,req.user.id);
+      const preview=await reviewBankImport(q,req.user.id,req.body?.csv);
+      if (!preview.valid) return {status:422,errors:preview.rows.filter(row=>row.errors.length)};
+      let created=0,duplicates=0;
+      for (const row of preview.rows) {
+        if (row.duplicate) {duplicates++;continue;}
+        const d=row.data;
+        await q(`INSERT INTO bank_import_rows(user_id,currency_id,transaction_date,amount,description,reference,account_label,source_hash)
+          VALUES(?,?,?,?,?,?,?,?)`,[req.user.id,row.currency_id,d.date,Number(d.amount).toFixed(2),encryptField('bank_import_rows','description',d.description || null),encryptField('bank_import_rows','reference',d.reference || null),encryptField('bank_import_rows','account_label',d.account || null),row.source_hash]);
+        created++;
+      }
+      return {created,duplicates};
+    });
+    res.status(outcome.status || 201).json(outcome.status ? {message:'Fix bank CSV errors',errors:outcome.errors} : outcome);
+  } catch(error) { logger.error('Bank CSV import failed:',error);res.status(error.status || 500).json({message:error.status ? error.message : 'Bank import failed'}); }
+});
+app.get('/api/bank-imports',authenticateToken,async(req,res)=>{
+  try {
+    const status=['PENDING','MATCHED','IGNORED'].includes(req.query.status) ? req.query.status : 'PENDING';
+    const rows=await executeQuery(`SELECT b.id,DATE_FORMAT(b.transaction_date,'%Y-%m-%d') AS transaction_date,b.amount,b.description,b.reference,b.account_label,b.status,b.invoice_id,b.payment_id,b.created_at,c.code AS currency_code
+      FROM bank_import_rows b JOIN currencies c ON c.id=b.currency_id WHERE b.user_id=? AND b.status=? ORDER BY b.transaction_date DESC,b.id DESC LIMIT 200`,[req.user.id,status]);
+    res.set('Cache-Control','no-store').json(rows.map(row=>({ ...row,description:decryptField('bank_import_rows','description',row.description),reference:decryptField('bank_import_rows','reference',row.reference),account_label:decryptField('bank_import_rows','account_label',row.account_label) })));
+  } catch(error) { logger.error('Bank review list failed:',error);res.status(500).json({message:'Could not load bank transactions'}); }
+});
+app.get('/api/bank-imports/:id/suggestions',authenticateToken,async(req,res)=>{
+  try {
+    const [row]=await executeQuery('SELECT id,currency_id,amount,reference,description,status FROM bank_import_rows WHERE id=? AND user_id=?',[req.params.id,req.user.id]);
+    if (!row) return res.status(404).json({message:'Bank transaction not found'});
+    if (row.status!=='PENDING' || Number(row.amount)<=0) return res.json([]);
+    const reference=decryptField('bank_import_rows','reference',row.reference) || '';
+    const description=decryptField('bank_import_rows','description',row.description) || '';
+    const invoices=await executeQuery(`SELECT d.id,d.document_number,d.total,c.name AS customer_name,
+      COALESCE(p.paid,0)-COALESCE(r.refunded,0) AS amount_paid,COALESCE(cn.credited,0) AS credited
+      FROM documents d JOIN customers c ON c.id=d.customer_id LEFT JOIN (SELECT document_id,SUM(amount) AS paid FROM payments GROUP BY document_id) p ON p.document_id=d.id
+      LEFT JOIN (SELECT invoice_id,SUM(total) AS credited FROM credit_notes GROUP BY invoice_id) cn ON cn.invoice_id=d.id
+      LEFT JOIN (SELECT invoice_id,SUM(amount) AS refunded FROM payment_refunds GROUP BY invoice_id) r ON r.invoice_id=d.id
+      WHERE d.user_id=? AND d.currency_id=? AND d.type='INVOICE' AND d.status IN ('SENT','OVERDUE','DRAFT') AND d.total-COALESCE(cn.credited,0)>COALESCE(p.paid,0)-COALESCE(r.refunded,0)
+      ORDER BY d.id DESC LIMIT 500`,[req.user.id,row.currency_id]);
+    const suggestions=invoices.map(invoice=>{
+      const balance=Number(invoice.total)-Number(invoice.credited)-Number(invoice.amount_paid);
+      const match=(reference+' '+description).toLowerCase().includes(invoice.document_number.toLowerCase());
+      const exact=Math.abs(balance-Number(row.amount))<0.005;
+      return { invoice_id:invoice.id,document_number:invoice.document_number,customer_name:invoice.customer_name,balance_due:balance.toFixed(2),reason:match && exact ? 'Reference and amount' : match ? 'Invoice reference' : exact ? 'Exact balance' : null,score:(match ? 2 : 0)+(exact ? 1 : 0) };
+    }).filter(item=>item.reason).sort((a,b)=>b.score-a.score).slice(0,5);
+    res.set('Cache-Control','no-store').json(suggestions);
+  } catch(error) { logger.error('Bank match suggestions failed:',error);res.status(500).json({message:'Could not find suggestions'}); }
+});
+app.post('/api/bank-imports/:id/match',authenticateToken,validate([body('invoice_id').isInt({min:1})]),async(req,res)=>{
+  try {
+    const outcome=await withTransaction(async q=>{
+      const [row]=await q(`SELECT id,currency_id,DATE_FORMAT(transaction_date,'%Y-%m-%d') AS day,amount,reference,status
+        FROM bank_import_rows WHERE id=? AND user_id=? FOR UPDATE`,[req.params.id,req.user.id]);
+      if (!row) return {status:404,message:'Bank transaction not found'};
+      if (row.status!=='PENDING') return {status:409,message:'This transaction was already reviewed'};
+      if (Number(row.amount)<=0) return {status:422,message:'Only incoming payments can match an invoice'};
+      const [invoice]=await q("SELECT id,status,currency_id FROM documents WHERE id=? AND user_id=? AND type='INVOICE'",[req.body.invoice_id,req.user.id]);
+      if (!invoice) return {status:404,message:'Invoice not found'};
+      if (invoice.currency_id!==row.currency_id || ['CANCELLED','PAID'].includes(invoice.status)) return {status:422,message:'Choose an open invoice in the same currency'};
+      const result=await recordInvoicePayment({invoiceId:invoice.id,amount:Number(row.amount).toFixed(2),paymentDate:row.day,method:'BANK_TRANSFER',reference:decryptField('bank_import_rows','reference',row.reference) || `bank-import-${row.id}`,notes:`Matched from bank import row ${row.id}`,rejectOverpayment:true},q);
+      if (result.overpayment || result.duplicate) return {status:422,message:'Amount exceeds the remaining balance or payment already exists'};
+      await q("UPDATE bank_import_rows SET status='MATCHED',invoice_id=?,payment_id=?,decided_at=NOW() WHERE id=?",[invoice.id,result.paymentId,row.id]);
+      return {status:200,message:'Payment matched',invoice_id:invoice.id,payment_id:result.paymentId,balance_due:result.balanceAfter.toFixed(2)};
+    });
+    res.status(outcome.status).json(outcome);
+  } catch(error) { logger.error('Bank match failed:',error);res.status(error.status || 500).json({message:error.status ? error.message : 'Could not match transaction'}); }
+});
+app.post('/api/bank-imports/:id/ignore',authenticateToken,async(req,res)=>{
+  try {
+    const result=await executeQuery("UPDATE bank_import_rows SET status='IGNORED',decided_at=NOW() WHERE id=? AND user_id=? AND status='PENDING'",[req.params.id,req.user.id]);
+    res.status(result.affectedRows ? 200 : 409).json({message:result.affectedRows ? 'Transaction ignored' : 'Transaction not pending'});
+  } catch(error) { res.status(500).json({message:'Could not ignore transaction'}); }
+});
+
 // ─── Dashboard summary ────────────────────────────────────────────────────────
 
 app.get('/api/dashboard/summary', authenticateToken, async (req, res) => {
   try {
     const userId = req.user.id;
     const currency = await reportCurrency(executeQuery,userId,req.query.currency,true);
-    const [revenueRows, customersRows, openRows, overdueRows, recentRows, logoRows] = await Promise.all([
+    const dashboardDate = todayIso();
+    const [revenueRows, customersRows, openRows, overdueRows, recentRows, logoRows, ageingRows, actionRows] = await Promise.all([
       // Money actually received this month, by payment date. Summing PAID
       // invoice totals counted a R1,150 invoice as R1,150 of revenue after
       // only R400 had come in, and ignored part payments entirely.
-      executeQuery(`SELECT COALESCE(SUM(p.amount), 0) AS monthRevenue FROM payments p JOIN documents d ON d.id = p.document_id WHERE d.user_id = ? AND d.type = 'INVOICE' AND d.currency_id=? AND p.payment_date >= DATE_FORMAT(?, '%Y-%m-01') AND p.payment_date <= ?`, [userId,currency.id,todayIso(),todayIso()]),
+      executeQuery(`SELECT
+        (SELECT COALESCE(SUM(p.amount),0) FROM payments p JOIN documents d ON d.id=p.document_id WHERE d.user_id=? AND d.type='INVOICE' AND d.currency_id=? AND p.payment_date>=DATE_FORMAT(?,'%Y-%m-01') AND p.payment_date<=?)
+        -(SELECT COALESCE(SUM(r.amount),0) FROM payment_refunds r JOIN documents d ON d.id=r.invoice_id WHERE d.user_id=? AND d.type='INVOICE' AND d.currency_id=? AND r.refund_date>=DATE_FORMAT(?,'%Y-%m-01') AND r.refund_date<=?) AS monthRevenue`,[userId,currency.id,dashboardDate,dashboardDate,userId,currency.id,dashboardDate,dashboardDate]),
       executeQuery('SELECT COUNT(*) AS total FROM customers WHERE user_id = ? AND active = 1', [userId]),
-      executeQuery(`SELECT COUNT(*) AS total FROM documents WHERE user_id = ? AND type = 'INVOICE' AND status = 'SENT'`, [userId]),
+      executeQuery(`SELECT COUNT(*) AS total FROM documents d WHERE user_id = ? AND type = 'INVOICE' AND (status IN ('SENT','OVERDUE') OR (status='DRAFT' AND EXISTS(SELECT 1 FROM payments p WHERE p.document_id=d.id)))`, [userId]),
       executeQuery(`SELECT COUNT(*) AS total FROM documents WHERE user_id = ? AND type = 'INVOICE' AND status = 'OVERDUE' AND notifications_muted = 0`, [userId]),
       // FIX: changed c.company_name to c.name — customers table has 'name' not 'company_name'
       executeQuery(`SELECT dt.event_type, dt.event_date, d.document_number, d.type AS document_type, c.name AS customer_name FROM document_tracking dt JOIN documents d ON dt.document_id = d.id JOIN customers c ON d.customer_id = c.id WHERE d.user_id = ? ORDER BY dt.event_date DESC LIMIT 5`, [userId]),
-      // Just the logo, not GET /api/settings: that also returns banking
-      // details, which the dashboard has no reason to load.
-      executeQuery("SELECT setting_value FROM settings WHERE user_id = ? AND setting_key = 'company_logo'", [userId])
+      // Logo for the dashboard identity. The setup checklist separately
+      // checks the authenticated owner's saved business settings.
+      executeQuery("SELECT setting_value FROM settings WHERE user_id = ? AND setting_key = 'company_logo'", [userId]),
+      executeQuery(`SELECT
+        COALESCE(SUM(balance),0) AS outstanding,
+        COALESCE(SUM(CASE WHEN due_date IS NULL OR due_date >= ? THEN balance ELSE 0 END),0) AS current_balance,
+        COALESCE(SUM(CASE WHEN due_date < ? AND due_date >= DATE_SUB(?, INTERVAL 30 DAY) THEN balance ELSE 0 END),0) AS days_1_30,
+        COALESCE(SUM(CASE WHEN due_date < DATE_SUB(?, INTERVAL 30 DAY) AND due_date >= DATE_SUB(?, INTERVAL 60 DAY) THEN balance ELSE 0 END),0) AS days_31_60,
+        COALESCE(SUM(CASE WHEN due_date < DATE_SUB(?, INTERVAL 60 DAY) THEN balance ELSE 0 END),0) AS days_61_plus
+        FROM (SELECT d.due_date, GREATEST(d.total
+          -(SELECT COALESCE(SUM(cn.total),0) FROM credit_notes cn WHERE cn.invoice_id=d.id)
+          -(SELECT COALESCE(SUM(p.amount),0) FROM payments p WHERE p.document_id=d.id)
+          +(SELECT COALESCE(SUM(r.amount),0) FROM payment_refunds r WHERE r.invoice_id=d.id),0) AS balance
+          FROM documents d WHERE d.user_id=? AND d.type='INVOICE' AND d.currency_id=? AND (d.status IN ('SENT','OVERDUE') OR (d.status='DRAFT' AND EXISTS(SELECT 1 FROM payments p WHERE p.document_id=d.id)))) balances`,
+        [dashboardDate,dashboardDate,dashboardDate,dashboardDate,dashboardDate,dashboardDate,userId,currency.id]),
+      executeQuery(`SELECT d.id,d.document_number,c.name AS customer_name,d.due_date,
+        GREATEST(d.total-(SELECT COALESCE(SUM(cn.total),0) FROM credit_notes cn WHERE cn.invoice_id=d.id)
+          -(SELECT COALESCE(SUM(p.amount),0) FROM payments p WHERE p.document_id=d.id)
+          +(SELECT COALESCE(SUM(r.amount),0) FROM payment_refunds r WHERE r.invoice_id=d.id),0) AS balance_due
+        FROM documents d JOIN customers c ON c.id=d.customer_id
+        WHERE d.user_id=? AND d.type='INVOICE' AND d.currency_id=? AND (d.status IN ('SENT','OVERDUE') OR (d.status='DRAFT' AND EXISTS(SELECT 1 FROM payments p WHERE p.document_id=d.id)))
+        HAVING balance_due>0 ORDER BY d.due_date IS NULL,d.due_date ASC,d.id ASC LIMIT 5`,[userId,currency.id])
     ]);
-    res.json({ currency_code:currency.code, monthRevenue: parseFloat(revenueRows[0].monthRevenue), totalCustomers: customersRows[0].total, openInvoices: openRows[0].total, overdueInvoices: overdueRows[0].total, recentActivity: recentRows, companyLogo: logoRows[0]?.setting_value || null });
+    const ageing=ageingRows[0];
+    res.json({ currency_code:currency.code, monthRevenue: parseFloat(revenueRows[0].monthRevenue), totalCustomers: customersRows[0].total, openInvoices: openRows[0].total, overdueInvoices: overdueRows[0].total, recentActivity: recentRows, companyLogo: logoRows[0]?.setting_value || null,
+      outstanding:Number(ageing.outstanding), ageing:{current:Number(ageing.current_balance),days1to30:Number(ageing.days_1_30),days31to60:Number(ageing.days_31_60),days61plus:Number(ageing.days_61_plus)}, actionInvoices:actionRows.map(row=>({...row,balance_due:Number(row.balance_due)})) });
   } catch (error) { logger.error('Error fetching dashboard summary:', error); res.status(error.status || 500).json({ message: error.status ? error.message : 'Failed to fetch dashboard summary' }); }
 });
 
@@ -1632,13 +2210,19 @@ app.post('/api/settings/logo', authenticateToken, (req, res) => {
     if (err) { if (err.code === 'LIMIT_FILE_SIZE') return res.status(400).json({ message: 'Logo must be 5 MB or smaller' }); return res.status(400).json({ message: err.message || 'Upload failed' }); }
     if (!req.file) return res.status(400).json({ message: 'No file uploaded' });
     try {
+      const extension = path.extname(req.file.filename).toLowerCase();
+      const expectedType = extension === '.png' ? 'image/png' : extension === '.jpg' || extension === '.jpeg' ? 'image/jpeg' : null;
+      if (!expectedType || req.file.mimetype !== expectedType || actualImageType(req.file.path) !== expectedType) {
+        fs.unlink(req.file.path, () => {});
+        return res.status(400).json({ message: 'Logo content must match its PNG or JPEG file type' });
+      }
       const userId = req.user.id;
       const logoPath = `/uploads/logos/${req.file.filename}`;
       const existing = await executeQuery("SELECT setting_value FROM settings WHERE user_id = ? AND setting_key = 'company_logo'", [userId]);
-      if (existing.length > 0 && existing[0].setting_value) fs.unlink(path.join(__dirname, existing[0].setting_value), () => {});
       await executeQuery(`INSERT INTO settings (user_id, setting_key, setting_value, updated_at) VALUES (?, 'company_logo', ?, NOW()) ON DUPLICATE KEY UPDATE setting_value = VALUES(setting_value), updated_at = NOW()`, [userId, logoPath]);
+      if (existing.length > 0 && existing[0].setting_value) fs.unlink(path.join(__dirname, existing[0].setting_value), () => {});
       res.json({ message: 'Logo uploaded successfully', logo_url: logoPath });
-    } catch (error) { logger.error('Error saving logo path:', error); res.status(500).json({ message: 'Failed to save logo' }); }
+    } catch (error) { fs.unlink(req.file.path, () => {}); logger.error('Error saving logo path:', error); res.status(500).json({ message: 'Failed to save logo' }); }
   });
 });
 
@@ -1793,8 +2377,12 @@ app.put('/api/settings/payfast', authenticateToken, validate([
 app.put('/api/settings/notifications', authenticateToken, async (req, res) => {
   try {
     const userId = req.user.id;
-    const { notify_invoice_sent, notify_payment_received, notify_invoice_overdue, customer_reminders_enabled } = req.body;
+    const { notify_invoice_sent, notify_payment_received, notify_invoice_overdue, customer_reminders_enabled, customer_reminder_days } = req.body;
+    let reminderDays;
+    try { reminderDays=parseReminderDays(customer_reminder_days); }
+    catch { return res.status(422).json({message:'Choose 1 to 5 unique reminder days between 1 and 365'}); }
     const pairs = [['notify_invoice_sent', notify_invoice_sent === true ? '1' : '0'], ['notify_payment_received', notify_payment_received === true ? '1' : '0'], ['notify_invoice_overdue', notify_invoice_overdue === true ? '1' : '0'], ['customer_reminders_enabled', customer_reminders_enabled === true ? '1' : '0']];
+    pairs.push(['customer_reminder_days',reminderDays.join(',')]);
     for (const [key, value] of pairs) await executeQuery(`INSERT INTO settings (user_id, setting_key, setting_value, updated_at) VALUES (?, ?, ?, NOW()) ON DUPLICATE KEY UPDATE setting_value = VALUES(setting_value), updated_at = NOW()`, [userId, key, value]);
     res.json({ message: 'Notification preferences updated successfully' });
   } catch (error) { logger.error('Error updating notification settings:', error); res.status(500).json({ message: 'Failed to update notification preferences' }); }
@@ -1818,6 +2406,104 @@ app.get('/api/reports/vat-summary',authenticateToken,async(req,res)=>{
   try { res.json(await report(executeQuery,req.user.id,req.query.currency,'vat')); }
   catch(error) { res.status(error.status || 500).json({message:error.status ? error.message : 'Report could not be loaded'}); }
 });
+app.get('/api/reports/payments-ledger',authenticateToken,async(req,res)=>{
+  try {
+    const { from, to, customer_id } = req.query;
+    const validDate = value => !value || (typeof value === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(value) && !Number.isNaN(Date.parse(`${value}T00:00:00Z`)) && new Date(`${value}T00:00:00Z`).toISOString().slice(0,10) === value);
+    if (!validDate(from) || !validDate(to) || (from && to && from > to))
+      return res.status(422).json({message:'Choose a valid date range'});
+    if (customer_id && !/^[1-9]\d*$/.test(String(customer_id))) return res.status(422).json({message:'Choose a valid customer'});
+    const currency = await reportCurrency(executeQuery,req.user.id,req.query.currency);
+    if (customer_id) {
+      const owned = await executeQuery('SELECT id FROM customers WHERE id=? AND user_id=?',[customer_id,req.user.id]);
+      if (!owned.length) return res.status(404).json({message:'Customer not found'});
+    }
+    let sql = `SELECT cash.id,cash.kind,cash.payment_date,cash.amount,cash.payment_method,cash.transaction_reference,d.id AS invoice_id,d.document_number,c.id AS customer_id,c.name AS customer_name
+      FROM (SELECT p.id,'PAYMENT' AS kind,p.document_id AS invoice_id,p.payment_date,p.amount,p.payment_method,p.transaction_reference FROM payments p
+        UNION ALL SELECT r.id,'REFUND' AS kind,r.invoice_id,r.refund_date AS payment_date,-r.amount AS amount,r.method AS payment_method,r.reference AS transaction_reference FROM payment_refunds r) cash
+      JOIN documents d ON d.id=cash.invoice_id JOIN customers c ON c.id=d.customer_id
+      WHERE d.user_id=? AND d.type='INVOICE' AND d.currency_id=?`;
+    const params = [req.user.id,currency.id];
+    if (from) { sql += ' AND cash.payment_date>=?'; params.push(from); }
+    if (to) { sql += ' AND cash.payment_date<=?'; params.push(to); }
+    if (customer_id) { sql += ' AND c.id=?'; params.push(customer_id); }
+    sql += ' ORDER BY cash.payment_date ASC,cash.kind ASC,cash.id ASC LIMIT 1001';
+    const rows = await executeQuery(sql,params);
+    if (rows.length > 1000) return res.status(422).json({message:'Too many cash movements. Narrow the date or customer filter.'});
+    res.set('Cache-Control','no-store').json({ currency_code:currency.code, from:from || null,to:to || null,
+      rows:rows.map(row=>row.kind==='REFUND' ? {...row,transaction_reference:decryptField('payment_refunds','reference',row.transaction_reference)} : decryptPaymentRow(row)) });
+  } catch(error) { logger.error('Error fetching payments ledger:',error); res.status(error.status || 500).json({message:error.status ? error.message : 'Report could not be loaded'}); }
+});
+
+app.get('/api/reports/ageing',authenticateToken,async(req,res)=>{
+  try {
+    const currency = await reportCurrency(executeQuery,req.user.id,req.query.currency);
+    const customerId = req.query.customer_id;
+    if (customerId && !/^[1-9]\d*$/.test(String(customerId))) return res.status(422).json({message:'Choose a valid customer'});
+    let sql = `SELECT d.id AS invoice_id,d.document_number,d.due_date,d.total,c.id AS customer_id,c.name AS customer_name,
+      COALESCE(p.paid,0)-COALESCE(r.refunded,0) AS amount_paid,COALESCE(cn.credited,0) AS credit_total,
+      ROUND(GREATEST(d.total-COALESCE(cn.credited,0)-COALESCE(p.paid,0)+COALESCE(r.refunded,0),0),2) AS balance_due,
+      CASE WHEN d.due_date IS NULL OR d.due_date>=? THEN 'current' WHEN DATEDIFF(?,d.due_date)<=30 THEN 'days1to30'
+           WHEN DATEDIFF(?,d.due_date)<=60 THEN 'days31to60' ELSE 'days61plus' END AS band
+      FROM documents d JOIN customers c ON c.id=d.customer_id
+      LEFT JOIN (SELECT document_id,SUM(amount) AS paid FROM payments GROUP BY document_id) p ON p.document_id=d.id
+      LEFT JOIN (SELECT invoice_id,SUM(total) AS credited FROM credit_notes GROUP BY invoice_id) cn ON cn.invoice_id=d.id
+      LEFT JOIN (SELECT invoice_id,SUM(amount) AS refunded FROM payment_refunds GROUP BY invoice_id) r ON r.invoice_id=d.id
+      WHERE d.user_id=? AND d.currency_id=? AND d.type='INVOICE' AND
+        (d.status IN ('SENT','OVERDUE') OR (d.status='DRAFT' AND COALESCE(p.paid,0)>0)) AND d.total-COALESCE(cn.credited,0)>COALESCE(p.paid,0)-COALESCE(r.refunded,0)`;
+    const day = todayIso();
+    const params = [day,day,day,req.user.id,currency.id];
+    if (customerId) { sql += ' AND c.id=?'; params.push(customerId); }
+    sql += ' ORDER BY d.due_date ASC,d.id ASC LIMIT 1001';
+    const rows = await executeQuery(sql,params);
+    if (rows.length>1000) return res.status(422).json({message:'Too many open invoices. Choose a customer.'});
+    const totals = { current:0,days1to30:0,days31to60:0,days61plus:0 };
+    for (const row of rows) totals[row.band] += Number(row.balance_due);
+    res.set('Cache-Control','no-store').json({ currency_code:currency.code,as_of:day,totals,rows });
+  } catch(error) { logger.error('Error fetching ageing report:',error); res.status(error.status || 500).json({message:error.status ? error.message : 'Ageing report could not be loaded'}); }
+});
+
+app.get('/api/reports/customer-statement',authenticateToken,async(req,res)=>{
+  try {
+    const customerId = req.query.customer_id;
+    if (!/^[1-9]\d*$/.test(String(customerId || ''))) return res.status(422).json({message:'Choose a customer'});
+    const { from, to } = req.query;
+    const validDate = value => !value || (typeof value==='string' && /^\d{4}-\d{2}-\d{2}$/.test(value) && !Number.isNaN(Date.parse(`${value}T00:00:00Z`)) && new Date(`${value}T00:00:00Z`).toISOString().slice(0,10)===value);
+    if (!validDate(from) || !validDate(to) || (from && to && from>to)) return res.status(422).json({message:'Choose a valid date range'});
+    const currency = await reportCurrency(executeQuery,req.user.id,req.query.currency);
+    const [customer] = await queryDecrypted(decryptCustomerRow,'SELECT id,name FROM customers WHERE id=? AND user_id=?',[customerId,req.user.id]);
+    if (!customer) return res.status(404).json({message:'Customer not found'});
+    const end = to || todayIso();
+    const invoices = await executeQuery(`SELECT id,document_number,DATE_FORMAT(issue_date,'%Y-%m-%d') AS day,total,status FROM documents
+      WHERE user_id=? AND customer_id=? AND currency_id=? AND type='INVOICE' AND issue_date<=? AND
+      (status IN ('SENT','OVERDUE','PAID','CREDITED') OR EXISTS(SELECT 1 FROM payments p WHERE p.document_id=documents.id))
+      ORDER BY issue_date,id LIMIT 1001`,[req.user.id,customerId,currency.id,end]);
+    const payments = await executeQuery(`SELECT p.id,d.id AS invoice_id,d.document_number,DATE_FORMAT(p.payment_date,'%Y-%m-%d') AS day,p.amount
+      FROM payments p JOIN documents d ON d.id=p.document_id WHERE d.user_id=? AND d.customer_id=? AND d.currency_id=? AND d.type='INVOICE' AND p.payment_date<=?
+      ORDER BY p.payment_date,p.id LIMIT 1001`,[req.user.id,customerId,currency.id,end]);
+    const credits = await executeQuery(`SELECT cn.id,cn.invoice_id,cn.document_number,DATE_FORMAT(cn.issue_date,'%Y-%m-%d') AS day,cn.total
+      FROM credit_notes cn JOIN documents d ON d.id=cn.invoice_id WHERE d.user_id=? AND d.customer_id=? AND d.currency_id=? AND cn.issue_date<=?
+      ORDER BY cn.issue_date,cn.id LIMIT 1001`,[req.user.id,customerId,currency.id,end]);
+    const refunds = await executeQuery(`SELECT r.id,r.invoice_id,d.document_number,DATE_FORMAT(r.refund_date,'%Y-%m-%d') AS day,r.amount
+      FROM payment_refunds r JOIN documents d ON d.id=r.invoice_id WHERE d.user_id=? AND d.customer_id=? AND d.currency_id=? AND r.refund_date<=?
+      ORDER BY r.refund_date,r.id LIMIT 1001`,[req.user.id,customerId,currency.id,end]);
+    if ([invoices,payments,credits,refunds].some(rows=>rows.length>1000)) return res.status(422).json({message:'Too many statement entries. Narrow the end date.'});
+    const entries = [
+      ...invoices.map(row => ({ day:row.day,kind:'INVOICE',invoice_id:row.id,document_number:row.document_number,debit:row.status==='CANCELLED' ? 0 : Number(row.total),credit:0,id:row.id })),
+      ...payments.map(row => ({ day:row.day,kind:'PAYMENT',invoice_id:row.invoice_id,document_number:row.document_number,debit:0,credit:Number(row.amount),id:row.id })),
+      ...credits.map(row => ({ day:row.day,kind:'CREDIT_NOTE',invoice_id:row.invoice_id,document_number:row.document_number,debit:0,credit:Number(row.total),id:row.id })),
+      ...refunds.map(row => ({ day:row.day,kind:'REFUND',invoice_id:row.invoice_id,document_number:row.document_number,debit:Number(row.amount),credit:0,id:row.id }))
+    ].sort((a,b)=>a.day.localeCompare(b.day) || ({INVOICE:0,PAYMENT:1,CREDIT_NOTE:2,REFUND:3}[a.kind]-{INVOICE:0,PAYMENT:1,CREDIT_NOTE:2,REFUND:3}[b.kind]) || a.id-b.id);
+    let opening = 0,balance = 0;
+    const rows = [];
+    for (const entry of entries) {
+      balance += entry.debit-entry.credit;
+      if (from && entry.day<from) opening=balance;
+      else rows.push({ ...entry,balance:Number(balance.toFixed(2)) });
+    }
+    res.set('Cache-Control','no-store').json({ customer_id:customer.id,customer_name:customer.name,currency_code:currency.code,from:from || null,to:end,opening_balance:Number(opening.toFixed(2)),closing_balance:Number(balance.toFixed(2)),rows });
+  } catch(error) { logger.error('Error fetching customer statement:',error); res.status(error.status || 500).json({message:error.status ? error.message : 'Customer statement could not be loaded'}); }
+});
 
 app.get('/api/public/invoice/:token', portalLimiter, async (req, res) => {
   try {
@@ -1826,7 +2512,7 @@ app.get('/api/public/invoice/:token', portalLimiter, async (req, res) => {
     if (docs.length === 0) return res.status(404).json({ message: 'Invoice not found or link has expired' });
     const items = await executeQuery('SELECT description, quantity, unit_price, vat_rate, vat_inclusive, vat_amount, subtotal, total FROM document_items WHERE document_id = ? ORDER BY id ASC', [docs[0].id]);
     const logoRows = await executeQuery("SELECT setting_value FROM settings WHERE user_id = (SELECT user_id FROM documents WHERE id = ?) AND setting_key = 'company_logo'", [docs[0].id]);
-    const [{ paid }] = await executeQuery('SELECT COALESCE(SUM(amount), 0) AS paid FROM payments WHERE document_id = ?', [docs[0].id]);
+    const settlement = await invoiceSettlement(executeQuery,docs[0].id);
     await executeQuery(`INSERT INTO document_tracking (document_id, event_type, ip_address, user_agent) VALUES (?, 'VIEWED', ?, ?)`, [docs[0].id, encTracking('ip_address', req.ip || null), encTracking('user_agent', req.get('user-agent') || null)]);
     // The seller's PayFast credentials are only ever used to decide whether a
     // button can be shown; they are stripped before the row leaves the server.
@@ -1844,7 +2530,8 @@ app.get('/api/public/invoice/:token', portalLimiter, async (req, res) => {
     } = seller;
     res.json({
       ...publicFields, pay_url, company_logo: Object.hasOwn(seller, 'company_logo') ? seller.company_logo : logoRows[0]?.setting_value || null, items,
-      amount_paid: Number(paid).toFixed(2), balance_due: balanceDue(seller.total, paid).toFixed(2),
+      amount_paid: settlement.netPaid.toFixed(2),credit_total:settlement.creditTotal.toFixed(2),adjusted_total:settlement.adjustedTotal.toFixed(2),
+      balance_due: settlement.balanceDue.toFixed(2),refund_due:settlement.refundDue.toFixed(2),last_updated_at:seller.updated_at,
     });
   } catch (error) { logger.error('Error fetching public invoice:', error); res.status(500).json({ message: 'Failed to fetch invoice' }); }
 });
@@ -1854,7 +2541,7 @@ app.get('/api/public/invoice/:token/pdf', portalLimiter, async (req, res) => {
     const { token } = req.params;
     const docs = await queryDecrypted(decryptCustomerJoin, `SELECT d.*, (SELECT COALESCE(SUM(pp.amount), 0) FROM payments pp WHERE pp.document_id = d.id) AS amount_paid, c.name AS customer_name, c.email AS customer_email, c.billing_address AS customer_billing_address, c.vat_number AS customer_vat_number, cur.symbol AS currency_symbol, cur.code AS currency_code FROM documents d JOIN customers c ON c.id = d.customer_id LEFT JOIN currencies cur ON cur.id = d.currency_id WHERE d.share_token = ? AND EXISTS(SELECT 1 FROM users owner WHERE owner.id=d.user_id AND owner.status='ACTIVE') AND d.type = 'INVOICE' AND (d.share_token_expires_at IS NULL OR d.share_token_expires_at > NOW())`, [hashToken(token)]);
     if (docs.length === 0) return res.status(404).json({ message: 'Invoice not found or link has expired' });
-    const invoice = docs[0];
+    const invoice = await withInvoiceFinancials(executeQuery,docs[0]);
     const [items, users, logoRows] = await Promise.all([
       executeQuery('SELECT * FROM document_items WHERE document_id = ? ORDER BY id ASC', [invoice.id]),
       queryDecrypted(decryptUserRow, 'SELECT * FROM users WHERE id = ?', [invoice.user_id]),
@@ -1868,6 +2555,60 @@ app.get('/api/public/invoice/:token/pdf', portalLimiter, async (req, res) => {
     res.set({ 'Content-Type': 'application/pdf', 'Content-Disposition': `attachment; filename="${invoice.document_number}.pdf"`, 'Content-Length': pdfBuffer.length });
     res.send(pdfBuffer);
   } catch (error) { logger.error('Error generating public invoice PDF:', error); res.status(500).json({ message: 'Failed to generate PDF' }); }
+});
+
+app.get('/api/public/quote/:token', portalLimiter, async (req, res) => {
+  try {
+    const docs = await executeQuery(`SELECT d.id,d.document_number,d.status,d.issue_date,d.valid_until,d.payment_terms,d.subtotal,d.vat_amount,d.total,d.notes,d.terms_conditions,d.purchase_order_ref,d.delivery_details,
+      DATE_FORMAT(d.valid_until,'%Y-%m-%d') AS valid_until_iso,
+      c.name AS customer_name,c.email AS customer_email,c.billing_address AS customer_billing_address,
+      cur.symbol AS currency_symbol,cur.code AS currency_code,u.company_name,u.vat_number AS company_vat_number,u.address AS company_address,u.email AS company_email
+      FROM documents d JOIN customers c ON c.id=d.customer_id LEFT JOIN currencies cur ON cur.id=d.currency_id JOIN users u ON u.id=d.user_id
+      WHERE d.share_token=? AND d.type='QUOTE' AND u.status='ACTIVE' AND (d.share_token_expires_at IS NULL OR d.share_token_expires_at>NOW())`, [hashToken(req.params.token)]);
+    if (!docs.length) return res.status(404).json({ message: 'Quote not found or link has expired' });
+    const quote = docs[0];
+    const items = await executeQuery('SELECT description,quantity,unit_label,unit_price,discount_percent,vat_rate,vat_inclusive,vat_amount,subtotal,total FROM document_items WHERE document_id=? ORDER BY id', [quote.id]);
+    await executeQuery("INSERT INTO document_tracking(document_id,event_type,ip_address,user_agent) VALUES(?,'VIEWED',?,?)", [quote.id,encTracking('ip_address',req.ip || null),encTracking('user_agent',req.get('user-agent') || null)]);
+    const [publicQuote] = await hydrateDocumentSnapshots(executeQuery, [decryptCustomerJoin(decryptAliasedRow('users',decryptUserRow(quote),'company_'))], { includeLogo:true });
+    res.set('Cache-Control','no-store').json({ ...publicQuote, status: quote.status === 'SENT' && quote.valid_until_iso && quote.valid_until_iso < todayIso() ? 'EXPIRED' : quote.status, items });
+  } catch (error) { logger.error('Error fetching public quote:',error); res.status(500).json({ message:'Failed to fetch quote' }); }
+});
+
+app.get('/api/public/quote/:token/pdf', portalLimiter, async (req, res) => {
+  try {
+    const docs = await queryDecrypted(decryptCustomerJoin, `SELECT d.*,c.name AS customer_name,c.email AS customer_email,c.billing_address AS customer_billing_address,c.vat_number AS customer_vat_number,cur.symbol AS currency_symbol,cur.code AS currency_code
+      FROM documents d JOIN customers c ON c.id=d.customer_id LEFT JOIN currencies cur ON cur.id=d.currency_id JOIN users u ON u.id=d.user_id
+      WHERE d.share_token=? AND d.type='QUOTE' AND u.status='ACTIVE' AND (d.share_token_expires_at IS NULL OR d.share_token_expires_at>NOW())`, [hashToken(req.params.token)]);
+    if (!docs.length) return res.status(404).json({ message:'Quote not found or link has expired' });
+    const quote = docs[0];
+    const [items, users, logoRows] = await Promise.all([
+      executeQuery('SELECT * FROM document_items WHERE document_id=? ORDER BY id',[quote.id]),
+      queryDecrypted(decryptUserRow,'SELECT * FROM users WHERE id=?',[quote.user_id]),
+      executeQuery("SELECT setting_value FROM settings WHERE user_id=? AND setting_key='company_logo'",[quote.user_id])
+    ]);
+    const logo = logoRows[0]?.setting_value || null;
+    const seller = await documentSeller(executeQuery,quote.id,{ ...users[0],logo_path:logo ? path.join(__dirname,logo) : null });
+    const pdf = await buildQuotePdf(quote,items,seller);
+    await executeQuery("INSERT INTO document_tracking(document_id,event_type,ip_address,user_agent) VALUES(?,'DOWNLOADED',?,?)",[quote.id,encTracking('ip_address',req.ip || null),encTracking('user_agent',req.get('user-agent') || null)]);
+    res.set({ 'Content-Type':'application/pdf','Content-Disposition':`attachment; filename="${quote.document_number}.pdf"`,'Content-Length':pdf.length,'Cache-Control':'no-store' }).send(pdf);
+  } catch(error) { logger.error('Error generating public quote PDF:',error); res.status(500).json({ message:'Failed to generate quote PDF' }); }
+});
+
+app.post('/api/public/quote/:token/decision', portalLimiter, validate([body('decision').isIn(['ACCEPTED','DECLINED'])]), async (req,res) => {
+  try {
+    const outcome = await withTransaction(async q => {
+      const [quote] = await q(`SELECT d.id,d.status,DATE_FORMAT(d.valid_until,'%Y-%m-%d') AS valid_until_iso FROM documents d JOIN users u ON u.id=d.user_id
+        WHERE d.share_token=? AND d.type='QUOTE' AND u.status='ACTIVE' AND (d.share_token_expires_at IS NULL OR d.share_token_expires_at>NOW()) FOR UPDATE`,[hashToken(req.params.token)]);
+      if (!quote) return { status:404,message:'Quote not found or link has expired' };
+      if (quote.status === req.body.decision) return { status:200,message:`Quote already ${req.body.decision.toLowerCase()}` };
+      if (quote.status !== 'SENT') return { status:409,message:'This quote can no longer be decided' };
+      if (quote.valid_until_iso && quote.valid_until_iso < todayIso()) return { status:410,message:'This quote has expired' };
+      await q('UPDATE documents SET status=?,updated_at=NOW() WHERE id=?',[req.body.decision,quote.id]);
+      await q('INSERT INTO document_tracking(document_id,event_type,ip_address,user_agent) VALUES(?,?,?,?)',[quote.id,req.body.decision,encTracking('ip_address',req.ip || null),encTracking('user_agent',req.get('user-agent') || null)]);
+      return { status:200,message:`Quote ${req.body.decision.toLowerCase()}` };
+    });
+    res.set('Cache-Control','no-store').status(outcome.status).json({ message:outcome.message });
+  } catch(error) { logger.error('Error recording quote decision:',error); res.status(500).json({ message:'Failed to record quote decision' }); }
 });
 
 // ─── Recurring invoice cron — runs daily at 00:05 ─────────────────────────────
@@ -1884,8 +2625,8 @@ async function processRecurringInvoices() {
     try {await queueInvoiceEmail(row.id,row.user_id);}catch(error){logger.error(`Recurring email #${row.id} could not be queued`,error);}
   }
 }
-cron.schedule('5 * * * *',()=>processRecurringInvoices().catch(error=>logger.error('Recurring job failed',error)),{timezone:'Africa/Johannesburg'});
-cron.schedule('* * * * *',()=>processBillingNotifications().then(()=>processOutbox(emailService.transporter)).catch(error=>logger.error('Email queue failed',error)),{timezone:'Africa/Johannesburg'});
+cron.schedule('5 * * * *',()=>runTrackedJob('recurring',processRecurringInvoices),{timezone:'Africa/Johannesburg'});
+cron.schedule('* * * * *',()=>runTrackedJob('notifications',async()=>{await processBillingNotifications();await processOutbox(emailService.transporter);}),{timezone:'Africa/Johannesburg'});
 
 async function processOverdueInvoices() {
   logger.info('Overdue invoice cron: starting');
@@ -1901,10 +2642,10 @@ async function processOverdueInvoices() {
       } catch (itemError) { logger.error(`Overdue invoice cron: failed to process invoice #${invoice.id}:`, itemError); }
     }
     logger.info('Overdue invoice cron: completed');
-  } catch (error) { logger.error('Overdue invoice cron: fatal error:', error); }
+  } catch (error) { logger.error('Overdue invoice cron: fatal error:', error); throw error; }
 }
 
-cron.schedule('10 * * * *', processOverdueInvoices, {timezone:'Africa/Johannesburg'});
+cron.schedule('10 * * * *',()=>runTrackedJob('overdue',processOverdueInvoices), {timezone:'Africa/Johannesburg'});
 
 // ─── Account anonymisation cron — runs daily at 00:20 ─────────────────────────
 // The erasure that /api/account/close promises and, until now, nothing
@@ -1913,10 +2654,7 @@ cron.schedule('10 * * * *', processOverdueInvoices, {timezone:'Africa/Johannesbu
 // database work with no HTTP in it, and out there it can be run and tested
 // without booting a server. See that file for what it deliberately leaves
 // alone and why.
-cron.schedule('20 0 * * *', () => {
-  anonymiseExpiredAccounts().catch(error =>
-    logger.error('Account anonymisation cron: fatal error:', error));
-});
+cron.schedule('20 0 * * *',()=>runTrackedJob('retention',anonymiseExpiredAccounts));
 
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -1960,7 +2698,7 @@ app.get('/api/account/export', authenticateToken, exportLimiter, async (req, res
     // doesn't fill error.log on every export.
     const hasConsents = await tableExists(executeQuery, 'marketing_consents');
 
-    const [user, settings, customers, products, documents, items, payments, tracking, emails, consents, requests] =
+    const [user, settings, customers, products, documents, items, payments, tracking, emails, consents, requests, bankRows, credits, refunds] =
       await Promise.all([
         queryDecrypted(decryptUserRow,
           // google_id is the Google account identifier we hold about this
@@ -1988,6 +2726,9 @@ app.get('/api/account/export', authenticateToken, exportLimiter, async (req, res
           ? executeQuery('SELECT channel, source, consented_at FROM marketing_consents WHERE user_id = ?', [uid])
           : Promise.resolve([]),
         executeQuery('SELECT request_type, status, requested_at, completed_at FROM data_subject_requests WHERE user_id = ?', [uid]),
+        executeQuery('SELECT id,currency_id,transaction_date,amount,description,reference,account_label,status,invoice_id,payment_id,created_at,decided_at FROM bank_import_rows WHERE user_id=?',[uid]),
+        executeQuery('SELECT id,invoice_id,document_number,issue_date,reason,description,subtotal,vat_amount,total,created_at FROM credit_notes WHERE user_id=?',[uid]),
+        executeQuery('SELECT id,invoice_id,payment_id,amount,refund_date,method,reference,reason,created_at FROM payment_refunds WHERE user_id=?',[uid]),
       ]);
 
     if (user.length === 0) return res.status(404).json({ message: 'User not found' });
@@ -1998,6 +2739,11 @@ app.get('/api/account/export', authenticateToken, exportLimiter, async (req, res
     const scrubbed = documents.map(({ share_token, ...rest }) => rest);
     const snapshots = await executeQuery(`SELECT s.document_id, s.payload FROM document_snapshots s
       JOIN documents d ON d.id=s.document_id WHERE d.user_id=?`, [uid]);
+    const [businessAccess, accessEvents, bookkeeperInvitations] = await Promise.all([
+      executeQuery('SELECT owner_id,member_id,granted_at,revoked_at FROM business_bookkeepers WHERE owner_id=? OR member_id=?',[uid,uid]),
+      executeQuery('SELECT owner_id,member_id,actor_id,action,created_at FROM business_access_events WHERE owner_id=? OR member_id=?',[uid,uid]),
+      executeQuery('SELECT email,expires_at,delivery_status,accepted_at,revoked_at,created_at FROM bookkeeper_invitations WHERE owner_id=?',[uid]),
+    ]);
 
     const payload = {
       document_snapshots: snapshots.map(row => ({ document_id: row.document_id,
@@ -2010,12 +2756,18 @@ app.get('/api/account/export', authenticateToken, exportLimiter, async (req, res
         'included because you are the responsible party for them. Passwords and security tokens are ' +
         'deliberately excluded.',
       account: user[0],
+      business_access: businessAccess,
+      business_access_events: accessEvents,
+      bookkeeper_invitations: bookkeeperInvitations,
       settings,
       customers,
       products,
       documents: scrubbed,
       document_items: items,
       payments,
+      bank_import_rows: bankRows.map(row=>({ ...row,description:decryptField('bank_import_rows','description',row.description),reference:decryptField('bank_import_rows','reference',row.reference),account_label:decryptField('bank_import_rows','account_label',row.account_label) })),
+      credit_notes: credits,
+      payment_refunds: refunds.map(row=>({...row,reference:decryptField('payment_refunds','reference',row.reference)})),
       document_tracking: tracking,
       email_log: emails,
       marketing_consents: consents,
@@ -2059,6 +2811,14 @@ app.post('/api/account/close', authenticateToken, validate([
     if (!proven) return;
 
     await withTransaction(async (q) => {
+      await q('SELECT id FROM users WHERE id=? FOR UPDATE',[uid]);
+      const memberships=await q('SELECT owner_id,member_id FROM business_bookkeepers WHERE (owner_id=? OR member_id=?) AND revoked_at IS NULL FOR UPDATE',[uid,uid]);
+      for(const membership of memberships) {
+        await q('UPDATE business_bookkeepers SET revoked_at=NOW() WHERE owner_id=? AND member_id=?',[membership.owner_id,membership.member_id]);
+        await q("INSERT INTO business_access_events(owner_id,member_id,actor_id,action) VALUES(?,?,?,'REVOKED')",[membership.owner_id,membership.member_id,uid]);
+        if(membership.owner_id===uid) await q('DELETE FROM sessions WHERE userId=?',[membership.member_id]);
+      }
+      await q('UPDATE bookkeeper_invitations SET revoked_at=NOW() WHERE owner_id=? AND accepted_at IS NULL AND revoked_at IS NULL',[uid]);
       await q(
         `UPDATE users
             SET status = 'CLOSED', closed_at = NOW(), anonymise_after = DATE_ADD(NOW(), INTERVAL ? DAY)
@@ -2545,17 +3305,15 @@ app.get('/pay/:token', payLimiter, payPageCsp(true), async (req, res) => {
     // A PDF is a frozen artifact: its link will keep pointing here for years,
     // long after the invoice is settled. "Already paid" is a normal outcome,
     // not an error.
-    const settled = await executeQuery(
-      'SELECT COALESCE(SUM(amount), 0) AS paid FROM payments WHERE document_id = ?', [row.id]
-    );
-    const alreadyPaid = row.status === 'PAID' || isSettled(row.total, settled[0].paid);
+    const financial = await invoiceSettlement(executeQuery,row.id);
+    const alreadyPaid = ['PAID','CREDITED'].includes(row.status) || financial.settled;
     // What the buyer is asked for. A part payment already recorded comes off,
     // or a customer who paid a deposit would be charged the full total again.
-    const balance = balanceDue(row.total, settled[0].paid);
+    const balance = financial.balanceDue;
 
     if (alreadyPaid) {
       return res.type('html').send(renderPayNotice({
-        nonce, title: 'Already paid', heading: 'This invoice has already been paid',
+        nonce, title: 'Invoice settled', heading: 'This invoice is settled',
         message: `Invoice ${row.document_number} is settled. Nothing further is due — there is no need to pay again.`,
       }));
     }
@@ -2718,23 +3476,24 @@ async function recordInvoicePayment({
   provider = null, providerPaymentId = null, status = null,
   feeAmount = null, netAmount = null, rawPayload = null,
   ip = null, userAgent = null, rejectOverpayment = false,
-}) {
-  return withTransaction(async (q) => {
+}, transactionQuery = null) {
+  const record = async (q) => {
     // Lock the invoice first, so two payments recorded at the same moment are
     // checked against the balance one after the other, not both against the
     // same stale figure.
     const [invoice] = await q('SELECT total, status FROM documents WHERE id = ? FOR UPDATE', [invoiceId]);
     if (rejectOverpayment && invoice.status === 'CANCELLED') throw Object.assign(new Error('Cannot record payment on a cancelled invoice'), { status: 400 });
-    const [{ paid: paidBefore }] = await q('SELECT COALESCE(SUM(amount), 0) AS paid FROM payments WHERE document_id = ?', [invoiceId]);
-    const balanceBefore = balanceDue(invoice.total, paidBefore);
+    const before = await invoiceSettlement(q, invoiceId);
+    const balanceBefore = before.balanceDue;
     if (rejectOverpayment && Number(amount) > balanceBefore + SETTLED_TOLERANCE) {
       return { duplicate: false, settled: false, cancelled: false, overpayment: true, balanceBefore, balanceAfter: balanceBefore };
     }
 
     await captureDocumentSnapshot(q, invoiceId);
 
+    let paymentId;
     try {
-      await q(
+      const inserted = await q(
         `INSERT INTO payments (document_id, amount, payment_date, payment_method, transaction_reference,
                                notes, provider, provider_payment_id, status, fee_amount, net_amount, raw_payload)
          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
@@ -2742,6 +3501,7 @@ async function recordInvoicePayment({
          encryptField('payments', 'transaction_reference', reference), notes,
          provider, providerPaymentId, status, feeAmount, netAmount, rawPayload]
       );
+      paymentId = inserted.insertId;
     } catch (err) {
       // PayFast re-sends a notification until it gets a 200, so the same
       // pf_payment_id legitimately arrives more than once. Caught explicitly
@@ -2751,15 +3511,15 @@ async function recordInvoicePayment({
       throw err;
     }
 
-    const paidAfter = Number(paidBefore) + Number(amount);
-    const settled = isSettled(invoice.total, paidAfter);
+    const after = await invoiceSettlement(q, invoiceId);
+    const settled = after.settled && after.adjustedTotal>0;
     const cancelled = invoice.status === 'CANCELLED';
 
     // A payment against a cancelled invoice must not resurrect it. The money
     // is still recorded — see the caller, which alerts the seller. A part
     // payment leaves the status alone: SENT stays SENT and OVERDUE stays
     // OVERDUE until the balance is cleared.
-    if (settled && !cancelled) {
+    if (settled && !cancelled && after.adjustedTotal>0) {
       await q(`UPDATE documents SET status = 'PAID', updated_at = NOW() WHERE id = ?`, [invoiceId]);
     }
     await q(
@@ -2767,8 +3527,9 @@ async function recordInvoicePayment({
        VALUES (?, ?, ?, ?)`,
       [invoiceId, settled ? 'PAID' : 'PAYMENT', encTracking('ip_address', ip), encTracking('user_agent', userAgent)]
     );
-    return { duplicate: false, settled, cancelled, overpayment: false, balanceBefore, balanceAfter: balanceDue(invoice.total, paidAfter) };
-  });
+    return { duplicate: false, settled, cancelled, overpayment: false, balanceBefore, balanceAfter: after.balanceDue, paymentId };
+  };
+  return transactionQuery ? record(transactionQuery) : withTransaction(record);
 }
 
 /**
@@ -2801,9 +3562,10 @@ async function sendPayfastFollowUps(invoice, posted, outcome) {
   // A receipt says "paid in full", so a part payment does not get one. The pay
   // page charges the outstanding balance, so in practice only a race with a
   // manually recorded payment lands here unsettled.
-  if (outcome.settled && full.length && full[0].customer_email) {
-    const pdf = await buildReceiptPdf(full[0], items, user, payments);
-    const mail=await captureEmail(emailService,'sendReceiptEmail',full[0].customer_email,{...full[0],company_name:user.company_name},pdf);
+  const paidInvoice=full.length ? await withInvoiceFinancials(executeQuery,full[0]) : null;
+  if (outcome.settled && paidInvoice?.customer_email && Number(paidInvoice.amount_paid)>0 && Number(paidInvoice.adjusted_total)>0) {
+    const pdf = await buildReceiptPdf(paidInvoice, items, user, payments);
+    const mail=await captureEmail(emailService,'sendReceiptEmail',paidInvoice.customer_email,{...paidInvoice,company_name:user.company_name},pdf);
     await queueEmail({userId:invoice.user_id,documentId:invoice.id,kind:'RECEIPT',key:`receipt:${invoice.id}:full`,mail});
   }
 
@@ -2938,7 +3700,10 @@ app.post('/payfast/itn',
           WHERE document_id = ? AND NOT (provider <=> 'PAYFAST' AND provider_payment_id <=> ?)`,
         [invoice.id, String(posted.pf_payment_id)]
       );
-      const expected = balanceDue(invoice.total, alreadyPaid);
+      const [adjustments] = await executeQuery(`SELECT
+        (SELECT COALESCE(SUM(total),0) FROM credit_notes WHERE invoice_id=?) AS credited,
+        (SELECT COALESCE(SUM(amount),0) FROM payment_refunds WHERE invoice_id=?) AS refunded`,[invoice.id,invoice.id]);
+      const expected = adjustmentSettlement(invoice.total,adjustments.credited,alreadyPaid,adjustments.refunded).balanceDue;
       const received = Number(posted.amount_gross);
       const matchesBalance = Math.abs(expected - received) <= 0.01;
       const matchesTotal = Math.abs(Number(invoice.total) - received) <= 0.01;

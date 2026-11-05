@@ -13,16 +13,19 @@ export function roundCents(value: unknown): number {
   return (Math.sign(n) * Math.round(cents)) / 100;
 }
 
-export interface LineTotals { subtotal: number; vat: number; total: number; }
+export interface LineTotals { subtotal: number; vat: number; total: number; discount: number; }
 
-export function lineTotals(item: { quantity?: unknown; unit_price?: unknown; vat_rate?: unknown; vat_inclusive?: unknown }): LineTotals {
+export function lineTotals(item: { quantity?: unknown; unit_price?: unknown; vat_rate?: unknown; vat_inclusive?: unknown; discount_percent?: unknown }): LineTotals {
   const inclusive = [true, 1, '1', 'true'].some(value => value === item.vat_inclusive);
-  const enteredAmount = roundCents((Number(item.quantity) || 0) * (Number(item.unit_price) || 0));
+  const beforeDiscount = roundCents((Number(item.quantity) || 0) * (Number(item.unit_price) || 0));
+  const discountRate = Number(item.discount_percent ?? 0);
+  const discount = Number.isFinite(discountRate) && discountRate >= 0 && discountRate <= 100 ? roundCents(beforeDiscount * discountRate / 100) : 0;
+  const enteredAmount = roundCents(beforeDiscount - discount);
   const rawRate = Number(item.vat_rate);
   const rate = Number.isFinite(rawRate) ? rawRate : 15;
   const subtotal = inclusive ? roundCents(enteredAmount / (1 + rate / 100)) : enteredAmount;
   const vat = inclusive ? roundCents(enteredAmount - subtotal) : roundCents(subtotal * rate / 100);
-  return { subtotal, vat, total: inclusive ? enteredAmount : roundCents(subtotal + vat) };
+  return { subtotal, vat, total: inclusive ? enteredAmount : roundCents(subtotal + vat), discount };
 }
 
 /**

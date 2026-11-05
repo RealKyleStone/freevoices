@@ -1,7 +1,9 @@
 import { Injectable } from '@angular/core';
+import { HttpClient } from '@angular/common/http';
 import { Observable } from 'rxjs';
 import { DatabaseService } from '../../../../services/database.service';
 import { Document, DocumentItem, DocumentTracking, Payment } from '../../../../models/database.models';
+import { environment } from '../../../../environments/environment';
 
 export interface InvoiceListItem {
   id: number;
@@ -17,6 +19,7 @@ export interface InvoiceListItem {
   created_at: string;
   notifications_muted?: boolean;
   amount_paid: string;
+  credit_total?: string;
 }
 
 export interface InvoiceListResponse {
@@ -37,9 +40,16 @@ export interface InvoiceDetail extends Document {
   currency_symbol?: string;
   currency_code?: string;
   notifications_muted?: boolean;
-  /** Sum of recorded payments, from the server. */
+  /** Payments less refunds, from the server. */
   amount_paid: string;
-  /** total - amount_paid, never negative. */
+  credit_total?: string;
+  refund_total?: string;
+  adjusted_total?: string;
+  refund_due?: string;
+  adjustments_available?: boolean;
+  credits?: {id:number;document_number:string;issue_date:string;reason:string;description:string;subtotal:string;vat_amount:string;total:string}[];
+  refunds?: {id:number;payment_id:number;amount:string;refund_date:string;method:string;reference:string|null;reason:string}[];
+  /** Adjusted total less net paid, never negative. */
   balance_due: string;
   source_quote_number?: string | null;
   email_deliveries?: {id:number;kind:string;status:string;attempts:number;last_error:string|null;created_at:string;accepted_at:string|null}[];
@@ -50,7 +60,9 @@ export interface InvoiceItemPayload {
   product_id?: number | null;
   description: string;
   quantity: number;
+  unit_label?: string;
   unit_price: number;
+  discount_percent?: number;
   vat_rate: number;
 }
 
@@ -62,6 +74,8 @@ export interface InvoicePayload {
   payment_terms?: number | null;
   notes?: string | null;
   terms_conditions?: string | null;
+  purchase_order_ref?: string | null;
+  delivery_details?: string | null;
   currency_id?: number | null;
   items: InvoiceItemPayload[];
   is_recurring?: boolean;
@@ -82,7 +96,11 @@ export interface MarkPaidPayload {
   providedIn: 'root'
 })
 export class InvoiceService {
-  constructor(private db: DatabaseService) {}
+  constructor(private db: DatabaseService, private http: HttpClient) {}
+
+  previewInvoice(data: InvoicePayload): Observable<Blob> {
+    return this.http.post(`${environment.apiUrl}/invoices/preview`, data, { responseType: 'blob' });
+  }
 
   getInvoices(search = '', status = '', page = 1, limit = 20): Observable<InvoiceListResponse> {
     return this.db.query<InvoiceListResponse>('invoices', { params: { search, status, page, limit } });
@@ -110,6 +128,14 @@ export class InvoiceService {
 
   sendReceipt(id: number, resendKey?: string): Observable<{ message: string }> {
     return this.db.create<{ message: string }>(`invoices/${id}/send-receipt`, resendKey ? {resend_key:resendKey} : {});
+  }
+
+  issueCreditNote(id:number,data:{request_key:string;subtotal:number;vat_amount:number;total:number;reason:string;description:string}):Observable<{id:number;document_number:string}> {
+    return this.db.create<{id:number;document_number:string}>(`invoices/${id}/credit-notes`,data);
+  }
+
+  recordRefund(id:number,data:{request_key:string;payment_id:number;amount:number;refund_date:string;method:string;reference?:string;reason:string}):Observable<{id:number}> {
+    return this.db.create<{id:number}>(`invoices/${id}/refunds`,data);
   }
 
   cancelInvoice(id: number): Observable<{ message: string }> {

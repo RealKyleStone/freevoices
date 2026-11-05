@@ -1,4 +1,4 @@
-import { Component, HostListener, OnInit } from '@angular/core';
+import { Component, HostListener, OnDestroy, OnInit } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { ReactiveFormsModule, FormBuilder, FormGroup, FormArray, Validators, AbstractControl, ValidationErrors } from '@angular/forms';
 import { ActivatedRoute, Router } from '@angular/router';
@@ -8,16 +8,20 @@ import {
   IonContent, IonHeader, IonIcon, IonInput, IonItem, IonLabel, IonNote, IonSelect,
   IonSelectOption, IonSpinner, IonText, IonTextarea, IonTitle, IonToggle, IonToolbar,
 } from '@ionic/angular/standalone';
-import { forkJoin } from 'rxjs';
+import { forkJoin, Subscription } from 'rxjs';
+import { debounceTime } from 'rxjs/operators';
+import { CataloguePickerComponent } from '../../../../shared/components/catalogue-picker/catalogue-picker.component';
+import { InvoicePreviewComponent } from '../../../../shared/components/invoice-preview/invoice-preview.component';
+import { InvoicePdfPreviewComponent } from '../../../../shared/components/invoice-pdf-preview/invoice-pdf-preview.component';
 import { addIcons } from 'ionicons';
 import { trashOutline, addOutline } from 'ionicons/icons';
 import { InvoiceService, InvoicePayload } from '../../services/invoice.service';
-import { CustomerService } from '../../../customers/services/customer.service';
-import { ProductService } from '../../../products/services/product.service';
 import { SettingsService } from '../../../settings/services/settings.service';
 import { Customer, Product } from '../../../../../models/database.models';
 import { lineTotals, roundCents, dueDateFromTerms } from '../../../../shared/utils/document-math';
 import { HasUnsavedChanges } from '../../../../shared/guards/unsaved-changes.guard';
+import { AuthService } from '../../../../core/auth/services/auth.service';
+import { BrowserDraft, clearDraft, draftKey, readDraft, writeDraft } from '../../../../shared/utils/browser-draft';
 
 /** Mirrors the server rule: a due date cannot precede the issue date. */
 function dueNotBeforeIssue(ctrl: AbstractControl): ValidationErrors | null {
@@ -31,21 +35,28 @@ function dueNotBeforeIssue(ctrl: AbstractControl): ValidationErrors | null {
   styleUrls: ['./invoice-edit.page.scss'],
   standalone: true,
   imports: [
-    CommonModule, ReactiveFormsModule,
+    CommonModule, ReactiveFormsModule, CataloguePickerComponent, InvoicePreviewComponent, InvoicePdfPreviewComponent,
     IonBackButton, IonButton, IonButtons, IonCard, IonCardContent, IonCardHeader, IonCardTitle,
     IonContent, IonHeader, IonIcon, IonInput, IonItem, IonLabel, IonNote, IonSelect,
     IonSelectOption, IonSpinner, IonText, IonTextarea, IonTitle, IonToggle, IonToolbar,
   ]
 })
-export class InvoiceEditPage implements OnInit, HasUnsavedChanges {
+export class InvoiceEditPage implements OnInit, OnDestroy, HasUnsavedChanges {
   form: FormGroup;
-  customers: Customer[] = [];
-  products: Product[] = [];
   isLoading = false;
   isFetching = true;
   submitted = false;
   invoiceId!: number;
   currencySymbol = 'R';
+  currencyId?: number;
+  selectedCustomerName = '';
+  invoiceNumber = '';
+  pendingDraft: BrowserDraft<any> | null = null;
+  draftSaved = false;
+  draftStorageFailed = false;
+  private storageKey = '';
+  private draftChanges?: Subscription;
+  private discarded = false;
   private saved = false;
   private defaultVatRate = 15;
   private defaultTerms = 30;
@@ -59,10 +70,9 @@ export class InvoiceEditPage implements OnInit, HasUnsavedChanges {
     private route: ActivatedRoute,
     private router: Router,
     private invoiceService: InvoiceService,
-    private customerService: CustomerService,
-    private productService: ProductService,
     private settingsService: SettingsService,
-    private toastCtrl: ToastController
+    private toastCtrl: ToastController,
+    private authService: AuthService
   ) {
     addIcons({ trashOutline, addOutline });
     this.form = this.fb.group({
@@ -72,6 +82,8 @@ export class InvoiceEditPage implements OnInit, HasUnsavedChanges {
       payment_terms:       [30],
       notes:               [''],
       terms_conditions:    [''],
+      purchase_order_ref:  ['', Validators.maxLength(100)],
+      delivery_details:    ['', Validators.maxLength(1000)],
       items:               this.fb.array([]),
       is_recurring:        [false],
       recurrence_interval: [null],
@@ -103,6 +115,7 @@ export class InvoiceEditPage implements OnInit, HasUnsavedChanges {
 
   @HostListener('window:beforeunload', ['$event'])
   onBeforeUnload(event: BeforeUnloadEvent) {
+    this.saveBrowserDraft();
     if (this.hasUnsavedChanges()) { event.preventDefault(); event.returnValue = ''; }
   }
 
@@ -111,11 +124,9 @@ export class InvoiceEditPage implements OnInit, HasUnsavedChanges {
 
     forkJoin({
       invoice:   this.invoiceService.getInvoice(this.invoiceId),
-      customers: this.customerService.getAllCustomers(),
-      products:  this.productService.getAllProducts(),
       settings: this.settingsService.getSettings()
     }).subscribe({
-      next: ({ invoice, customers, products, settings }) => {
+      next: ({ invoice, settings }) => {
         if (invoice.status !== 'DRAFT') {
           this.showToast('Only DRAFT invoices can be edited', 'warning');
           this.router.navigate(['/invoices', this.invoiceId]);
@@ -129,10 +140,11 @@ export class InvoiceEditPage implements OnInit, HasUnsavedChanges {
 
         this.defaultVatRate = Number(settings.invoice_vat_rate ?? 15);
         this.defaultTerms = Number(settings.invoice_payment_terms ?? 30);
-        this.customers = customers;
-        this.products  = products;
 
         this.currencySymbol = invoice.currency_symbol || 'R';
+        this.currencyId = invoice.currency_id;
+        this.selectedCustomerName = invoice.customer_name || '';
+        this.invoiceNumber = invoice.document_number || '';
         // Dates arrive as 'YYYY-MM-DD'. They used to arrive as a UTC
         // timestamp of local midnight ('2026-10-19T22:00:00Z' for the 20th),
         // and this split then loaded the day before into the form.
@@ -143,6 +155,8 @@ export class InvoiceEditPage implements OnInit, HasUnsavedChanges {
           payment_terms:       invoice.payment_terms,
           notes:               invoice.notes,
           terms_conditions:    invoice.terms_conditions,
+          purchase_order_ref:  invoice.purchase_order_ref ?? '',
+          delivery_details:    invoice.delivery_details ?? '',
           is_recurring:        !!invoice.is_recurring,
           recurrence_interval: invoice.recurrence_interval ?? null,
           recurrence_end_date: invoice.recurrence_end_date?.toString().slice(0, 10) ?? '',
@@ -161,17 +175,21 @@ export class InvoiceEditPage implements OnInit, HasUnsavedChanges {
             product_id:  [item.product_id ?? null],
             description: [item.description, Validators.required],
             quantity:    [item.quantity,    [Validators.required, Validators.min(0.01)]],
+            unit_label:  [item.unit_label || 'each', [Validators.required, Validators.maxLength(20)]],
             unit_price:  [item.unit_price,  [Validators.required, Validators.min(0)]],
+            discount_percent: [item.discount_percent ?? 0, [Validators.required, Validators.min(0), Validators.max(100)]],
             vat_inclusive: [!!item.vat_inclusive],
             vat_rate:    [item.vat_rate,    [Validators.required, Validators.min(0), Validators.max(100)]]
           }));
         });
 
         if (this.items.length === 0) this.addItem();
-        this.form.get('customer_id')!.valueChanges.subscribe(id => {
-          const customer = this.customers.find(c => c.id === +id);
-          this.form.patchValue({payment_terms:customer?.payment_terms ?? this.defaultTerms});
-        });
+        const userId = this.authService.getCurrentUser()?.id;
+        if (userId) {
+          this.storageKey = draftKey(userId, 'invoice', `edit:${this.invoiceId}`);
+          this.pendingDraft = readDraft(this.storageKey);
+          this.draftChanges = this.form.valueChanges.pipe(debounceTime(600)).subscribe(() => this.saveBrowserDraft());
+        }
         this.isFetching = false;
       },
       error: async () => {
@@ -180,6 +198,43 @@ export class InvoiceEditPage implements OnInit, HasUnsavedChanges {
         this.router.navigate(['/invoices']);
       }
     });
+  }
+
+  ngOnDestroy() { this.saveBrowserDraft(); this.draftChanges?.unsubscribe(); }
+
+  restoreBrowserDraft() {
+    if (!this.pendingDraft) return;
+    const value = this.pendingDraft.value;
+    if (!Array.isArray(value.items) || !value.items.length) { this.discardBrowserDraft(); return; }
+    this.items.clear();
+    for (const item of value.items) {
+      const group = this.fb.group({
+        product_id: [null], description: ['', Validators.required],
+        quantity: [1, [Validators.required, Validators.min(0.01)]],
+        unit_label: ['each', [Validators.required, Validators.maxLength(20)]],
+        unit_price: [0, [Validators.required, Validators.min(0)]],
+        discount_percent: [0, [Validators.required, Validators.min(0), Validators.max(100)]],
+        vat_inclusive: [false], vat_rate: [this.defaultVatRate, [Validators.required, Validators.min(0), Validators.max(100)]]
+      });
+      group.patchValue(item, { emitEvent: false });
+      this.items.push(group);
+    }
+    this.autoDueDate = dueDateFromTerms(value.issue_date, value.payment_terms);
+    this.form.patchValue(value, { emitEvent: false });
+    this.selectedCustomerName = value.selectedCustomerName || '';
+    this.recurrenceFields.forEach(field => this.form.get(field)?.markAsDirty());
+    this.pendingDraft = null;
+    this.form.markAsDirty();
+    this.saveBrowserDraft();
+  }
+
+  discardBrowserDraft() { clearDraft(this.storageKey); this.pendingDraft = null; this.draftSaved = false; }
+  discardUnsavedChanges() { this.discarded = true; clearDraft(this.storageKey); }
+
+  private saveBrowserDraft() {
+    if (!this.storageKey || this.pendingDraft || !this.form.dirty || this.saved || this.discarded) return;
+    this.draftSaved = writeDraft(this.storageKey, { ...this.form.getRawValue(), selectedCustomerName: this.selectedCustomerName });
+    this.draftStorageFailed = !this.draftSaved;
   }
 
   get isRecurring(): boolean {
@@ -195,7 +250,9 @@ export class InvoiceEditPage implements OnInit, HasUnsavedChanges {
       product_id:  [null],
       description: ['', Validators.required],
       quantity:    [1,  [Validators.required, Validators.min(0.01)]],
+      unit_label:  ['each', [Validators.required, Validators.maxLength(20)]],
       unit_price:  [0,  [Validators.required, Validators.min(0)]],
+      discount_percent: [0, [Validators.required, Validators.min(0), Validators.max(100)]],
       vat_inclusive: [false],
       vat_rate:    [this.defaultVatRate, [Validators.required, Validators.min(0), Validators.max(100)]]
     }));
@@ -206,12 +263,17 @@ export class InvoiceEditPage implements OnInit, HasUnsavedChanges {
     if (this.items.length > 1) { this.items.removeAt(i); this.form.markAsDirty(); }
   }
 
-  onProductChange(index: number) {
-    const productId = this.items.at(index).get('product_id')?.value;
-    if (!productId) return;
-    const product = this.products.find(p => p.id === +productId);
+  onCustomerSelected(customer: Customer | null) {
+    this.selectedCustomerName = customer?.name || '';
+    if (customer) this.form.patchValue({ payment_terms: customer.payment_terms ?? this.defaultTerms });
+  }
+
+  onProductSelected(index: number, product: Product | null) {
     if (!product) return;
-    this.items.at(index).patchValue({ description: product.name, unit_price: product.price, vat_inclusive: !!product.vat_inclusive, vat_rate: this.items.at(index).get('vat_rate')?.value ?? this.defaultVatRate });
+    this.items.at(index).patchValue({
+      description: product.name, unit_price: product.price, vat_inclusive: !!product.vat_inclusive,
+      vat_rate: this.items.at(index).get('vat_rate')?.value ?? this.defaultVatRate
+    });
   }
 
   // Rounded per line, half-up, exactly as the server stores them.
@@ -259,7 +321,9 @@ export class InvoiceEditPage implements OnInit, HasUnsavedChanges {
         product_id:  item.product_id || null,
         description: item.description,
         quantity:    item.quantity,
+        unit_label:  item.unit_label,
         unit_price:  item.unit_price,
+        discount_percent: item.discount_percent,
         vat_rate:    item.vat_rate,
         vat_inclusive: item.vat_inclusive
       }))
@@ -278,6 +342,7 @@ export class InvoiceEditPage implements OnInit, HasUnsavedChanges {
     this.invoiceService.updateInvoice(this.invoiceId, payload).subscribe({
       next: () => {
         this.saved = true;
+        clearDraft(this.storageKey);
         this.router.navigate(['/invoices', this.invoiceId]);
       },
       error: async (err) => {

@@ -1,0 +1,30 @@
+<ion-header><ion-toolbar><ion-buttons slot="start"><ion-back-button defaultHref="/reports"></ion-back-button><ion-menu-button></ion-menu-button></ion-buttons></ion-toolbar></ion-header>
+<ion-content><main class="bank-review">
+  <h1>Bank statement matching</h1>
+  <p>Import your bank CSV, review suggestions, then confirm each match yourself. Importing alone never records a payment.</p>
+  <ion-button fill="outline" (click)="downloadTemplate()">Download CSV template</ion-button>
+  <label>Bank CSV <input type="file" accept=".csv,text/csv" (change)="chooseFile($event)"></label>
+  <ion-spinner *ngIf="busy"></ion-spinner>
+  <p role="alert" *ngIf="error">{{ error }}</p><p role="status" *ngIf="message">{{ message }}</p>
+  <section *ngIf="preview as p"><h2>Preview: {{ fileName }}</h2><p>{{ p.rows.length }} rows. {{ p.valid ? 'Review and import.' : 'Fix row errors before importing.' }}</p>
+    <div class="table-scroll"><table><thead><tr><th scope="col">Line</th><th scope="col">Date</th><th scope="col">Amount</th><th scope="col">Reference</th><th scope="col">Check</th></tr></thead><tbody>
+      <tr *ngFor="let row of p.rows"><td>{{ row.line }}</td><td>{{ row.data['date'] }}</td><td>{{ row.data['currency'] }} {{ row.data['amount'] }}</td><td>{{ row.data['reference'] }}</td><td>{{ row.errors.length ? row.errors.join('; ') : row.duplicate ? 'Already imported' : 'Ready' }}</td></tr>
+    </tbody></table></div><ion-button (click)="commit()" [disabled]="!p.valid || busy">Import new rows</ion-button>
+  </section>
+  <section><h2>Review transactions</h2><label>Status <select [value]="status" (change)="changeStatus($event)"><option value="PENDING">Pending</option><option value="MATCHED">Matched</option><option value="IGNORED">Ignored</option></select></label>
+    <p *ngIf="rows.length===0">No {{ status | lowercase }} bank transactions.</p>
+    <div class="table-scroll" *ngIf="rows.length"><table><thead><tr><th scope="col">Date</th><th scope="col">Amount</th><th scope="col">Description</th><th scope="col">Reference</th><th scope="col">Status</th><th scope="col">Action</th></tr></thead><tbody>
+      <tr *ngFor="let row of rows"><td>{{ row.transaction_date | date:'mediumDate' }}</td><td>{{ row.currency_code }} {{ row.amount | number:'1.2-2' }}</td><td>{{ row.description }}</td><td>{{ row.reference }}</td><td>{{ row.status }}</td><td><ion-button size="small" fill="outline" (click)="review(row)">Review</ion-button></td></tr>
+    </tbody></table></div>
+  </section>
+  <section *ngIf="selected as row"><h2>Transaction {{ row.id }}</h2><p>{{ row.transaction_date | date:'mediumDate' }} · {{ row.currency_code }} {{ row.amount | number:'1.2-2' }} · {{ row.description }} {{ row.reference }}</p>
+    <ng-container *ngIf="row.status==='PENDING' && +row.amount>0">
+      <h3>Suggested invoices</h3><p *ngIf="suggestions.length===0">No strong match found. Search for an invoice below.</p>
+      <div *ngFor="let suggestion of suggestions"><span>{{ suggestion.document_number }} · {{ suggestion.customer_name }} · balance {{ row.currency_code }} {{ suggestion.balance_due }} · {{ suggestion.reason }}</span> <ion-button size="small" (click)="match(suggestion.invoice_id)" [disabled]="busy">Confirm match</ion-button></div>
+      <label>Find invoice <input type="search" [value]="search" (input)="search=$any($event.target).value" placeholder="Invoice number or customer"></label><ion-button fill="outline" (click)="findInvoice()">Search</ion-button>
+      <div *ngFor="let invoice of invoiceResults"><span>{{ invoice.document_number }} · {{ invoice.customer_name }} · {{ invoice.currency_code }} {{ invoice.total | number:'1.2-2' }}</span> <ion-button size="small" (click)="match(invoice.id)" [disabled]="busy">Confirm match</ion-button></div>
+    </ng-container>
+    <ion-button *ngIf="row.status==='PENDING'" color="medium" fill="outline" (click)="ignore()">Ignore transaction</ion-button>
+    <a *ngIf="row.invoice_id" [href]="'/invoices/'+row.invoice_id">View matched invoice</a>
+  </section>
+</main></ion-content>

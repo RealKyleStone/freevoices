@@ -1,0 +1,28 @@
+<ion-content class="portal-content">
+  <div class="portal-loading" *ngIf="isLoading"><ion-spinner></ion-spinner><p>Loading quote...</p></div>
+  <div class="portal-error" *ngIf="!isLoading && !quote"><h2>Quote unavailable</h2><p>{{ error }}</p></div>
+  <div class="portal-wrapper" *ngIf="quote as q">
+    <div class="portal-header">
+      <div class="company-info"><img *ngIf="q.company_logo" [src]="q.company_logo" alt="Business logo" class="company-logo"><h1>{{ q.company_name }}</h1><p *ngIf="q.company_address">{{ q.company_address }}</p><p *ngIf="q.company_email">{{ q.company_email }}</p></div>
+      <div class="doc-badge"><span class="doc-type">QUOTE</span><span class="doc-number">{{ q.document_number }}</span><ion-badge>{{ q.status === 'SENT' ? 'Awaiting decision' : (q.status | titlecase) }}</ion-badge></div>
+    </div>
+    <div class="portal-meta">
+      <div class="billed-to"><p class="section-label">PREPARED FOR</p><p class="customer-name">{{ q.customer_name }}</p><p *ngIf="q.purchase_order_ref">Reference: {{ q.purchase_order_ref }}</p></div>
+      <div class="dates"><div class="date-row"><span>Issued</span><span>{{ q.issue_date | date:'mediumDate' }}</span></div><div class="date-row" *ngIf="q.valid_until"><span>Valid until</span><span>{{ q.valid_until | date:'mediumDate' }}</span></div></div>
+    </div>
+    <div class="items-table">
+      <div class="items-head"><span class="col-desc">Description</span><span class="col-qty">Qty</span><span class="col-price">Unit price</span><span class="col-vat">VAT %</span><span class="col-total">Total</span></div>
+      <div class="item-row" *ngFor="let item of q.items"><span class="col-desc">{{ item.description }} <small *ngIf="item.discount_percent">{{ item.discount_percent }}% discount</small></span><span class="col-qty">{{ item.quantity }} {{ item.unit_label || 'each' }}</span><span class="col-price">{{ q.currency_symbol }} {{ item.unit_price | number:'1.2-2' }}</span><span class="col-vat">{{ item.vat_rate }}%</span><span class="col-total">{{ q.currency_symbol }} {{ item.total | number:'1.2-2' }}</span></div>
+    </div>
+    <div class="totals-section"><div class="totals-row"><span>Subtotal</span><span>{{ q.currency_symbol }} {{ q.subtotal | number:'1.2-2' }}</span></div><div class="totals-row"><span>VAT</span><span>{{ q.currency_symbol }} {{ q.vat_amount | number:'1.2-2' }}</span></div><div class="totals-row total-row"><strong>Total</strong><strong>{{ q.currency_symbol }} {{ q.total | number:'1.2-2' }}</strong></div></div>
+    <div class="notes-section" *ngIf="q.notes || q.terms_conditions || q.delivery_details"><p *ngIf="q.notes">{{ q.notes }}</p><p *ngIf="q.terms_conditions">{{ q.terms_conditions }}</p><p *ngIf="q.delivery_details">Delivery: {{ q.delivery_details }}</p></div>
+    <p role="status" *ngIf="decisionMessage">{{ decisionMessage }}</p>
+    <p role="alert" *ngIf="error">{{ error }}</p>
+    <div class="portal-actions">
+      <ion-button expand="block" *ngIf="q.status === 'SENT'" (click)="decide('ACCEPTED')" [disabled]="isSubmitting">Accept quote</ion-button>
+      <ion-button expand="block" fill="outline" color="medium" *ngIf="q.status === 'SENT'" (click)="decide('DECLINED')" [disabled]="isSubmitting">Decline quote</ion-button>
+      <ion-button expand="block" fill="outline" (click)="downloadPdf()" [disabled]="isDownloading">{{ isDownloading ? 'Preparing PDF...' : 'Download PDF' }}</ion-button>
+    </div>
+    <div class="portal-footer"><p>Powered by FreeVoices</p></div>
+  </div>
+</ion-content>

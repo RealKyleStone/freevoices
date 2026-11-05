@@ -40,6 +40,12 @@ test('computeLine keeps a zero VAT rate and defaults a missing one to 15%', () =
   assert.strictEqual(m.computeLine({ quantity: 1, unit_price: 100 }).vat_amount, 15);
 });
 
+test('discount is applied to the entered amount before inclusive VAT is split', () => {
+  const line = m.computeLine({ quantity: 2, unit_price: 115, discount_percent: 10, vat_rate: 15, vat_inclusive: true });
+  assert.deepStrictEqual([line.discount_amount, line.subtotal, line.vat_amount, line.total], [23, 180, 27, 207]);
+  assert.throws(() => m.computeLine({ quantity: 1, unit_price: 100, discount_percent: 101 }), /Discount/);
+});
+
 test('resolveDueDate: explicit date wins, otherwise issue date + terms (F05)', () => {
   assert.strictEqual(m.resolveDueDate('2026-10-20', '2026-11-01', 30), '2026-11-01');
   assert.strictEqual(m.resolveDueDate('2026-10-20', '', 30), '2026-11-19');

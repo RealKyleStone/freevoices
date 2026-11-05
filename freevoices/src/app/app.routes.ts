@@ -59,6 +59,11 @@ export const routes: Routes = [
       .then(m => m.LoginPage)
   },
   {
+    path: 'bookkeeper-invite',
+    loadComponent: () => import('./features/auth/pages/bookkeeper-invite/bookkeeper-invite.page')
+      .then(m => m.BookkeeperInvitePage)
+  },
+  {
     path: 'register',
     loadComponent: () => import('./features/auth/pages/register/register.page')
       .then(m => m.RegisterPage)

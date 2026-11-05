@@ -167,6 +167,20 @@ ion-toolbar {
 /* Status colour earns its place only when something is actually overdue. */
 .stat-attention .stat-value { color: var(--fv-danger-text); }
 
+.balances .panel { padding: var(--fv-space-4); }
+.balance-total { margin: 0 0 var(--fv-space-4); font-size: var(--fv-text-xl); font-weight: var(--fv-weight-semibold); }
+.ageing-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--fv-space-3); }
+.ageing-grid div { display: flex; flex-direction: column; gap: var(--fv-space-1); min-width: 0; }
+.ageing-grid span { color: var(--ion-color-medium); font-size: var(--fv-text-xs); }
+.ageing-grid strong { overflow-wrap: anywhere; font-variant-numeric: tabular-nums; }
+.action-invoices { margin-top: var(--fv-space-4); }
+.action-invoices h3 { font-size: var(--fv-text-base); }
+.action-invoices a { display: flex; justify-content: space-between; gap: var(--fv-space-3); padding: var(--fv-space-3) 0; border-top: 1px solid var(--fv-border); text-decoration: none; color: var(--ion-text-color); }
+.action-invoices a span { min-width: 0; overflow-wrap: anywhere; }
+.action-invoices small { display: block; color: var(--ion-color-medium); }
+.action-invoices a strong { flex-shrink: 0; }
+@media (min-width: 768px) { .ageing-grid { grid-template-columns: repeat(4, minmax(0, 1fr)); } }
+
 .skeleton-value {
   width: 72px;
   height: 22px;

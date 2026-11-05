@@ -1,13 +1,18 @@
-import { Component, OnInit, OnDestroy, ViewChild, ElementRef } from '@angular/core';
+import { Component, OnInit, OnDestroy, AfterViewChecked, ViewChild, ElementRef } from '@angular/core';
 import { CommonModule } from '@angular/common';
+import { FormControl, ReactiveFormsModule } from '@angular/forms';
 import {
-  IonButtons, IonContent, IonHeader, IonIcon, IonMenuButton, IonSpinner, IonToolbar,
+  IonButton, IonButtons, IonContent, IonHeader, IonIcon, IonMenuButton, IonSpinner, IonToolbar,
 } from '@ionic/angular/standalone';
 import { Chart, ChartConfiguration, registerables } from 'chart.js';
 import {
-  ReportsService, RevenueByMonth, InvoiceStatusBreakdown, TopCustomer, VatSummaryRow
+  ReportsService, RevenueByMonth, InvoiceStatusBreakdown, TopCustomer, VatSummaryRow, PaymentLedger, AgeingReport, CustomerStatement
 } from '../../services/reports.service';
-import { forkJoin } from 'rxjs';
+import { CataloguePickerComponent } from '../../../../shared/components/catalogue-picker/catalogue-picker.component';
+import { paymentsLedgerCsv } from '../../services/payments-ledger-csv';
+import { customerStatementCsv } from '../../services/statement-csv';
+import { forkJoin, Subscription } from 'rxjs';
+import { vatSummaryCsv } from '../../services/vat-csv';
 import { addIcons } from 'ionicons';
 import {
   alertCircleOutline,
@@ -54,11 +59,11 @@ function formatMonth(ym: string): string {
   styleUrls: ['./reports.page.scss'],
   standalone: true,
   imports: [
-    CommonModule, IonButtons, IonContent, IonHeader, IonIcon, IonMenuButton, IonSpinner,
+    CommonModule, ReactiveFormsModule, CataloguePickerComponent, IonButton, IonButtons, IonContent, IonHeader, IonIcon, IonMenuButton, IonSpinner,
     IonToolbar,
   ]
 })
-export class ReportsPage implements OnInit, OnDestroy {
+export class ReportsPage implements OnInit, OnDestroy, AfterViewChecked {
   @ViewChild('revenueCanvas')  revenueCanvas!:  ElementRef<HTMLCanvasElement>;
   @ViewChild('statusCanvas')   statusCanvas!:   ElementRef<HTMLCanvasElement>;
   @ViewChild('customersCanvas') customersCanvas!: ElementRef<HTMLCanvasElement>;
@@ -71,6 +76,15 @@ export class ReportsPage implements OnInit, OnDestroy {
 
   topCustomers: TopCustomer[] = [];
   vatRows: VatSummaryRow[]    = [];
+  ledger: PaymentLedger | null = null;
+  ageing: AgeingReport | null = null;
+  statement: CustomerStatement | null = null;
+  ledgerCustomer = new FormControl<number | null>(null);
+  ledgerFrom = '';
+  ledgerTo = '';
+  ledgerLoading = false;
+  ledgerError = '';
+  accountingError = '';
 
   private charts: Chart[] = [];
   private themeObserver?: MutationObserver;
@@ -79,6 +93,8 @@ export class ReportsPage implements OnInit, OnDestroy {
   private statusData?:  InvoiceStatusBreakdown[];
   private customerData?: TopCustomer[];
   private vatData?:     VatSummaryRow[];
+  private chartsPending = false;
+  private requests = new Subscription();
 
 
   constructor(private reports: ReportsService) {
@@ -115,12 +131,15 @@ export class ReportsPage implements OnInit, OnDestroy {
   }
 
   ngOnInit() {
-    this.reports.getCurrencies().subscribe(rows => this.currencies = rows);
+    this.requests.add(this.reports.getCurrencies().subscribe(rows => this.currencies = rows));
     this.loadReports();
   }
 
   changeCurrency(event: Event) {
     this.selectedCurrency = (event.target as HTMLSelectElement).value;
+    this.ledger = null;
+    this.ageing = null;
+    this.statement = null;
     this.loadReports();
   }
 
@@ -128,7 +147,8 @@ export class ReportsPage implements OnInit, OnDestroy {
     this.destroyCharts();
     this.isLoading = true;
     this.hasError = false;
-    forkJoin({
+    this.chartsPending = false;
+    this.requests.add(forkJoin({
       revenue:   this.reports.getRevenueByMonth(this.selectedCurrency),
       status:    this.reports.getInvoiceStatus(this.selectedCurrency),
       customers: this.reports.getTopCustomers(this.selectedCurrency),
@@ -142,18 +162,26 @@ export class ReportsPage implements OnInit, OnDestroy {
         this.topCustomers = customers;
         this.vatRows      = vat;
         this.isLoading    = false;
-        // Wait one tick for Angular to render the *ngIf canvases before building charts
-        setTimeout(() => this.buildCharts(), 0);
+        this.chartsPending = true;
       },
       error: () => {
         this.isLoading = false;
         this.hasError  = true;
       }
-    });
+    }));
   }
 
 
+  ngAfterViewChecked() {
+    if (this.chartsPending && this.revenueCanvas && this.statusCanvas) {
+      this.chartsPending = false;
+      this.buildCharts();
+    }
+  }
+
   ngOnDestroy() {
+    this.requests.unsubscribe();
+    this.chartsPending = false;
     this.themeObserver?.disconnect();
     this.destroyCharts();
   }
@@ -193,8 +221,8 @@ export class ReportsPage implements OnInit, OnDestroy {
 
     this.buildRevenueChart();
     this.buildStatusChart();
-    this.buildCustomersChart();
-    this.buildVatChart();
+    if (this.customersCanvas) this.buildCustomersChart();
+    if (this.vatCanvas) this.buildVatChart();
     this.watchTheme();
   }
 
@@ -323,5 +351,73 @@ export class ReportsPage implements OnInit, OnDestroy {
 
   get totalVatTotal(): number {
     return this.vatRows.reduce((s, r) => s + +r.total, 0);
+  }
+
+  exportVatCsv() {
+    if (!this.vatRows.length) return;
+    const blob = new Blob([vatSummaryCsv(this.vatRows, this.selectedCurrency)], { type: 'text/csv;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `freevoices-vat-${this.selectedCurrency}-${new Date().getFullYear()}.csv`;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 0);
+  }
+
+  loadLedger() {
+    if (this.ledgerFrom && this.ledgerTo && this.ledgerFrom > this.ledgerTo) { this.ledgerError = 'From date must be before To date.'; return; }
+    this.ledgerLoading = true;
+    this.ledgerError = '';
+    this.ledger = null;
+    this.requests.add(this.reports.getPaymentsLedger(this.selectedCurrency, this.ledgerFrom, this.ledgerTo, this.ledgerCustomer.value).subscribe({
+      next: ledger => { this.ledger = ledger; this.ledgerLoading = false; },
+      error: err => { this.ledgerLoading = false; this.ledgerError = err.error?.message || 'Could not load payment transactions.'; }
+    }));
+  }
+
+  exportLedgerCsv() {
+    if (!this.ledger) return;
+    const blob = new Blob([paymentsLedgerCsv(this.ledger)], { type: 'text/csv;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+      link.download = `freevoices-cash-movements-${this.selectedCurrency}.csv`;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 0);
+  }
+
+  loadAgeing() {
+    this.accountingError = '';
+    this.ageing = null;
+    this.requests.add(this.reports.getAgeing(this.selectedCurrency, this.ledgerCustomer.value).subscribe({
+      next: report => this.ageing = report,
+      error: err => this.accountingError = err.error?.message || 'Could not load ageing report.'
+    }));
+  }
+
+  loadStatement() {
+    if (!this.ledgerCustomer.value) { this.accountingError = 'Choose a customer for the statement.'; return; }
+    if (this.ledgerFrom && this.ledgerTo && this.ledgerFrom > this.ledgerTo) { this.accountingError = 'From date must be before To date.'; return; }
+    this.accountingError = '';
+    this.statement = null;
+    this.requests.add(this.reports.getCustomerStatement(this.selectedCurrency, this.ledgerCustomer.value, this.ledgerFrom, this.ledgerTo).subscribe({
+      next: statement => this.statement = statement,
+      error: err => this.accountingError = err.error?.message || 'Could not load customer statement.'
+    }));
+  }
+
+  exportStatementCsv() {
+    if (!this.statement) return;
+    const blob = new Blob([customerStatementCsv(this.statement)], { type:'text/csv;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `freevoices-statement-${this.statement.customer_id}-${this.selectedCurrency}.csv`;
+    document.body.appendChild(link); link.click(); link.remove();
+    setTimeout(()=>URL.revokeObjectURL(url),0);
   }
 }

@@ -79,9 +79,11 @@
       <div class="totals-row"><span>Subtotal</span><span>{{ currencySymbol }} {{ invoice.subtotal | number:'1.2-2' }}</span></div>
       <div class="totals-row"><span>VAT</span><span>{{ currencySymbol }} {{ invoice.vat_amount | number:'1.2-2' }}</span></div>
       <div class="totals-row total-row"><strong>Total</strong><strong>{{ currencySymbol }} {{ invoice.total | number:'1.2-2' }}</strong></div>
-      <ng-container *ngIf="+invoice.amount_paid > 0">
-        <div class="totals-row"><span>Paid</span><span>{{ currencySymbol }} {{ invoice.amount_paid | number:'1.2-2' }}</span></div>
+      <div class="totals-row" *ngIf="creditTotal > 0"><span>Credit notes</span><span>-{{ currencySymbol }} {{ invoice.credit_total | number:'1.2-2' }}</span></div>
+      <ng-container *ngIf="+invoice.amount_paid > 0 || creditTotal > 0">
+        <div class="totals-row"><span>Net paid</span><span>{{ currencySymbol }} {{ invoice.amount_paid | number:'1.2-2' }}</span></div>
         <div class="totals-row total-row"><strong>Balance due</strong><strong>{{ currencySymbol }} {{ invoice.balance_due | number:'1.2-2' }}</strong></div>
+        <div class="totals-row" *ngIf="refundDue > 0"><strong>Refund due</strong><strong>{{ currencySymbol }} {{ invoice.refund_due | number:'1.2-2' }}</strong></div>
       </ng-container>
     </div>
 

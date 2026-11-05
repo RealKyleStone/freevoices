@@ -42,7 +42,9 @@ export interface QuoteItemPayload {
   product_id?: number | null;
   description: string;
   quantity: number;
+  unit_label?: string;
   unit_price: number;
+  discount_percent?: number;
   vat_rate: number;
 }
 
@@ -54,6 +56,8 @@ export interface QuotePayload {
   payment_terms?: number | null;
   notes?: string | null;
   terms_conditions?: string | null;
+  purchase_order_ref?: string | null;
+  delivery_details?: string | null;
   currency_id?: number | null;
   items: QuoteItemPayload[];
 }
@@ -86,5 +90,13 @@ export class QuoteService {
 
   convertToInvoice(id: number): Observable<{ message: string; invoice_id: number; document_number: string }> {
     return this.db.create<{ message: string; invoice_id: number; document_number: string }>(`quotes/${id}/convert-to-invoice`, {});
+  }
+
+  shareQuote(id: number, rotate = false): Observable<{ share_url: string; expires_at: string }> {
+    return this.db.create<{ share_url: string; expires_at: string }>(`quotes/${id}/share`, { rotate });
+  }
+
+  revokeShare(id: number): Observable<{ message: string }> {
+    return this.db.delete<{ message: string }>(`quotes/${id}`, 'share');
   }
 }

@@ -109,6 +109,15 @@ ion-toolbar {
 
 .report { min-width: 0; }
 
+.ledger-filters {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: end;
+  gap: var(--fv-space-3);
+  label { display: flex; flex-direction: column; gap: var(--fv-space-1); min-width: 11rem; }
+  input { min-height: 2.6rem; padding: 0.4rem; color: var(--ion-text-color); background: var(--ion-card-background); border: 1px solid var(--fv-border); border-radius: var(--fv-radius-sm); }
+}
+
 /*
  * .section-head is a row with its ends pushed apart, which is right when
  * the far end holds an action. Here the far end holds the label's own

@@ -254,6 +254,18 @@ class EmailService {
     return this.transporter.sendMail(mailOptions);
   }
 
+  async sendBookkeeperInviteEmail(email, businessName, inviteUrl) {
+    return this.transporter.sendMail({
+      from: {
+        name: process.env.SMTP_FROM_NAME || 'FreeVoices',
+        address: process.env.SMTP_FROM_ADDRESS || process.env.SMTP_FROM || this.transporter.options.auth.user
+      },
+      to: email,
+      subject: 'Invitation to view a FreeVoices business',
+      text: `${businessName} invited you to view its FreeVoices records as a read-only bookkeeper. Open ${inviteUrl} within 7 days. Create and verify a FreeVoices account with this email address if needed. If you were not expecting this invitation, ignore it.`,
+    });
+  }
+
   /**
    * Written confirmation that an account was closed, which the privacy policy
    * commits us to sending. It also doubles as a tripwire: if someone else closed

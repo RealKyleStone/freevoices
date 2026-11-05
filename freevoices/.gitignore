@@ -117,3 +117,6 @@ backups/
 
 # Generated deployment bundle
 deploy/
+
+# Release bundles staged for Play upload
+store-listing/**/*.aab

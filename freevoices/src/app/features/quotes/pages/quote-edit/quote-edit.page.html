@@ -11,17 +11,21 @@
   <div class="loading-state" *ngIf="isFetching"><ion-spinner></ion-spinner></div>
 
   <form class="form-container" [formGroup]="form" (ngSubmit)="onSubmit()" *ngIf="!isFetching">
+    <div class="draft-recovery" *ngIf="pendingDraft" role="status">
+      <strong>Recover unsaved changes?</strong>
+      <p>Changes from {{ pendingDraft.savedAt | date:'medium' }} are stored on this device for this account. Restore them only if they should replace the loaded quote values.</p>
+      <ion-button type="button" size="small" (click)="restoreBrowserDraft()">Restore changes</ion-button>
+      <ion-button type="button" size="small" fill="clear" (click)="discardBrowserDraft()">Discard saved changes</ion-button>
+    </div>
+    <p class="field-hint" *ngIf="draftSaved && !pendingDraft" role="status">Unsaved changes are backed up on this device.</p>
+    <p class="field-error" *ngIf="draftStorageFailed" role="alert">This browser could not store your changes. Keep this page open until you save.</p>
 
     <ion-card>
       <ion-card-header><ion-card-title>Quote details</ion-card-title></ion-card-header>
       <ion-card-content>
 
-        <ion-item [class.ion-invalid]="isInvalid('customer_id')" [class.ion-touched]="isInvalid('customer_id')">
-          <ion-label position="stacked">Customer <ion-text color="danger">*</ion-text></ion-label>
-          <ion-select aria-label="Customer" formControlName="customer_id" interface="popover" placeholder="Select customer">
-            <ion-select-option *ngFor="let c of customers" [value]="c.id">{{ c.name }}</ion-select-option>
-          </ion-select>
-        </ion-item>
+        <app-catalogue-picker kind="customer" formControlName="customer_id" [invalid]="isInvalid('customer_id')"
+          (customerChosen)="onCustomerSelected($event)"></app-catalogue-picker>
         <p class="field-error" *ngIf="isInvalid('customer_id')">Customer is required</p>
 
         <ion-item [class.ion-invalid]="isInvalid('issue_date')" [class.ion-touched]="isInvalid('issue_date')">
@@ -39,6 +43,8 @@
           <ion-label position="stacked">Payment terms (days)</ion-label>
           <ion-input aria-label="Payment terms (days)" formControlName="payment_terms" type="number" min="0"></ion-input>
         </ion-item>
+        <ion-item><ion-label position="stacked">Purchase order / customer reference</ion-label><ion-input aria-label="Purchase order or customer reference" formControlName="purchase_order_ref" maxlength="100"></ion-input></ion-item>
+        <p class="field-error" *ngIf="isInvalid('purchase_order_ref')">Reference must be 100 characters or fewer</p>
 
       </ion-card-content>
     </ion-card>
@@ -55,14 +61,8 @@
             </ion-button>
           </div>
 
-          <ion-item *ngIf="products.length > 0">
-            <ion-label position="stacked">Product (optional)</ion-label>
-            <ion-select aria-label="Product (optional)" formControlName="product_id" interface="popover" placeholder="Custom / ad-hoc"
-                        (ionChange)="onProductChange(i)">
-              <ion-select-option [value]="null">Custom / ad-hoc</ion-select-option>
-              <ion-select-option *ngFor="let p of products" [value]="p.id">{{ p.name }}</ion-select-option>
-            </ion-select>
-          </ion-item>
+          <app-catalogue-picker kind="product" formControlName="product_id"
+            (productChosen)="onProductSelected(i, $event)"></app-catalogue-picker>
 
           <ion-item [class.ion-invalid]="isItemInvalid(i, 'description')" [class.ion-touched]="isItemInvalid(i, 'description')">
             <ion-label position="stacked">Description <ion-text color="danger">*</ion-text></ion-label>
@@ -89,6 +89,12 @@
               <ion-input aria-label="VAT %" formControlName="vat_rate" type="number" min="0" step="0.5"></ion-input>
             </ion-item>
           </div>
+          <div class="item-row">
+            <ion-item class="flex-1"><ion-label position="stacked">Unit</ion-label><ion-input aria-label="Unit" formControlName="unit_label" maxlength="20"></ion-input></ion-item>
+            <ion-item class="flex-1"><ion-label position="stacked">Discount %</ion-label><ion-input aria-label="Discount %" formControlName="discount_percent" type="number" min="0" max="100" step="0.01"></ion-input></ion-item>
+          </div>
+          <p class="field-error" *ngIf="isItemInvalid(i, 'unit_label')">Enter a unit of 1–20 characters</p>
+          <p class="field-error" *ngIf="isItemInvalid(i, 'discount_percent')">Discount must be between 0 and 100%</p>
           <p class="field-error" *ngIf="isItemInvalid(i, 'quantity')">Quantity must be greater than 0</p>
           <p class="field-error" *ngIf="isItemInvalid(i, 'unit_price')">Unit price cannot be negative</p>
           <p class="field-error" *ngIf="isItemInvalid(i, 'vat_rate')">VAT must be between 0 and 100</p>
@@ -129,6 +135,8 @@
           <ion-label position="stacked">Terms & Conditions</ion-label>
           <ion-textarea aria-label="Terms &amp; Conditions" formControlName="terms_conditions" rows="3"></ion-textarea>
         </ion-item>
+        <ion-item><ion-label position="stacked">Delivery details (optional)</ion-label><ion-textarea aria-label="Delivery details" formControlName="delivery_details" rows="2" maxlength="1000"></ion-textarea></ion-item>
+        <p class="field-error" *ngIf="isInvalid('delivery_details')">Delivery details must be 1000 characters or fewer</p>
       </ion-card-content>
     </ion-card>
 

@@ -1,5 +1,6 @@
 import { inject } from '@angular/core';
 import { CanDeactivateFn } from '@angular/router';
+import { AuthService } from '../../core/auth/services/auth.service';
 import { AlertController } from '@ionic/angular/standalone';
 
 /**
@@ -8,6 +9,7 @@ import { AlertController } from '@ionic/angular/standalone';
  */
 export interface HasUnsavedChanges {
   hasUnsavedChanges(): boolean;
+  discardUnsavedChanges?(): void;
 }
 
 /**
@@ -19,6 +21,8 @@ export interface HasUnsavedChanges {
  * browser does not let a page show its own dialog there.
  */
 export const unsavedChangesGuard: CanDeactivateFn<HasUnsavedChanges> = async (component) => {
+  // A logout or expired session must be able to leave a private cached page.
+  if (!inject(AuthService).getCurrentUser()) return true;
   if (!component?.hasUnsavedChanges?.()) return true;
 
   const alertCtrl = inject(AlertController);
@@ -32,5 +36,6 @@ export const unsavedChangesGuard: CanDeactivateFn<HasUnsavedChanges> = async (co
   });
   await alert.present();
   const { role } = await alert.onDidDismiss();
+  if (role === 'destructive') component.discardUnsavedChanges?.();
   return role === 'destructive';
 };

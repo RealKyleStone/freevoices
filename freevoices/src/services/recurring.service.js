@@ -22,13 +22,13 @@ async function generateOccurrence(userId, sourceId, today = todayIso()) {
     if (!id) {
       const number = await getNextDocumentNumber(q,userId,'INVOICE');
       const inserted = await q(`INSERT INTO documents(user_id,customer_id,type,document_number,currency_id,status,
-        issue_date,due_date,payment_terms,subtotal,vat_amount,total,notes,terms_conditions,delivery_status,source_recurring_id,recurrence_occurrence_date)
-        VALUES(?,?,'INVOICE',?,?,'DRAFT',?,?,?,?,?,?,?,?,'NOT_SENT',?,?)`,
+        issue_date,due_date,payment_terms,subtotal,vat_amount,total,notes,terms_conditions,purchase_order_ref,delivery_details,delivery_status,source_recurring_id,recurrence_occurrence_date)
+        VALUES(?,?,'INVOICE',?,?,'DRAFT',?,?,?,?,?,?,?,?,?,?,'NOT_SENT',?,?)`,
       [userId,source.customer_id,number,source.currency_id,occurrence,resolveDueDate(occurrence,null,source.payment_terms),
-        source.payment_terms,source.subtotal,source.vat_amount,source.total,source.notes,source.terms_conditions,source.id,occurrence]);
+        source.payment_terms,source.subtotal,source.vat_amount,source.total,source.notes,source.terms_conditions,source.purchase_order_ref,source.delivery_details,source.id,occurrence]);
       id = inserted.insertId;
-      await q(`INSERT INTO document_items(document_id,product_id,description,quantity,unit_price,vat_rate,vat_inclusive,vat_amount,subtotal,total)
-        SELECT ?,product_id,description,quantity,unit_price,vat_rate,vat_inclusive,vat_amount,subtotal,total FROM document_items WHERE document_id=?`,[id,source.id]);
+      await q(`INSERT INTO document_items(document_id,product_id,description,quantity,unit_label,unit_price,discount_percent,vat_rate,vat_inclusive,vat_amount,subtotal,total)
+        SELECT ?,product_id,description,quantity,unit_label,unit_price,discount_percent,vat_rate,vat_inclusive,vat_amount,subtotal,total FROM document_items WHERE document_id=?`,[id,source.id]);
       await q("INSERT INTO document_tracking(document_id,event_type) VALUES(?,'CREATED')",[id]);
     }
     const next = advanceDate(occurrence,source.recurrence_interval,source.recurrence_anchor_date || source.issue_date);

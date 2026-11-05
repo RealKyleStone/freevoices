@@ -42,9 +42,12 @@
         </ion-item>
         <ion-item lines="none">
           <ion-label class="ion-text-wrap"><h3>Customer payment reminders</h3>
-            <p>Email unpaid customers 1, 7 and 14 days after the due date. Off by default. Muting an invoice stops its reminders.</p></ion-label>
+            <p>Email unpaid customers after the due date on the days below. Off by default. Muting an invoice stops its reminders.</p></ion-label>
           <ion-toggle aria-label="Customer payment reminders" formControlName="customer_reminders_enabled" slot="end"></ion-toggle>
         </ion-item>
+        <label>Reminder days after due date (comma separated, up to five)
+          <input type="text" formControlName="customer_reminder_days" aria-label="Reminder days after due date" placeholder="1,7,14">
+        </label>
       </ion-card-content>
     </ion-card>
 

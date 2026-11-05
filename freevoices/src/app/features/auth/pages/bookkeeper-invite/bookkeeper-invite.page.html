@@ -1,0 +1,29 @@
+<ion-content>
+  <main class="invite-page">
+    <h1>Bookkeeper invitation</h1>
+    <ion-spinner *ngIf="!invitation && !error"></ion-spinner>
+    <p role="alert" *ngIf="error">{{ error }}</p>
+    <p role="status" *ngIf="done">{{ done }} <a routerLink="/login">Sign in</a></p>
+    <ng-container *ngIf="invitation && !done">
+      <p><strong>{{ invitation.business_name }}</strong> invited <strong>{{ invitation.email }}</strong> to view its FreeVoices records as a read-only bookkeeper.</p>
+      <p>You can view sales and reports. You cannot change records or account settings. This link expires after seven days.</p>
+      <section *ngIf="auth.isAuthenticated(); else signInOrRegister">
+        <p>Signed in as {{ auth.getCurrentUser()?.email }}. The account must use the invited, verified email address.</p>
+        <ion-button (click)="accept()" [disabled]="busy">Accept invitation</ion-button>
+      </section>
+      <ng-template #signInOrRegister>
+        <p>Already have a verified FreeVoices account with this email? <a routerLink="/login" [queryParams]="{returnUrl:returnUrl}">Sign in to accept</a>.</p>
+        <h2>Create a bookkeeper login</h2>
+        <form (ngSubmit)="register()">
+          <label for="invite-name">Your name</label>
+          <input id="invite-name" name="name" autocomplete="name" required [(ngModel)]="name">
+          <label for="invite-password">Password</label>
+          <input id="invite-password" name="password" type="password" autocomplete="new-password" minlength="8" required [(ngModel)]="password">
+          <label for="invite-confirm">Confirm password</label>
+          <input id="invite-confirm" name="confirm" type="password" autocomplete="new-password" required [(ngModel)]="confirmPassword">
+          <ion-button type="submit" [disabled]="busy">Create account and accept</ion-button>
+        </form>
+      </ng-template>
+    </ng-container>
+  </main>
+</ion-content>

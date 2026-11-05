@@ -84,6 +84,11 @@ test('issued parties and inclusive pricing survive edits, portal access, receipt
     assert.ok(firstPdf.toString('latin1').includes('/Subtype /Image'), 'Initial PDF includes the logo');
     assert.ok(pdfText(firstPdf).includes('SELLERBEFORE'));
     assert.ok(pdfText(firstPdf).includes('incl. VAT'));
+    for (const amount of ['100.00', '15.00', '115.00']) assert.ok(pdfText(firstPdf).includes(Number(amount).toLocaleString('en-ZA', { minimumFractionDigits: 2, maximumFractionDigits: 2 })), `PDF retains ${amount}`);
+    const vatRows = await ok('/reports/vat-summary?currency=ZAR');
+    const issuedMonth = vatRows.find(row => row.month === payload.issue_date.slice(0, 7));
+    assert.ok(issuedMonth, 'Issued inclusive invoice appears in VAT report');
+    assert.deepEqual([issuedMonth.subtotal, issuedMonth.vat_amount, issuedMonth.total].map(Number), [100, 15, 115]);
     const [saved] = await q('SELECT payload FROM document_snapshots WHERE document_id=?', [draft.id]);
     assert.ok(saved.payload.startsWith('fv1.'));
     assert.ok(!saved.payload.includes('BUYERBEFORE'));
@@ -119,6 +124,9 @@ test('issued parties and inclusive pricing survive edits, portal access, receipt
     assert.ok(pdfText(await ok(`/public/invoice/${share.token}/pdf`, 'GET', undefined, true)).includes('SELLERBEFORE'));
     await ok(`/invoices/${draft.id}/mark-paid`, 'POST', { amount: 115, payment_date: todayIso(), payment_method: 'BANK_TRANSFER' });
     assert.ok(pdfText(await ok(`/invoices/${draft.id}/receipt`, 'GET', undefined, true)).includes('SELLERBEFORE'));
+    const paidMonths = await ok('/reports/revenue-by-month?currency=ZAR');
+    assert.equal(Number(paidMonths.find(row => row.month === todayIso().slice(0, 7)).revenue), 115);
+    assert.equal((await ok('/dashboard/summary?currency=ZAR')).monthRevenue, 115);
 
     const fresh = await ok('/invoices', 'POST', payload);
     assert.equal((await ok(`/invoices/${fresh.id}`)).customer_name, 'BUYERAFTER');

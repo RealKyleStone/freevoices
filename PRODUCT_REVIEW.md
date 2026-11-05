@@ -2,6 +2,53 @@
 
 24 October 2026 · branch `dev` · initial local assessment
 
+## Current status - 26 October 2026
+
+Settlement work is in progress on `dev`: migration 021, individual payment receipts, a credit/refund ledger, credit-note PDF, and seller forms. Credit and refund creation can be enabled for local development testing; production remains gated while tax/PDF, live UI and end-to-end acceptance remain outstanding. The fresh migrated backend suite now passes **157/157 with zero skips**; frontend **127/127**, responsive navigation **30/30**, lint and production build pass locally. The test matrix and Milestones 3/4 plan carry the active gates. This is not the combined tester handoff.
+
+Earlier Milestones 3 and 4 work added quote decisions, bank CSV review/matching, configurable reminders and seller sharing. Reporting includes VAT CSV, a cash movement ledger, ageing and customer statements; customer/product CSV imports, health/metrics and an encrypted local backup/restore drill are also implemented. A read-only bookkeeper login has a one-person email invite and acceptance flow, owner cancellation/revocation, and backend isolation checks. CI passed at `d45aaaf`. Migration 024 fixed the bank/refund encryption preflight; the local demo database now has all 24 migrations and zero plaintext in registered fields. The latest local restore covered 28 tables, and the deployment doctor passes after local legal seeding. Live visual journeys and real SMTP delivery remain unverified. See the [full regression report](MILESTONES_1_4_TEST_REPORT.md), [testing matrix](MILESTONES_1_4_TEST_MATRIX.md) and [delivery plan](MILESTONES_3_4_PLAN.md). The combined Milestones 1–4 testing handoff is **not ready**: credit notes/refunds need final acceptance, and staff roles and production/release checks remain. The repository owner's license choice is TBD.
+
+The Milestone 2 snapshot below is retained as historical acceptance evidence. Its test totals and "ready for external usability testing" statement refer to that earlier checkpoint, not to completion of all four milestones.
+
+Milestone 1's automated acceptance checks pass. The planned Milestone 2 features are implemented on `dev` and ready for external usability testing: company setup checklist, searchable customer/product pickers with inline creation, live invoice review and server rendered PDF preview, discounts and units, customer references and delivery details, browser draft recovery for invoice/quote create/edit, copy invoice as a new draft, and currency-specific outstanding balances with ageing and direct follow-up links. The navigation regression fixes are documented in the [regression report](REGRESSION_REPORT.md). No changes have been merged into `main`.
+
+The latest local checks pass: **144 backend tests with zero skips** on a fresh migrated database, **121 frontend tests**, **30 responsive navigation checks**, production build and lint. The [Milestone 2 testing handoff](MILESTONE_2_TEST_HANDOFF.md) lists the human test journeys. Testing on real phones, keyboard and screen readers is the next gate before calling Milestone 2 accepted. The editor browser was not automated; production SMTP, PayFast, OAuth and backup recovery remain separate validation.
+
+The historical assessment and reproduced findings below describe the starting state on 24 October. They are retained as evidence, not an open defect list. The implementation notes above each milestone record subsequent fixes. Live editor-browser navigation, real devices and screen readers, production email delivery, Google OAuth, PayFast transactions and production backup/key recovery remain unverified.
+
+## Milestone 2 first slice - 26 October 2026
+
+Implemented the company setup checklist and searchable catalogues on `dev`:
+
+- The dashboard checklist derives progress from saved business identity, VAT defaults, active currency, payment information and invoice defaults. A logo is optional. Zero VAT and immediate terms are valid. It offers links to the existing settings pages, retries loading failures and refreshes on return to the dashboard. It does not block invoicing or certify tax compliance/provider readiness.
+- All four invoice/quote create/edit screens now use server-paged customer/product pickers. Opening a builder no longer downloads every catalogue page. Pickers search after a short debounce, cancel stale requests, load more results on demand and retain an existing selection even outside the results.
+- Customers and products can be added inside the picker and immediately selected. Required fields are validated; requests in progress cannot be double-submitted; failed saves keep the entered details. Cancelling leaves the document unchanged. A custom line can retain its description and price after clearing its catalogue reference.
+- Customer selection applies the customer's payment terms, including zero. Product selection copies its inclusive/exclusive pricing mode while preserving the line's VAT rate.
+- Native modal dialogs provide keyboard focus containment, labelled search, selectable results and explicit Close actions. Enter in search cannot accidentally submit the enclosing invoice. Broader mobile and screen-reader usability testing remains pending.
+- Customer selection can request a lightweight detail response (`include_documents=false`) instead of downloading the customer's invoice history. Catalogue ordering uses name plus ID so equal names paginate consistently.
+
+At the first-slice checkpoint, local verification passed **142 backend tests with zero skips** and **102 frontend tests**, plus build and lint. The current totals after navigation regressions are recorded in Current status above.
+
+This section records the first Milestone 2 checkpoint. The remaining planned feature work is now implemented as described in Current status; human usability acceptance is pending.
+
+## Milestone 1 complete - 26 October 2026
+
+New work stays on `dev`; `main` is not merged. The dependable-billing fixes are already in PR_1. This follow-up adds the missing CI workflow and an isolated fresh-database test runner, plus explicit inclusive-VAT reconciliation assertions across issued PDFs, the VAT report, paid-revenue report and dashboard.
+
+| Completion criterion | Evidence/status |
+|---|---|
+| P0 reproductions, ownership and email-verification safeguards | Backend API regressions run with the full suite |
+| Unique concurrent numbers and safe request replay | Concurrent numbering and idempotency regressions |
+| Historical issued parties remain stable | Document-history regression after buyer/seller edits and logo deletion |
+| Pricing agrees across preview, API, PDF and reports | Actual client helper parity plus issued-inclusive PDF/report/dashboard assertions |
+| Email failure visible and safe to retry | Outbox, local SMTP acceptance, duplicate-send and ambiguous-attempt regressions |
+| Recurring calendar, restarts and concurrent workers | Anchored monthly/leap-year fixtures, occurrence uniqueness and queue recovery checks |
+| Build, backend tests, frontend tests and lint pass in CI | Passed on dev: [GitHub Actions run](https://github.com/RealKyleStone/freevoices/actions/runs/40285572397) |
+
+Local validation: **141 backend tests with zero skips** on a newly imported/migrated database, **82 frontend tests**, production build and lint pass. The test database and its dedicated user used for this workstation run were removed afterwards. The runner itself never drops/replaces database contents. All 16 migrations were exercised from the base schema; ordinary `.env` credentials and the demo database were not used for integration execution.
+
+Milestone 1 automated acceptance criteria passed on GitHub Actions for commit `37b6d7a`: 141 backend tests with zero skips, 82 frontend tests, production build and lint. [Verified run](https://github.com/RealKyleStone/freevoices/actions/runs/40285572397). Production-provider and usability validation described below remains separate work.
+
 ## Fix progress
 
 The first implementation pass fixes PDF pagination and concurrent document numbering. The 60-line regression sample now renders as four pages with repeated table headings and page-numbered footers. Pagination is shared by invoices, quotes and receipts, including long descriptions and trailing text sections.
@@ -51,7 +98,7 @@ The authenticated browser journey, responsive layouts, keyboard navigation, and 
 
 Machine-readable observations and the long-invoice sample are in `H:\Workspace\.local\freevoices\feature-audit-results.json` and `long-invoice.pdf`. These are local evidence, outside Git. The findings below distinguish reproduced behavior from source inspection and proposed capabilities.
 
-## What already exists
+## What existed at the initial review
 
 | Area | Current evidence | Assessment |
 |---|---|---|
@@ -67,7 +114,7 @@ Machine-readable observations and the long-invoice sample are in `H:\Workspace\.
 | Data protection foundations | Argon2, session token hashing, field encryption, rate limiting, migration ledger, account lifecycle, export and backup tooling exist | Valuable foundations; complete authorization and recovery testing is still required |
 | Automated checks | 93 backend tests pass | Frontend tests do not compile; lint has five errors and one warning; route-level regression coverage needs expansion |
 
-## Priority findings
+## Initial priority findings (historical)
 
 P0 means a release blocker for the affected workflow. P1 means the next reliability or usability milestone. These priorities are product judgments based on the evidence, not a completed security or compliance certification.
 
@@ -155,6 +202,4 @@ No production usage baseline was available. Treat these as measurements to add, 
 
 ## Recommended next implementation
 
-PDF pagination, atomic numbering, issued-party snapshots and explicit VAT-inclusive line pricing are implemented locally. Next, address **currency-aware reporting and truthful delivery state**, followed by recurring calendar/scheduler behavior and saved company/customer defaults. These remain necessary before promoting the app for routine business billing.
-
-The initial review added documentation only; the first implementation pass is recorded above. All work remains on `dev`; no commit or push was made.
+Submit the `dev` build for the journeys in [MILESTONE_2_TEST_HANDOFF.md](MILESTONE_2_TEST_HANDOFF.md). Measure the first-invoice usability target with real users, record failures, and fix the issues they find. Validate production integrations and recovery procedures separately before treating the service as ready for routine business billing.
