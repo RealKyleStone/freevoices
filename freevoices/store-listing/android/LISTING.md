@@ -18,11 +18,16 @@ fictional business ("Fynbos Studio"). No real customer data appears in any image
 
 ## Main store listing
 
-**App name** (30 max): `FreeVoices: Free Invoicing` — 26 chars
+> **Metadata policy:** Google rejected the first production submission (10 Nov 2026) for the word
+> "Free" in the app icon. Play treats price or promotional wording ("Free", "Sale", "#1", "Best")
+> as a violation in the **title, icon, developer name and promotional graphics**. Keep "free" out
+> of those. The brand name FreeVoices is fine. The full description may say the app is free.
+
+**App name** (30 max): `FreeVoices: Invoices & Quotes` — 29 chars
 
 **Short description** (80 max):
 
-> Free invoices and quotes for South African small businesses. VAT-ready PDFs.
+> Invoices and quotes for South African small businesses, with VAT-ready PDFs.
 
 (76 chars)
 
