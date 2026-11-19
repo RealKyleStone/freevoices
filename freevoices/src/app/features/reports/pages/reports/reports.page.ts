@@ -115,6 +115,13 @@ export class ReportsPage implements OnInit, OnDestroy, AfterViewChecked {
    * rgba(0,0,0,0.1), which is low contrast on the light surface and close to
    * invisible on the #111111 dark one.
    */
+  /** "ZAR 20k" rather than "ZAR 20000", so axes stay short. */
+  private axisLabel(value: string | number): string {
+    const n = Number(value);
+    const short = Math.abs(n) >= 1000 ? `${+(n / 1000).toFixed(1)}k` : `${n}`;
+    return `${this.selectedCurrency} ${short}`;
+  }
+
   private themeColors() {
     return {
       // --fv-medium-text and --ion-text-color-rgb both flip with the theme,
@@ -124,7 +131,7 @@ export class ReportsPage implements OnInit, OnDestroy, AfterViewChecked {
       text: this.token('--fv-medium-text', '#374151'),
       grid: `rgba(${this.token('--ion-text-color-rgb', '17, 24, 39')}, 0.12)`,
       primary: this.token('--fv-chart-1', '#262626'),
-      accent: this.token('--fv-overdue', '#d92d20'),
+      accent: this.token('--fv-chart-3', '#a3a3a3'),
       status: (status: string) =>
         this.token(STATUS_TOKENS[status] ?? '--fv-chart-3', '#a3a3a3')
     };
@@ -248,7 +255,7 @@ export class ReportsPage implements OnInit, OnDestroy, AfterViewChecked {
         maintainAspectRatio: false,
         plugins: { legend: { display: false } },
         scales: {
-          y: { beginAtZero: true, ticks: { callback: v => `${this.selectedCurrency} ${v}` } }
+          y: { beginAtZero: true, ticks: { callback: v => this.axisLabel(v) } }
         }
       }
     };
@@ -294,7 +301,7 @@ export class ReportsPage implements OnInit, OnDestroy, AfterViewChecked {
         maintainAspectRatio: false,
         plugins: { legend: { display: false } },
         scales: {
-          x: { beginAtZero: true, ticks: { callback: v => `${this.selectedCurrency} ${v}` } }
+          x: { beginAtZero: true, ticks: { maxRotation: 0, maxTicksLimit: 6, callback: v => this.axisLabel(v) } }
         }
       }
     };
@@ -329,7 +336,7 @@ export class ReportsPage implements OnInit, OnDestroy, AfterViewChecked {
         maintainAspectRatio: false,
         plugins: { legend: { position: 'bottom' } },
         scales: {
-          y: { beginAtZero: true, stacked: true, ticks: { callback: v => `${this.selectedCurrency} ${v}` } },
+          y: { beginAtZero: true, stacked: true, ticks: { callback: v => this.axisLabel(v) } },
           x: { stacked: true }
         }
       }

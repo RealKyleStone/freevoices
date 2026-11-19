@@ -1,19 +1,3 @@
-/*
- * Reports.
- *
- * This page was four full-width ion-cards of equal weight stacked down the
- * window, with no container and no maximum measure, so at 1440px a bar
- * chart was stretched across 1300px of card while the two figures the page
- * exists to report sat above it in chips of the same weight as everything
- * else. It also carried its own raw spacing and type values, and was the
- * one routed page with no menu button, so on a phone there was no way to
- * reach the navigation from it.
- *
- * Now: the two figures first, then revenue and the VAT return on the full
- * measure, with status and top customers paired beside each other as
- * context.
- */
-
 .loading-state,
 .error-state {
   display: flex;
@@ -21,7 +5,7 @@
   align-items: center;
   justify-content: center;
   gap: var(--fv-space-4);
-  padding: var(--fv-space-8) var(--fv-space-4);
+  padding: var(--fv-space-7) var(--fv-space-4);
 
   ion-icon { font-size: 2.5rem; }
 
@@ -37,7 +21,50 @@ ion-toolbar {
   --border-width: 0;
 }
 
-/* ── Headline figures ────────────────────────────────────────────── */
+/* Header */
+
+.page-head {
+  align-items: flex-end;
+  margin-bottom: var(--fv-section-gap);
+}
+
+.page-head-actions {
+  align-items: flex-end;
+  flex-wrap: wrap;
+}
+
+.head-link {
+  display: inline-flex;
+  align-items: center;
+  height: 44px;
+  padding: 0 var(--fv-space-5);
+  border-radius: var(--fv-radius-pill);
+  background: var(--ion-card-background);
+  box-shadow: var(--fv-elevation);
+  color: var(--ion-text-color);
+  font-size: var(--fv-text-sm);
+  font-weight: var(--fv-weight-medium);
+  text-decoration: none;
+  white-space: nowrap;
+}
+
+.currency-field,
+.filter-field {
+  display: flex;
+  flex-direction: column;
+  gap: var(--fv-tight-gap);
+  min-width: 0;
+
+  > span {
+    font-size: var(--fv-text-2xs);
+    font-weight: var(--fv-weight-semibold);
+    letter-spacing: var(--fv-tracking-label);
+    text-transform: uppercase;
+    color: var(--ion-color-medium);
+  }
+}
+
+/* Headline figures */
 
 .summary-row {
   display: grid;
@@ -51,55 +78,56 @@ ion-toolbar {
 }
 
 .summary-chip {
-  padding: var(--fv-space-4);
-  border: 1px solid var(--fv-border);
+  padding: var(--fv-space-5);
   border-radius: var(--fv-radius-lg);
   background: var(--ion-card-background);
+  box-shadow: var(--fv-elevation);
 
   .chip-label {
     display: block;
     font-size: var(--fv-text-2xs);
     font-weight: var(--fv-weight-semibold);
-    letter-spacing: 0.06em;
+    letter-spacing: var(--fv-tracking-label);
     text-transform: uppercase;
     color: var(--ion-color-medium);
   }
 
-  /*
-   * This was --ion-color-dark, which is #111827 in both themes because the
-   * dark palette does not re-key it — so the two headline figures on the
-   * page were near-black on a dark surface and measured 1.24:1. The text
-   * colour follows the theme.
-   */
   .chip-value {
     display: block;
-    margin-top: 3px;
-    font-size: var(--fv-text-xl);
-    font-weight: var(--fv-weight-semibold);
+    margin-top: var(--fv-space-3);
+    font-size: var(--fv-text-3xl);
+    font-weight: var(--fv-weight-display);
+    letter-spacing: var(--fv-tracking-display);
+    line-height: 1.1;
     color: var(--ion-text-color);
     font-variant-numeric: tabular-nums;
-    /* A twelve-month rand figure runs long; it wraps as a whole or not at
-       all, never mid-number. */
     white-space: nowrap;
   }
 
   .chip-note {
     display: block;
-    margin-top: 2px;
+    margin-top: var(--fv-space-2);
     font-size: var(--fv-text-xs);
     color: var(--ion-color-medium);
   }
 }
 
-/* ── Layout ──────────────────────────────────────────────────────── */
+.summary-chip-hero {
+  background: var(--ion-color-primary);
+  box-shadow: none;
+
+  .chip-label,
+  .chip-note { color: rgba(var(--ion-color-primary-contrast-rgb), 0.65); }
+  .chip-value { color: var(--ion-color-primary-contrast); }
+}
+
+/* Layout */
 
 .reports-grid {
   display: grid;
   grid-template-columns: minmax(0, 1fr);
   gap: var(--fv-section-gap);
 
-  /* Status and top customers are both small, categorical charts; they read
-     better beside each other than stacked, once there is room. */
   @media (min-width: 900px) {
     grid-template-columns: repeat(2, minmax(0, 1fr));
 
@@ -109,43 +137,42 @@ ion-toolbar {
 
 .report { min-width: 0; }
 
-.ledger-filters {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: end;
-  gap: var(--fv-space-3);
-  label { display: flex; flex-direction: column; gap: var(--fv-space-1); min-width: 11rem; }
-  input { min-height: 2.6rem; padding: 0.4rem; color: var(--ion-text-color); background: var(--ion-card-background); border: 1px solid var(--fv-border); border-radius: var(--fv-radius-sm); }
-}
+.report .panel-pad { padding: var(--fv-space-5); }
 
-/*
- * .section-head is a row with its ends pushed apart, which is right when
- * the far end holds an action. Here the far end holds the label's own
- * subtitle, so pushing it away put "Paid invoices, last 12 months" against
- * the opposite edge of the page from the heading it belongs to. Stacked
- * instead, so each note stays with its label.
- */
 .report .section-head {
   display: block;
   min-height: 0;
+  margin-bottom: var(--fv-space-3);
+}
+
+.report .section-head-action {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: var(--fv-space-4);
+  flex-wrap: wrap;
+
+  ion-button { margin: 0; }
+}
+
+.section-actions {
+  display: flex;
+  gap: var(--fv-space-2);
 }
 
 .section-note {
-  margin: 2px 0 0;
+  max-width: 62ch;
+  margin: var(--fv-space-1) 0 0;
   font-size: var(--fv-text-xs);
+  line-height: 1.5;
   color: var(--ion-color-medium);
 }
 
-/* ── Charts ──────────────────────────────────────────────────────── */
+/* Charts */
 
-/*
- * One height for every chart, so the four panels line up rather than each
- * settling wherever its own content left it. Chart.js sizes the canvas to
- * its container, so the container is what has to be fixed.
- */
 .chart-wrap {
   position: relative;
-  height: 260px;
+  height: 300px;
 
   canvas {
     width: 100% !important;
@@ -161,11 +188,91 @@ ion-toolbar {
   color: var(--ion-color-medium);
 }
 
-/* ── VAT table ───────────────────────────────────────────────────── */
+/* Cash movements filters */
+
+.ledger-filters {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: var(--fv-space-4);
+  align-items: end;
+
+  @media (min-width: 700px) {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  @media (min-width: 1100px) {
+    grid-template-columns: 11rem 11rem minmax(0, 1fr) auto;
+  }
+}
+
+/* The picker carries its own label and vertical padding; in a filter row
+   it sits on the same baseline as the date fields. */
+.filter-field ::ng-deep .picker-field { padding: 0; }
+
+.filter-actions {
+  display: flex;
+  gap: var(--fv-space-2);
+  flex-wrap: wrap;
+
+  ion-button { margin: 0; }
+
+  @media (min-width: 700px) and (max-width: 1099px) {
+    grid-column: 1 / -1;
+  }
+}
+
+/* Results */
+
+.result-note {
+  margin: 0 0 var(--fv-space-3);
+  font-size: var(--fv-text-sm);
+  color: var(--ion-color-medium);
+}
+
+.bucket-row {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--fv-space-3);
+
+  @media (min-width: 700px) {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+
+  &.bucket-row-2 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+
+.bucket {
+  display: flex;
+  flex-direction: column;
+  gap: var(--fv-tight-gap);
+  min-width: 0;
+  padding: var(--fv-space-4);
+  border-radius: var(--fv-radius-md);
+  background: var(--fv-surface-subtle);
+
+  span {
+    font-size: var(--fv-text-2xs);
+    font-weight: var(--fv-weight-semibold);
+    letter-spacing: var(--fv-tracking-label);
+    text-transform: uppercase;
+    color: var(--ion-color-medium);
+  }
+
+  strong {
+    font-size: var(--fv-text-md);
+    font-weight: var(--fv-weight-semibold);
+    font-variant-numeric: tabular-nums;
+    overflow-wrap: anywhere;
+  }
+
+  &.is-overdue strong { color: var(--fv-overdue); }
+}
+
+/* Tables */
 
 .vat-table-scroll {
   margin-top: var(--fv-space-5);
-  padding-top: var(--fv-space-5);
+  padding-top: var(--fv-space-4);
   border-top: 1px solid var(--fv-border);
   overflow-x: auto;
   -webkit-overflow-scrolling: touch;
@@ -179,7 +286,7 @@ ion-toolbar {
 
   th,
   td {
-    padding: var(--fv-space-2) var(--fv-space-3);
+    padding: var(--fv-space-3);
     text-align: left;
     border-bottom: 1px solid var(--fv-border);
   }
@@ -187,12 +294,14 @@ ion-toolbar {
   th {
     font-size: var(--fv-text-2xs);
     font-weight: var(--fv-weight-semibold);
-    letter-spacing: 0.06em;
+    letter-spacing: var(--fv-tracking-label);
     text-transform: uppercase;
     color: var(--ion-color-medium);
   }
 
   td { color: var(--ion-text-color); }
+
+  a { color: var(--ion-text-color); font-weight: var(--fv-weight-medium); }
 
   tfoot td {
     border-top: 1px solid var(--fv-border-strong);
@@ -205,21 +314,23 @@ ion-toolbar {
   }
 }
 
-/* Native selects and date inputs keep browser chrome, which does not follow
-   the theme. Bring them onto the field surface. */
+/* Native selects and date inputs ignore the theme unless they are styled. */
 select,
 input[type="date"],
 input[type="month"] {
   min-height: 44px;
-  padding: 0 12px;
+  padding: 0 var(--fv-space-3);
   border: 1px solid var(--fv-border);
   border-radius: var(--fv-radius-md);
   background: var(--fv-surface-subtle);
   color: var(--ion-text-color);
   font-family: inherit;
   font-size: var(--fv-text-base);
-  color-scheme: light dark;
 }
+
+:host-context(.ion-palette-dark) select,
+:host-context(.ion-palette-dark) input[type="date"],
+:host-context(.ion-palette-dark) input[type="month"] { color-scheme: dark; }
 
 select:focus-visible,
 input[type="date"]:focus-visible,
