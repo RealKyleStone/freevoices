@@ -107,7 +107,7 @@ ion-content {
    * panel now separates primary from secondary text by hue rather than by
    * fading it towards the background.
    */
-  color: var(--fv-surface-subtle);
+  color: var(--fv-n-100);
   margin: 0 0 0.75rem;
 }
 
@@ -125,7 +125,7 @@ ion-content {
   margin: 0 0 1rem;
 }
 
-.auth-headline-accent { color: var(--fv-surface-subtle); }
+.auth-headline-accent { color: var(--fv-n-100); }
 
 :host-context(.ion-palette-dark) .auth-headline-accent { color: var(--ion-color-primary); }
 
@@ -133,7 +133,7 @@ ion-content {
   font-size: 0.875rem;
   line-height: 1.65;
   /* Was rgba(255,255,255,0.65) — about 3.3:1 on the teal panel. */
-  color: var(--fv-surface-subtle);
+  color: var(--fv-n-100);
   max-width: 360px;
   margin: 0;
 }
@@ -142,7 +142,7 @@ ion-content {
 
 /* Was rgba(255,255,255,0.35): about 2.0:1 on the teal panel and 2.8:1 on
    the dark one, failing in both themes. Kept quiet by size, not by fade. */
-.auth-copyright { font-size: 0.7rem; color: var(--fv-surface-subtle); margin: 0; position: relative; z-index: 1; }
+.auth-copyright { font-size: 0.7rem; color: var(--fv-n-100); margin: 0; position: relative; z-index: 1; }
 
 :host-context(.ion-palette-dark) .auth-right-panel { background: var(--fv-n-1000); }
 

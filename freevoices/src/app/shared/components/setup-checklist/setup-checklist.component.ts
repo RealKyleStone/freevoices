@@ -31,7 +31,6 @@ import { businessSetup, SetupStep } from '../../utils/business-setup';
       background: var(--ion-card-background);
       box-shadow: var(--fv-elevation);
     }
-    :host-context(.ion-palette-dark) .setup { border: 1px solid var(--fv-border); }
     summary { cursor: pointer; min-height: 44px; font-size: var(--fv-text-md); font-weight: var(--fv-weight-semibold); }
     summary span { display: block; margin-top: 6px; font-size: var(--fv-text-sm); font-weight: var(--fv-weight-regular); color: var(--ion-color-medium); }
     progress { width: 100%; height: 4px; margin-top: var(--fv-space-3); accent-color: var(--ion-color-primary); }

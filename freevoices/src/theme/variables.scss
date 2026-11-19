@@ -311,9 +311,8 @@
   --fv-surface-raised: #0a0a0a;
   --fv-surface-subtle: #171717;
 
-  // Shadows do not read on black. Elevation is a hairline here, applied by
-  // the card rule in global.scss.
-  --fv-elevation: none;
+  // A shadow does nothing on black, so elevation is a hairline ring.
+  --fv-elevation: 0 0 0 1px rgba(var(--ion-color-medium-rgb), 0.18);
 }
 /*
  * Edge-to-edge safe areas (Android 15 / API 35).

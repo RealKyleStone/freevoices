@@ -4,7 +4,8 @@
   width: 40px;
   height: 40px;
   object-fit: contain;
-  border-radius: 8px;
+  border-radius: 10px;
+  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.22);
 }
 
 .auth-feature-list {
@@ -18,7 +19,7 @@
     align-items: center;
     gap: 10px;
     font-size: 0.82rem;
-    color: var(--fv-surface-subtle);
+    color: var(--fv-n-100);
     margin-bottom: 8px;
     &::before { display: none; }
   }
@@ -144,18 +145,30 @@
   top: 1rem;
   right: 1rem;
   z-index: 9999;
-  width: 44px;
-  height: 44px;
-  border-radius: 50%;
-  border: 1px solid var(--fv-border-strong);
-  background: var(--fv-surface-subtle);
   display: flex;
-  align-items: center;
-  justify-content: center;
+  gap: 2px;
+  padding: 3px;
+  border: 1px solid var(--fv-border-strong);
+  border-radius: var(--fv-radius-pill);
+  background: var(--fv-surface-subtle);
   cursor: pointer;
-  transition: background var(--fv-duration-fast) var(--fv-ease);
 
-  ion-icon { font-size: 20px; color: var(--ion-text-color); pointer-events: none; }
+  .theme-seg {
+    display: grid;
+    place-items: center;
+    width: 38px;
+    height: 34px;
+    border-radius: var(--fv-radius-pill);
+    color: var(--ion-color-medium);
+    transition: background var(--fv-duration-fast) var(--fv-ease), color var(--fv-duration-fast) var(--fv-ease);
+
+    &.on {
+      background: var(--ion-color-primary);
+      color: var(--ion-color-primary-contrast);
+    }
+  }
+
+  ion-icon { font-size: 18px; pointer-events: none; }
 }
 // Legal links sit below the account links, deliberately quieter but present —
 // Play requires the privacy policy to be reachable before sign-in.

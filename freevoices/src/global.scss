@@ -191,8 +191,12 @@ ion-split-pane {
 
 ion-menu {
   --width: 240px;
+  --background: var(--ion-card-background);
 
-  ion-content { --background: var(--ion-background-color); }
+  ion-content { --background: var(--ion-card-background); }
+
+  /* The rail is one panel, top to bottom, with a hairline against the page. */
+  &::part(container) { border-right: 1px solid var(--fv-border); }
 
   /*
    * The brand is a <button> (it navigates to the dashboard), so the UA
@@ -289,7 +293,30 @@ ion-menu {
   ion-footer {
     padding: var(--fv-space-2) var(--fv-rail-inset) var(--fv-space-3);
     border-top: 1px solid var(--fv-border);
-    background: var(--ion-background-color);
+    background: var(--ion-card-background);
+
+    .theme-track {
+      position: relative;
+      width: 34px;
+      height: 20px;
+      border-radius: var(--fv-radius-pill);
+      background: var(--fv-border-strong);
+      transition: background var(--fv-duration-fast) var(--fv-ease);
+
+      .theme-knob {
+        position: absolute;
+        top: 2px;
+        left: 2px;
+        width: 16px;
+        height: 16px;
+        border-radius: 50%;
+        background: var(--ion-card-background);
+        transition: transform var(--fv-duration-fast) var(--fv-ease);
+      }
+
+      &.on { background: var(--ion-color-primary); }
+      &.on .theme-knob { transform: translateX(14px); background: var(--ion-color-primary-contrast); }
+    }
 
     ion-item {
       --background: transparent;
@@ -324,11 +351,6 @@ ion-card {
   background: var(--ion-card-background);
   border: none;
   box-shadow: var(--fv-elevation);
-}
-
-/* On black a shadow does nothing, so the edge carries the elevation. */
-.ion-palette-dark ion-card {
-  border: 1px solid var(--fv-border);
 }
 
 ion-button {
@@ -564,10 +586,6 @@ ion-header ion-toolbar {
   background: var(--ion-card-background);
   box-shadow: var(--fv-elevation);
   overflow: hidden;
-}
-
-.ion-palette-dark .panel {
-  border: 1px solid var(--fv-border);
 }
 
 /* A panel whose content is not itself edge-to-edge, such as a chart or a
