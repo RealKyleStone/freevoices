@@ -72,8 +72,9 @@
 }
 
 .list-filter ion-segment {
-  --background: var(--fv-surface-subtle);
-  border-radius: var(--fv-radius-md);
+  --background: var(--ion-card-background);
+  border-radius: var(--fv-radius-pill);
+  box-shadow: var(--fv-elevation);
   padding: 3px;
   /*
    * Stacked mode: equal columns filling the row when the labels fit, and
@@ -88,7 +89,7 @@
   grid-auto-columns: minmax(max-content, 1fr);
 
   ion-segment-button {
-    --background-checked: var(--ion-card-background);
+    --background-checked: var(--ion-color-primary);
     /*
      * --ion-color-medium would be the obvious choice, but these labels sit
      * on the recessed track above rather than on the card, and grey on grey
@@ -98,10 +99,10 @@
      * of the scale.
      */
     --color: var(--fv-medium-text);
-    --color-checked: var(--ion-text-color);
+    --color-checked: var(--ion-color-primary-contrast);
     --indicator-color: transparent;
     --indicator-box-shadow: none;
-    --border-radius: var(--fv-radius-sm);
+    --border-radius: var(--fv-radius-pill);
     --padding-start: 14px;
     --padding-end: 14px;
     min-height: 32px;

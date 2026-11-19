@@ -79,13 +79,15 @@ ion-toolbar {
 }
 
 .stat {
-  padding: var(--fv-space-5);
+  padding: var(--fv-space-4);
   border: none;
   border-radius: var(--fv-radius-lg);
   background: var(--ion-card-background);
   box-shadow: var(--fv-elevation);
   /* Makes the card the reference for the cqi units on .stat-value below. */
   container-type: inline-size;
+
+  @media (min-width: 1200px) { padding: var(--fv-space-5); }
 }
 
 
@@ -93,7 +95,7 @@ ion-toolbar {
 .stat-hero {
   background: var(--ion-color-primary);
 
-  .stat-label { color: var(--ion-color-medium); }
+  .stat-label { color: rgba(var(--ion-color-primary-contrast-rgb), 0.65); }
   .stat-value { color: var(--ion-color-primary-contrast); }
   .stat-mark  { background: rgba(var(--ion-color-primary-contrast-rgb), 0.12); }
   .stat-mark ion-icon { color: var(--ion-color-primary-contrast); }
@@ -234,10 +236,10 @@ ion-toolbar {
     flex-shrink: 0;
     ion-icon { font-size: 15px; }
 
-    &.dot-success { background: var(--fv-success-bg); ion-icon { color: var(--fv-success-text); } }
-    &.dot-danger  { background: var(--fv-danger-bg);  ion-icon { color: var(--fv-danger-text); } }
-    &.dot-primary { background: var(--fv-teal-tint);  ion-icon { color: var(--fv-teal-text); } }
-    &.dot-medium  { background: var(--fv-medium-bg);  ion-icon { color: var(--fv-medium-text); } }
+    &.dot-success { background: var(--fv-paid-tile);    ion-icon { color: var(--fv-paid); } }
+    &.dot-danger  { background: var(--fv-overdue-tile); ion-icon { color: var(--fv-overdue); } }
+    &.dot-primary,
+    &.dot-medium  { background: var(--fv-surface-subtle); ion-icon { color: var(--ion-color-medium); } }
   }
 
   ion-label {

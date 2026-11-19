@@ -27,7 +27,6 @@ import { businessSetup, SetupStep } from '../../utils/business-setup';
       border: none;
       border-radius: var(--fv-radius-lg);
       padding: var(--fv-space-5);
-      margin-bottom: var(--fv-section-gap);
       background: var(--ion-card-background);
       box-shadow: var(--fv-elevation);
     }

@@ -86,6 +86,7 @@
   --fv-overdue-tile: rgba(217, 45, 32, 0.10);
   --fv-paid: #0a7d43;
   --fv-paid-contrast: #ffffff;
+  --fv-paid-tile: rgba(10, 125, 67, 0.10);
 
   // Chart series. Greyscale, strongest first, so a chart reads as shape
   // rather than as a palette. Overdue is the one segment that keeps colour.
@@ -287,6 +288,7 @@
   --fv-overdue-tile: rgba(255, 90, 71, 0.16);
   --fv-paid: #12a15a;
   --fv-paid-contrast: #00140a;
+  --fv-paid-tile: rgba(18, 161, 90, 0.16);
 
   --fv-chart-1: #fafafa;
   --fv-chart-2: #d4d4d4;
