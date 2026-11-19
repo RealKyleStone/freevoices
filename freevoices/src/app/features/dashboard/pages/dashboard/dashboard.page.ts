@@ -162,9 +162,8 @@ export class DashboardPage implements OnInit, OnDestroy {
 
   getActivityBadgeClass(eventType: string): string {
     const classes: Record<string, string> = {
-      PAID: 'badge-success', CREDIT_NOTE:'badge-success', REFUND:'badge-medium', OVERDUE: 'badge-danger', CANCELLED: 'badge-medium',
-      SENT: 'badge-info', VIEWED: 'badge-info', DOWNLOADED: 'badge-info', CREATED: 'badge-medium'
+      PAID: 'badge-paid', CREDIT_NOTE: 'badge-paid', OVERDUE: 'badge-overdue'
     };
-    return classes[eventType] ?? 'badge-medium';
+    return classes[eventType] ?? 'badge-muted';
   }
 }

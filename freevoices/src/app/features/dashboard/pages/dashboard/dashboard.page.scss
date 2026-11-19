@@ -79,12 +79,25 @@ ion-toolbar {
 }
 
 .stat {
-  padding: var(--fv-space-4);
-  border: 1px solid var(--fv-border);
+  padding: var(--fv-space-5);
+  border: none;
   border-radius: var(--fv-radius-lg);
   background: var(--ion-card-background);
+  box-shadow: var(--fv-elevation);
   /* Makes the card the reference for the cqi units on .stat-value below. */
   container-type: inline-size;
+}
+
+.ion-palette-dark .stat { border: 1px solid var(--fv-border); }
+
+/* One card carries the figure the page is opened for. */
+.stat-hero {
+  background: var(--ion-color-primary);
+
+  .stat-label { color: var(--ion-color-medium); }
+  .stat-value { color: var(--ion-color-primary-contrast); }
+  .stat-mark  { background: rgba(var(--ion-color-primary-contrast-rgb), 0.12); }
+  .stat-mark ion-icon { color: var(--ion-color-primary-contrast); }
 }
 
 /*
@@ -132,10 +145,10 @@ ion-toolbar {
    * inline size, so the figure shrinks only when its own card is tight, and
    * is capped at the type-scale step it belongs to.
    */
-  font-size: clamp(1.0625rem, 13cqi, var(--fv-text-xl));
-  font-weight: var(--fv-weight-semibold);
+  font-size: clamp(1.0625rem, 15cqi, var(--fv-text-2xl));
+  font-weight: var(--fv-weight-display);
   line-height: 1.1;
-  letter-spacing: -0.02em;
+  letter-spacing: var(--fv-tracking-display);
   color: var(--ion-text-color);
   font-variant-numeric: tabular-nums;
   /* Allowed to wrap rather than be truncated: a revenue figure rendered as
@@ -158,14 +171,16 @@ ion-toolbar {
 
   ion-icon { font-size: 15px; }
 
-  &.teal    { background: var(--fv-teal-tint);  ion-icon { color: var(--fv-teal-text); } }
-  &.success { background: var(--fv-success-bg); ion-icon { color: var(--fv-success-text); } }
-  &.warning { background: var(--fv-warning-bg); ion-icon { color: var(--fv-warning-text); } }
-  &.danger  { background: var(--fv-danger-bg);  ion-icon { color: var(--fv-danger-text); } }
+  background: var(--fv-surface-subtle);
+  ion-icon { color: var(--ion-color-medium); }
 }
 
-/* Status colour earns its place only when something is actually overdue. */
-.stat-attention .stat-value { color: var(--fv-danger-text); }
+/* Colour reaches the figure, not just the badge, when money is late. */
+.stat-attention {
+  .stat-value { color: var(--fv-overdue); }
+  .stat-mark { background: var(--fv-overdue-tile); }
+  .stat-mark ion-icon { color: var(--fv-overdue); }
+}
 
 .balances .panel { padding: var(--fv-space-4); }
 .balance-total { margin: 0 0 var(--fv-space-4); font-size: var(--fv-text-xl); font-weight: var(--fv-weight-semibold); }
@@ -173,6 +188,9 @@ ion-toolbar {
 .ageing-grid div { display: flex; flex-direction: column; gap: var(--fv-space-1); min-width: 0; }
 .ageing-grid span { color: var(--ion-color-medium); font-size: var(--fv-text-xs); }
 .ageing-grid strong { overflow-wrap: anywhere; font-variant-numeric: tabular-nums; }
+.ageing-grid .is-overdue strong { color: var(--fv-overdue); }
+
+.action-invoices strong { color: var(--fv-overdue); }
 .action-invoices { margin-top: var(--fv-space-4); }
 .action-invoices h3 { font-size: var(--fv-text-base); }
 .action-invoices a { display: flex; justify-content: space-between; gap: var(--fv-space-3); padding: var(--fv-space-3) 0; border-top: 1px solid var(--fv-border); text-decoration: none; color: var(--ion-text-color); }
@@ -252,10 +270,10 @@ ion-toolbar {
   font-weight: var(--fv-weight-semibold);
   white-space: nowrap;
 
-  &.badge-success { background: var(--fv-success-bg); color: var(--fv-success-text); }
-  &.badge-danger  { background: var(--fv-danger-bg);  color: var(--fv-danger-text); }
-  &.badge-info    { background: var(--fv-teal-tint);  color: var(--fv-teal-text); }
-  &.badge-medium  { background: var(--fv-medium-bg);  color: var(--fv-medium-text); }
+  &.badge-paid    { background: var(--fv-paid);      color: var(--fv-paid-contrast); }
+  &.badge-overdue { background: var(--fv-overdue);   color: var(--fv-overdue-contrast); }
+  &.badge-muted,
+  &.badge-medium  { background: var(--fv-medium-bg); color: var(--fv-medium-text); }
 }
 
 /* ── Empty state ─────────────────────────────────────────────────── */

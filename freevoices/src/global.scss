@@ -322,8 +322,13 @@ ion-menu {
 ion-card {
   border-radius: var(--fv-radius-lg);
   background: var(--ion-card-background);
+  border: none;
+  box-shadow: var(--fv-elevation);
+}
+
+/* On black a shadow does nothing, so the edge carries the elevation. */
+.ion-palette-dark ion-card {
   border: 1px solid var(--fv-border);
-  box-shadow: none;
 }
 
 ion-button {
@@ -478,10 +483,10 @@ ion-header ion-toolbar {
 
   h1 {
     margin: 0;
-    font-size: var(--fv-text-2xl);
-    font-weight: var(--fv-weight-semibold);
-    line-height: 1.2;
-    letter-spacing: -0.02em;
+    font-size: var(--fv-text-3xl);
+    font-weight: var(--fv-weight-display);
+    line-height: 1.1;
+    letter-spacing: var(--fv-tracking-display);
     color: var(--ion-text-color);
   }
 
@@ -554,10 +559,15 @@ ion-header ion-toolbar {
  * carries, which is how pages ended up as a column of titled boxes.
  */
 .panel {
-  border: 1px solid var(--fv-border);
+  border: none;
   border-radius: var(--fv-radius-lg);
   background: var(--ion-card-background);
+  box-shadow: var(--fv-elevation);
   overflow: hidden;
+}
+
+.ion-palette-dark .panel {
+  border: 1px solid var(--fv-border);
 }
 
 /* A panel whose content is not itself edge-to-edge, such as a chart or a

@@ -52,9 +52,9 @@
 }
 
 .list-toolbar ion-searchbar {
-  --background: var(--fv-surface-subtle);
-  --border-radius: var(--fv-radius-md);
-  --box-shadow: none;
+  --background: var(--ion-card-background);
+  --border-radius: var(--fv-radius-pill);
+  --box-shadow: var(--fv-elevation);
   --placeholder-color: var(--ion-color-medium);
   --color: var(--ion-text-color);
   --icon-color: var(--ion-color-medium);
@@ -145,10 +145,15 @@
 /* ── Rows ────────────────────────────────────────────────────────── */
 
 .list-rows {
-  border: 1px solid var(--fv-border);
+  border: none;
   border-radius: var(--fv-radius-lg);
   background: var(--ion-card-background);
+  box-shadow: var(--fv-elevation);
   overflow: hidden;
+}
+
+.ion-palette-dark .list-rows {
+  border: 1px solid var(--fv-border);
 }
 
 .list-row {
