@@ -87,8 +87,9 @@ export class QuoteListPage implements OnInit {
 
   getStatusColor(status: string): string {
     const map: Record<string, string> = {
-      DRAFT: 'medium', SENT: 'primary', PAID: 'success', ACCEPTED: 'success', CONVERTED: 'success', EXPIRED: 'warning', DECLINED: 'danger', OVERDUE: 'warning', CANCELLED: 'danger'
+      PAID: 'paid', CREDITED: 'paid', ACCEPTED: 'paid', CONVERTED: 'paid',
+      OVERDUE: 'overdue'
     };
-    return map[status] ?? 'medium';
+    return map[status] ?? 'muted';
   }
 }

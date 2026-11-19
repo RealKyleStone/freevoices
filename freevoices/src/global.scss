@@ -114,45 +114,47 @@
  * once, in variables.scss.
  */
 :root {
-  --ion-background-color: #ffffff;
-  --ion-background-color-rgb: 255, 255, 255;
-  --ion-text-color: #111827;
-  --ion-text-color-rgb: 17, 24, 39;
+  /* Pages sit on grey; cards are the white that lifts off it. */
+  --ion-background-color: #e5e5e5;
+  --ion-background-color-rgb: 229, 229, 229;
+  --ion-text-color: #0a0a0a;
+  --ion-text-color-rgb: 10, 10, 10;
   --ion-item-background: #ffffff;
   --ion-card-background: #ffffff;
+  --ion-toolbar-background: #e5e5e5;
 }
 
 /* ── Dark mode ── */
 .ion-palette-dark {
-  --ion-background-color: #111111;
-  --ion-background-color-rgb: 17, 17, 17;
-  --ion-text-color: #f9fafb;
-  --ion-text-color-rgb: 249, 250, 251;
-  --ion-item-background: #1a1a1a;
-  --ion-card-background: #1e1e1e;
+  --ion-background-color: #000000;
+  --ion-background-color-rgb: 0, 0, 0;
+  --ion-text-color: #fafafa;
+  --ion-text-color-rgb: 250, 250, 250;
+  --ion-item-background: #0a0a0a;
+  --ion-card-background: #0a0a0a;
 
-  --ion-color-step-50:  #1d1d1d;
-  --ion-color-step-100: #2a2a2a;
-  --ion-color-step-150: #363636;
-  --ion-color-step-200: #414141;
-  --ion-color-step-250: #4d4d4d;
-  --ion-color-step-300: #595959;
-  --ion-color-step-350: #656565;
-  --ion-color-step-400: #717171;
-  --ion-color-step-450: #7d7d7d;
-  --ion-color-step-500: #898989;
-  --ion-color-step-550: #949494;
-  --ion-color-step-600: #a0a0a0;
-  --ion-color-step-650: #acacac;
-  --ion-color-step-700: #b8b8b8;
-  --ion-color-step-750: #c4c4c4;
-  --ion-color-step-800: #d0d0d0;
-  --ion-color-step-850: #dbdbdb;
-  --ion-color-step-900: #e7e7e7;
-  --ion-color-step-950: #f3f3f3;
+  --ion-color-step-50:  #0a0a0a;
+  --ion-color-step-100: #171717;
+  --ion-color-step-150: #1f1f1f;
+  --ion-color-step-200: #262626;
+  --ion-color-step-250: #2e2e2e;
+  --ion-color-step-300: #373737;
+  --ion-color-step-350: #404040;
+  --ion-color-step-400: #525252;
+  --ion-color-step-450: #5e5e5e;
+  --ion-color-step-500: #737373;
+  --ion-color-step-550: #8a8a8a;
+  --ion-color-step-600: #a3a3a3;
+  --ion-color-step-650: #b4b4b4;
+  --ion-color-step-700: #d4d4d4;
+  --ion-color-step-750: #dedede;
+  --ion-color-step-800: #e5e5e5;
+  --ion-color-step-850: #ededed;
+  --ion-color-step-900: #f5f5f5;
+  --ion-color-step-950: #fafafa;
 
-  --ion-toolbar-background: #111111;
-  --ion-tab-bar-background: #1a1a1a;
+  --ion-toolbar-background: #000000;
+  --ion-tab-bar-background: #0a0a0a;
 }
 
 /* Global styles */
