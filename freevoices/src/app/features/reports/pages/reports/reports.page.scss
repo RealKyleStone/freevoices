@@ -204,3 +204,26 @@ ion-toolbar {
     font-variant-numeric: tabular-nums;
   }
 }
+
+/* Native selects and date inputs keep browser chrome, which does not follow
+   the theme. Bring them onto the field surface. */
+select,
+input[type="date"],
+input[type="month"] {
+  min-height: 44px;
+  padding: 0 12px;
+  border: 1px solid var(--fv-border);
+  border-radius: var(--fv-radius-md);
+  background: var(--fv-surface-subtle);
+  color: var(--ion-text-color);
+  font-family: inherit;
+  font-size: var(--fv-text-base);
+  color-scheme: light dark;
+}
+
+select:focus-visible,
+input[type="date"]:focus-visible,
+input[type="month"]:focus-visible {
+  outline: 2px solid var(--ion-color-primary);
+  outline-offset: 0;
+}

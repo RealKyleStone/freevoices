@@ -18,16 +18,16 @@
     align-items: center;
     gap: 10px;
     font-size: 0.82rem;
-    color: #ccfbf1;
+    color: var(--fv-surface-subtle);
     margin-bottom: 8px;
     &::before { display: none; }
   }
 }
 
-:host-context(.ion-palette-dark) .auth-feature-list li { color: #94a3b8; }
+:host-context(.ion-palette-dark) .auth-feature-list li { color: var(--fv-n-400); }
 
 .auth-feat-dot { width: 5px; height: 5px; border-radius: 50%; background: white; flex-shrink: 0; }
-:host-context(.ion-palette-dark) .auth-feat-dot { background: #14b8a6; }
+:host-context(.ion-palette-dark) .auth-feat-dot { background: var(--ion-color-primary); }
 
 .auth-right-panel {
   width: 420px;
@@ -70,9 +70,9 @@
 }
 
 :host-context(.ion-palette-dark) .auth-field-input {
-  --background: #1e1e1e;
+  --background: var(--ion-card-background);
   --color: #ffffff;
-  --placeholder-color: #6b7280;
+  --placeholder-color: var(--ion-color-medium);
   -webkit-text-fill-color: #ffffff;
 }
 
@@ -89,8 +89,8 @@
 :host-context(.ion-palette-dark) ::ng-deep .auth-field-input input:-webkit-autofill:hover,
 :host-context(.ion-palette-dark) ::ng-deep .auth-field-input input:-webkit-autofill:focus {
   -webkit-text-fill-color: #ffffff;
-  -webkit-box-shadow: 0 0 0 1000px #1e1e1e inset;
-  box-shadow: 0 0 0 1000px #1e1e1e inset;
+  -webkit-box-shadow: 0 0 0 1000px var(--ion-card-background) inset;
+  box-shadow: 0 0 0 1000px var(--ion-card-background) inset;
   caret-color: #ffffff;
 }
 

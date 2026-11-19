@@ -61,11 +61,11 @@
   font-weight: var(--fv-weight-semibold);
   white-space: nowrap;
 
-  &.badge-success { background: var(--fv-success-bg); color: var(--fv-success-text); }
-  &.badge-danger  { background: var(--fv-danger-bg);  color: var(--fv-danger-text); }
-  &.badge-warning { background: var(--fv-warning-bg); color: var(--fv-warning-text); }
-  &.badge-medium  { background: var(--fv-medium-bg);  color: var(--fv-medium-text); }
-  &.badge-primary { background: var(--fv-teal-tint);  color: var(--fv-teal-text); }
+  &.badge-overdue { background: var(--fv-overdue); color: var(--fv-overdue-contrast); }
+  &.badge-paid    { background: var(--fv-paid);    color: var(--fv-paid-contrast); }
+  &.badge-muted,
+  &.badge-warning,
+  &.badge-medium  { background: var(--fv-medium-bg); color: var(--fv-medium-text); }
 }
 
 /* ── Key facts ───────────────────────────────────────────────────── */
@@ -75,9 +75,10 @@
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 1px;
   margin: 0;
-  border: 1px solid var(--fv-border);
+  border: none;
   border-radius: var(--fv-radius-lg);
   background: var(--fv-border);
+  box-shadow: var(--fv-elevation);
   overflow: hidden;
 
   @media (min-width: 700px) {

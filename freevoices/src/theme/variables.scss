@@ -87,6 +87,13 @@
   --fv-paid: #0a7d43;
   --fv-paid-contrast: #ffffff;
 
+  // Chart series. Greyscale, strongest first, so a chart reads as shape
+  // rather than as a palette. Overdue is the one segment that keeps colour.
+  --fv-chart-1: #262626;
+  --fv-chart-2: #525252;
+  --fv-chart-3: #a3a3a3;
+  --fv-chart-4: #d4d4d4;
+
   // ─── Tint pairs ───────────────────────────────────────────────
   // Still a light background with dark text. Used by field errors, the
   // paid line in totals, and anywhere a tinted surface is wanted. Status
@@ -280,6 +287,11 @@
   --fv-overdue-tile: rgba(255, 90, 71, 0.16);
   --fv-paid: #12a15a;
   --fv-paid-contrast: #00140a;
+
+  --fv-chart-1: #fafafa;
+  --fv-chart-2: #d4d4d4;
+  --fv-chart-3: #8a8a8a;
+  --fv-chart-4: #525252;
 
   --fv-teal-tint: #262626;
   --fv-teal-text: #fafafa;

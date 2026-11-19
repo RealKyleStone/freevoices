@@ -7,11 +7,11 @@
 }
 .auth-feature-list {
   list-style: none; padding: 0; margin: 0; position: relative; z-index: 1;
-  li { display: flex; align-items: center; gap: 10px; font-size: 0.82rem; color: #ccfbf1; margin-bottom: 8px; &::before { display: none; } }
+  li { display: flex; align-items: center; gap: 10px; font-size: 0.82rem; color: var(--fv-surface-subtle); margin-bottom: 8px; &::before { display: none; } }
 }
-:host-context(.ion-palette-dark) .auth-feature-list li { color: #94a3b8; }
+:host-context(.ion-palette-dark) .auth-feature-list li { color: var(--fv-n-400); }
 .auth-feat-dot { width: 5px; height: 5px; border-radius: 50%; background: white; flex-shrink: 0; }
-:host-context(.ion-palette-dark) .auth-feat-dot { background: #14b8a6; }
+:host-context(.ion-palette-dark) .auth-feat-dot { background: var(--ion-color-primary); }
 
 .auth-right-panel {
   width: 420px; display: flex; align-items: center; justify-content: center;

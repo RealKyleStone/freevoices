@@ -30,11 +30,11 @@ Chart.register(...registerables);
  * pages already apply (medium / primary / success / warning / danger).
  */
 const STATUS_TOKENS: Record<string, string> = {
-  DRAFT:     '--fv-medium-text',
-  SENT:      '--fv-teal-text',
-  PAID:      '--fv-success-text',
-  OVERDUE:   '--fv-warning-text',
-  CANCELLED: '--fv-danger-text'
+  PAID:      '--fv-chart-1',
+  SENT:      '--fv-chart-2',
+  DRAFT:     '--fv-chart-3',
+  CANCELLED: '--fv-chart-4',
+  OVERDUE:   '--fv-overdue'
 };
 
 const STATUS_LABELS: Record<string, string> = {
@@ -123,10 +123,10 @@ export class ReportsPage implements OnInit, OnDestroy, AfterViewChecked {
       // 10.5:1 in light and 6.6:1 in dark.
       text: this.token('--fv-medium-text', '#374151'),
       grid: `rgba(${this.token('--ion-text-color-rgb', '17, 24, 39')}, 0.12)`,
-      primary: this.token('--ion-color-primary', '#0f766e'),
-      accent: this.token('--fv-warning-text', '#854d0e'),
+      primary: this.token('--fv-chart-1', '#262626'),
+      accent: this.token('--fv-overdue', '#d92d20'),
       status: (status: string) =>
-        this.token(STATUS_TOKENS[status] ?? '--fv-medium-text', '#6b7280')
+        this.token(STATUS_TOKENS[status] ?? '--fv-chart-3', '#a3a3a3')
     };
   }
 
