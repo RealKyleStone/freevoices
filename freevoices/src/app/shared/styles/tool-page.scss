@@ -1,0 +1,193 @@
+/*
+ * Pages built from plain HTML instead of Ionic components: bank matching,
+ * imports and bookkeepers. Imported with @use, like the other shared
+ * partials, and applied with the .tool-page class.
+ */
+
+.tool-page {
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  gap: var(--fv-block-gap);
+  width: 100%;
+  padding: var(--fv-gutter) var(--fv-gutter) var(--fv-page-tail);
+
+  h1 {
+    margin: 0;
+    font-size: var(--fv-text-2xl);
+    font-weight: var(--fv-weight-display);
+    letter-spacing: var(--fv-tracking-display);
+    line-height: 1.15;
+    color: var(--ion-text-color);
+  }
+
+  h2 {
+    margin: 0;
+    font-size: var(--fv-text-md);
+    font-weight: var(--fv-weight-semibold);
+    color: var(--ion-text-color);
+  }
+
+  h3 {
+    margin: var(--fv-space-3) 0 0;
+    font-size: var(--fv-text-base);
+    font-weight: var(--fv-weight-semibold);
+    color: var(--ion-text-color);
+  }
+
+  p {
+    max-width: 68ch;
+    margin: 0;
+    font-size: var(--fv-text-base);
+    line-height: 1.55;
+    color: var(--ion-color-medium);
+  }
+
+  p[role="alert"] { color: var(--fv-danger-text); }
+
+  a { color: var(--ion-text-color); font-weight: var(--fv-weight-medium); }
+}
+
+.tool-head {
+  display: flex;
+  flex-direction: column;
+  gap: var(--fv-space-2);
+}
+
+.tool-panel,
+.tool-page > section {
+  display: flex;
+  flex-direction: column;
+  gap: var(--fv-space-4);
+  padding: var(--fv-space-5);
+  border: none;
+  border-radius: var(--fv-radius-lg);
+  background: var(--ion-card-background);
+  box-shadow: var(--fv-elevation);
+
+  ion-button {
+    align-self: flex-start;
+    margin: 0;
+  }
+}
+
+.tool-page label {
+  display: flex;
+  flex-direction: column;
+  gap: var(--fv-tight-gap);
+  max-width: 26rem;
+  font-size: var(--fv-text-2xs);
+  font-weight: var(--fv-weight-semibold);
+  letter-spacing: var(--fv-tracking-label);
+  text-transform: uppercase;
+  color: var(--ion-color-medium);
+}
+
+.tool-page input:not([type="checkbox"]):not([type="file"]),
+.tool-page select {
+  box-sizing: border-box;
+  width: 100%;
+  min-height: 44px;
+  padding: 0 var(--fv-space-3);
+  border: none;
+  border-radius: var(--fv-radius-md);
+  background: var(--fv-surface-subtle);
+  color: var(--ion-text-color);
+  font: inherit;
+  font-size: var(--fv-text-base);
+  font-weight: var(--fv-weight-regular);
+  letter-spacing: 0;
+  text-transform: none;
+}
+
+.tool-page input[type="file"] {
+  box-sizing: border-box;
+  width: 100%;
+  min-height: 44px;
+  padding: 5px;
+  border-radius: var(--fv-radius-md);
+  background: var(--fv-surface-subtle);
+  color: var(--ion-color-medium);
+  font: inherit;
+  font-size: var(--fv-text-sm);
+  font-weight: var(--fv-weight-regular);
+  letter-spacing: 0;
+  text-transform: none;
+
+  &::file-selector-button {
+    margin-right: var(--fv-space-3);
+    padding: 8px var(--fv-space-4);
+    border: none;
+    border-radius: var(--fv-radius-pill);
+    background: var(--ion-color-primary);
+    color: var(--ion-color-primary-contrast);
+    font: inherit;
+    font-size: var(--fv-text-sm);
+    font-weight: var(--fv-weight-medium);
+    cursor: pointer;
+  }
+}
+
+.tool-page input:focus-visible,
+.tool-page select:focus-visible {
+  outline: 2px solid var(--ion-color-primary);
+  outline-offset: 0;
+}
+
+.tool-page .table-scroll,
+.tool-page .import-table-scroll {
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+.tool-page table {
+  width: 100%;
+  min-width: 30rem;
+  border-collapse: collapse;
+  font-size: var(--fv-text-sm);
+
+  th,
+  td {
+    padding: var(--fv-space-3);
+    text-align: left;
+    border-bottom: 1px solid var(--fv-border);
+  }
+
+  th {
+    font-size: var(--fv-text-2xs);
+    font-weight: var(--fv-weight-semibold);
+    letter-spacing: var(--fv-tracking-label);
+    text-transform: uppercase;
+    color: var(--ion-color-medium);
+  }
+
+  td { color: var(--ion-text-color); }
+}
+
+.tool-page ul {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+
+  li {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: var(--fv-space-3);
+    padding: var(--fv-space-3) 0;
+    border-top: 1px solid var(--fv-border);
+    font-size: var(--fv-text-base);
+
+    ion-button { margin: 0; }
+  }
+}
+
+.tool-page form {
+  display: flex;
+  flex-direction: column;
+  gap: var(--fv-space-4);
+  max-width: 26rem;
+
+  ion-button { align-self: flex-start; margin: 0; }
+}

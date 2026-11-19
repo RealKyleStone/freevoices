@@ -1,11 +1,15 @@
 <ion-header><ion-toolbar><ion-buttons slot="start"><ion-back-button defaultHref="/reports"></ion-back-button><ion-menu-button></ion-menu-button></ion-buttons></ion-toolbar></ion-header>
-<ion-content><main class="bank-review">
-  <h1>Bank statement matching</h1>
-  <p>Import your bank CSV, review suggestions, then confirm each match yourself. Importing alone never records a payment.</p>
-  <ion-button fill="outline" (click)="downloadTemplate()">Download CSV template</ion-button>
-  <label>Bank CSV <input type="file" accept=".csv,text/csv" (change)="chooseFile($event)"></label>
-  <ion-spinner *ngIf="busy"></ion-spinner>
-  <p role="alert" *ngIf="error">{{ error }}</p><p role="status" *ngIf="message">{{ message }}</p>
+<ion-content><main class="bank-review tool-page">
+  <header class="tool-head">
+    <h1>Bank statement matching</h1>
+    <p>Import your bank CSV, review suggestions, then confirm each match yourself. Importing alone never records a payment.</p>
+  </header>
+  <section class="tool-panel">
+    <ion-button fill="outline" (click)="downloadTemplate()">Download CSV template</ion-button>
+    <label>Bank CSV <input type="file" accept=".csv,text/csv" (change)="chooseFile($event)"></label>
+    <ion-spinner *ngIf="busy"></ion-spinner>
+    <p role="alert" *ngIf="error">{{ error }}</p><p role="status" *ngIf="message">{{ message }}</p>
+  </section>
   <section *ngIf="preview as p"><h2>Preview: {{ fileName }}</h2><p>{{ p.rows.length }} rows. {{ p.valid ? 'Review and import.' : 'Fix row errors before importing.' }}</p>
     <div class="table-scroll"><table><thead><tr><th scope="col">Line</th><th scope="col">Date</th><th scope="col">Amount</th><th scope="col">Reference</th><th scope="col">Check</th></tr></thead><tbody>
       <tr *ngFor="let row of p.rows"><td>{{ row.line }}</td><td>{{ row.data['date'] }}</td><td>{{ row.data['currency'] }} {{ row.data['amount'] }}</td><td>{{ row.data['reference'] }}</td><td>{{ row.errors.length ? row.errors.join('; ') : row.duplicate ? 'Already imported' : 'Ready' }}</td></tr>

@@ -1,12 +1,16 @@
-<section class="import-page">
-  <h1>Import customers or products</h1>
-  <p>Download a template, fill it with up to 500 rows, then review every row before saving. The whole file saves together; retrying the same file will not create duplicates.</p>
-  <label>Import type <select [value]="kind" (change)="chooseKind($event)"><option value="customers">Customers</option><option value="products">Products</option></select></label>
-  <ion-button fill="outline" (click)="downloadTemplate()">Download {{ kind }} template</ion-button>
-  <label>CSV file <input type="file" accept=".csv,text/csv" (change)="chooseFile($event)"></label>
-  <ion-spinner *ngIf="busy"></ion-spinner>
-  <p role="alert" *ngIf="error">{{ error }}</p>
-  <p role="status" *ngIf="result">{{ result }}</p>
+<div class="import-page tool-page">
+  <header class="tool-head">
+    <h1>Import customers or products</h1>
+    <p>Download a template, fill it with up to 500 rows, then review every row before saving. The whole file saves together; retrying the same file will not create duplicates.</p>
+  </header>
+  <section class="tool-panel">
+    <label>Import type <select [value]="kind" (change)="chooseKind($event)"><option value="customers">Customers</option><option value="products">Products</option></select></label>
+    <ion-button fill="outline" (click)="downloadTemplate()">Download {{ kind }} template</ion-button>
+    <label>CSV file <input type="file" accept=".csv,text/csv" (change)="chooseFile($event)"></label>
+    <ion-spinner *ngIf="busy"></ion-spinner>
+    <p role="alert" *ngIf="error">{{ error }}</p>
+    <p role="status" *ngIf="result">{{ result }}</p>
+  </section>
   <section *ngIf="preview as p">
     <h2>Preview: {{ fileName }}</h2>
     <p>{{ p.rows.length }} rows; {{ p.replayed ? 'this exact file was already imported (' + p.previous_count + ' rows)' : p.valid ? 'ready to import' : 'fix the errors below and choose the file again' }}.</p>
@@ -15,4 +19,4 @@
     </table></div>
     <ion-button (click)="commit()" [disabled]="!p.valid || busy">Import {{ p.rows.length }} rows</ion-button>
   </section>
-</section>
+</div>
