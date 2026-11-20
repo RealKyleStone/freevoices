@@ -669,6 +669,88 @@ ion-item ion-select.select-expanded {
   border-radius: var(--fv-radius-md);
 }
 
+/* Overlays sit on the card surface. They were taking the page ground, which
+   is grey now, so every alert and popover came up grey. */
+ion-alert.md,
+ion-popover.md,
+ion-modal.md,
+ion-action-sheet.md {
+  --background: var(--ion-card-background);
+}
+
+ion-alert.md {
+  --max-width: 420px;
+
+  .alert-wrapper {
+    border-radius: var(--fv-radius-lg);
+    box-shadow: 0 24px 60px -20px rgba(10, 10, 10, 0.5), 0 0 0 1px rgba(var(--ion-color-medium-rgb), 0.18);
+  }
+
+  .alert-head { padding: var(--fv-space-5) var(--fv-space-5) 0; }
+
+  .alert-title {
+    font-size: var(--fv-text-lg);
+    font-weight: var(--fv-weight-semibold);
+    color: var(--ion-text-color);
+  }
+
+  .alert-message {
+    padding: var(--fv-space-3) var(--fv-space-5) var(--fv-space-2);
+    font-size: var(--fv-text-base);
+    line-height: 1.5;
+    color: var(--ion-color-medium);
+  }
+
+  .alert-button-group {
+    justify-content: flex-end;
+    gap: var(--fv-space-2);
+    padding: var(--fv-space-3) var(--fv-space-4) var(--fv-space-4);
+  }
+
+  .alert-button {
+    min-height: 40px;
+    margin: 0;
+    padding: 0 var(--fv-space-4);
+    border: 1px solid var(--fv-border-strong);
+    border-radius: var(--fv-radius-pill);
+    color: var(--ion-text-color);
+    font-size: var(--fv-text-sm);
+    font-weight: var(--fv-weight-medium);
+    letter-spacing: 0;
+    text-transform: none;
+  }
+
+  .alert-button:not(.alert-button-role-cancel) {
+    border-color: transparent;
+    background: var(--ion-color-primary);
+    color: var(--ion-color-primary-contrast);
+  }
+
+  .alert-button.alert-button-role-destructive {
+    background: var(--ion-color-danger);
+    color: var(--ion-color-danger-contrast);
+  }
+}
+
+/* Toasts are the inverted ground. Status shows as a thin edge, not a fill. */
+ion-toast {
+  --border-radius: var(--fv-radius-md);
+  --max-width: 440px;
+  --box-shadow: inset 4px 0 0 var(--toast-edge, transparent), 0 12px 32px -12px rgba(10, 10, 10, 0.45);
+  font-size: var(--fv-text-sm);
+  font-weight: var(--fv-weight-medium);
+}
+
+/* Ionic fills a coloured toast from --ion-color-base with !important, so
+   that is what has to be overridden, not --background. */
+ion-toast.ion-color {
+  --ion-color-base: var(--ion-color-primary) !important;
+  --ion-color-contrast: var(--ion-color-primary-contrast) !important;
+}
+
+ion-toast.ion-color-danger { --toast-edge: var(--fv-overdue); }
+ion-toast.ion-color-success { --toast-edge: var(--fv-paid); }
+
 /*
  * Minimum touch target.
  *

@@ -88,10 +88,11 @@ ion-item {
 
 /* ion-item in Ionic 8 has no "error" slot, so a slotted ion-note is never
    rendered. Field messages sit below the item as plain text instead. */
+/* The gap between fields is the item's bottom margin, so the message is
+   pulled up under its own field and given the same space below. */
 .field-error,
 .field-hint {
-  margin: var(--fv-tight-gap) 0 0;
-  padding-inline-start: 4px;
+  margin: calc(var(--fv-space-4) * -1 + var(--fv-tight-gap)) 0 var(--fv-space-4);
   font-size: var(--fv-text-xs);
 }
 .field-error { color: var(--fv-danger-text); }

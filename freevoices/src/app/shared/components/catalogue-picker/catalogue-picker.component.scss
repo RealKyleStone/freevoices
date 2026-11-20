@@ -1,25 +1,170 @@
 :host { display: block; min-width: 0; }
+
 .picker-field { padding: 12px 0; }
-.field-label, label { display: block; font-size: .9rem; margin-bottom: 8px; }
-.field-label { font-size: var(--fv-text-2xs); font-weight: var(--fv-weight-semibold); letter-spacing: var(--fv-tracking-label); text-transform: uppercase; color: var(--ion-color-medium); margin-bottom: var(--fv-tight-gap); }
-button, input, textarea { font: inherit; border-radius: var(--fv-radius-md, 8px); border: 1px solid var(--ion-color-medium, #64748b); padding: 12px; color: var(--ion-text-color, #111827); background: var(--fv-surface-subtle, white); min-height: 44px; }
-.picker-trigger { border-color: transparent; }
-button { cursor: pointer; }
-button:disabled { cursor: default; opacity: .6; }
-button:focus-visible, input:focus-visible, textarea:focus-visible { outline: 3px solid var(--ion-color-primary, #0f766e); outline-offset: 2px; }
-.picker-trigger { text-align: left; width: 100%; }
-.picker-trigger[aria-invalid='true'] { border-color: var(--ion-color-danger, #b91c1c); }
-dialog { border: none; border-radius: 12px; padding: 20px; width: min(560px, calc(100vw - 32px)); max-height: calc(100dvh - 48px); color: var(--ion-text-color, #111827); background: var(--ion-card-background, white); box-shadow: var(--fv-elevation); overflow-y: auto; }
-dialog::backdrop { background: rgb(0 0 0 / .55); }
-header { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin-bottom: 16px; }
-h2 { font-size: 1.2rem; margin: 0; }
-input:not([type='checkbox']), textarea { display: block; width: 100%; margin-top: 6px; box-sizing: border-box; }
-.checkbox { display: flex; align-items: center; gap: 10px; }
-.checkbox input { width: 20px; }
-.picker-actions { display: flex; flex-wrap: wrap; gap: 8px; margin: 12px 0; }
-ul { padding: 0; list-style: none; }
-li + li { margin-top: 6px; }
-.result { width: 100%; text-align: left; overflow-wrap: anywhere; }
-.result span { display: block; font-size: .9rem; margin-top: 4px; }
-.result[aria-current='true'] { border: 2px solid var(--ion-color-primary, #0f766e); }
-.error { color: var(--fv-danger-text, #b91c1c); }
+
+.field-label {
+  display: block;
+  margin-bottom: var(--fv-tight-gap);
+  font-size: var(--fv-text-2xs);
+  font-weight: var(--fv-weight-semibold);
+  letter-spacing: var(--fv-tracking-label);
+  text-transform: uppercase;
+  color: var(--ion-color-medium);
+}
+
+/* The field that opens the dialog looks like every other form field. */
+.picker-trigger {
+  box-sizing: border-box;
+  width: 100%;
+  min-height: 44px;
+  padding: 10px 12px;
+  border: 1px solid transparent;
+  border-radius: var(--fv-radius-md);
+  background: var(--fv-surface-subtle);
+  color: var(--ion-text-color);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.picker-trigger[aria-invalid='true'] { border-color: var(--fv-danger-text); }
+
+button:disabled { cursor: default; opacity: 0.6; }
+
+button:focus-visible,
+input:focus-visible,
+textarea:focus-visible {
+  outline: 2px solid var(--ion-color-primary);
+  outline-offset: 2px;
+}
+
+dialog {
+  width: min(560px, calc(100vw - 32px));
+  max-height: calc(100dvh - 48px);
+  padding: var(--fv-space-5);
+  border: none;
+  border-radius: var(--fv-radius-lg);
+  background: var(--ion-card-background);
+  box-shadow: var(--fv-elevation);
+  color: var(--ion-text-color);
+  overflow-y: auto;
+}
+
+dialog::backdrop { background: rgb(0 0 0 / 0.55); }
+
+header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--fv-space-4);
+  margin-bottom: var(--fv-space-4);
+}
+
+h2 {
+  margin: 0;
+  font-size: var(--fv-text-lg);
+  font-weight: var(--fv-weight-semibold);
+}
+
+p { margin: 0; font-size: var(--fv-text-sm); color: var(--ion-color-medium); }
+
+dialog label {
+  display: flex;
+  flex-direction: column;
+  gap: var(--fv-tight-gap);
+  margin-bottom: var(--fv-space-3);
+  font-size: var(--fv-text-2xs);
+  font-weight: var(--fv-weight-semibold);
+  letter-spacing: var(--fv-tracking-label);
+  text-transform: uppercase;
+  color: var(--ion-color-medium);
+}
+
+input:not([type='checkbox']),
+textarea {
+  box-sizing: border-box;
+  width: 100%;
+  min-height: 44px;
+  padding: 10px 12px;
+  border: none;
+  border-radius: var(--fv-radius-md);
+  background: var(--fv-surface-subtle);
+  color: var(--ion-text-color);
+  font: inherit;
+  font-size: var(--fv-text-base);
+  letter-spacing: 0;
+  text-transform: none;
+}
+
+.checkbox {
+  flex-direction: row;
+  align-items: center;
+  gap: var(--fv-space-3);
+  font-size: var(--fv-text-base);
+  font-weight: var(--fv-weight-regular);
+  letter-spacing: 0;
+  text-transform: none;
+  color: var(--ion-text-color);
+}
+
+.checkbox input { width: 20px; min-height: 0; }
+
+/* Secondary buttons are outlined pills; the one that commits is solid. */
+dialog button:not(.result) {
+  min-height: 40px;
+  padding: 0 var(--fv-space-4);
+  border: 1px solid var(--fv-border-strong);
+  border-radius: var(--fv-radius-pill);
+  background: transparent;
+  color: var(--ion-text-color);
+  font: inherit;
+  font-size: var(--fv-text-sm);
+  font-weight: var(--fv-weight-medium);
+  cursor: pointer;
+}
+
+dialog button.primary {
+  border-color: transparent;
+  background: var(--ion-color-primary);
+  color: var(--ion-color-primary-contrast);
+}
+
+.picker-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--fv-space-2);
+  margin: var(--fv-space-3) 0;
+}
+
+ul { margin: var(--fv-space-3) 0; padding: 0; list-style: none; }
+li + li { margin-top: var(--fv-space-2); }
+
+.result {
+  display: block;
+  box-sizing: border-box;
+  width: 100%;
+  padding: var(--fv-space-3) var(--fv-space-4);
+  border: none;
+  border-radius: var(--fv-radius-md);
+  background: var(--fv-surface-subtle);
+  color: var(--ion-text-color);
+  font: inherit;
+  text-align: left;
+  overflow-wrap: anywhere;
+  cursor: pointer;
+}
+
+.result:hover { background: rgba(var(--ion-color-medium-rgb), 0.14); }
+
+.result strong { font-size: var(--fv-text-base); font-weight: var(--fv-weight-medium); }
+
+.result span {
+  display: block;
+  margin-top: 2px;
+  font-size: var(--fv-text-xs);
+  color: var(--ion-color-medium);
+}
+
+.result[aria-current='true'] { outline: 2px solid var(--ion-color-primary); outline-offset: -2px; }
+
+.error { margin: calc(var(--fv-space-2) * -1) 0 var(--fv-space-3); color: var(--fv-danger-text); }

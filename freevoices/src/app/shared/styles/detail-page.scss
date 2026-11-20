@@ -46,8 +46,7 @@
 
 .field-hint,
 .field-error {
-  margin: var(--fv-tight-gap, 4px) 0 0;
-  padding-inline-start: 4px;
+  margin: calc(var(--fv-space-3) * -1 + var(--fv-tight-gap)) 0 var(--fv-space-3);
   font-size: var(--fv-text-xs);
 }
 .field-hint  { color: var(--fv-medium-text); }

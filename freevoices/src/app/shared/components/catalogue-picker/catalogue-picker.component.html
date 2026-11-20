@@ -44,7 +44,7 @@
       <p>The invoice or quote's currency and VAT rate apply to this price.</p>
     </ng-container>
     <div class="picker-actions">
-      <button type="button" [disabled]="saving" (click)="saveNew()">{{ saving ? 'Adding...' : 'Add and select' }}</button>
+      <button type="button" class="primary" [disabled]="saving" (click)="saveNew()">{{ saving ? 'Adding...' : 'Add and select' }}</button>
       <button type="button" [disabled]="saving" (click)="backToSearch()">Back to search</button>
     </div>
   </div>
