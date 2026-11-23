@@ -150,9 +150,9 @@
 
   .items-header {
     display: grid;
-    grid-template-columns: minmax(6rem, 1fr) 2.5rem 5.5rem 5.5rem;
-    gap: var(--fv-space-2);
-    min-width: 22rem;
+    grid-template-columns: minmax(8rem, 1fr) 5.5rem 7rem 6.5rem;
+    gap: var(--fv-space-3);
+    min-width: 30rem;
     padding-bottom: var(--fv-space-2);
     margin-bottom: var(--fv-space-2);
     border-bottom: 1px solid var(--fv-border);
@@ -165,9 +165,9 @@
 
   .item-row {
     display: grid;
-    grid-template-columns: minmax(6rem, 1fr) 2.5rem 5.5rem 5.5rem;
-    gap: var(--fv-space-2);
-    min-width: 22rem;
+    grid-template-columns: minmax(8rem, 1fr) 5.5rem 7rem 6.5rem;
+    gap: var(--fv-space-3);
+    min-width: 30rem;
     padding: var(--fv-space-2) 0;
     border-bottom: 1px solid var(--fv-border);
 
@@ -178,6 +178,12 @@
       white-space: nowrap;
       font-variant-numeric: tabular-nums;
       text-align: right;
+    }
+    .price small {
+      display: block;
+      margin-top: 2px;
+      font-size: var(--fv-text-xs);
+      color: var(--ion-color-medium);
     }
     .vat-note {
       display: block;
@@ -232,6 +238,7 @@
       .amount::before { content: 'Total '; }
 
       .amount { margin-right: 0; font-weight: var(--fv-weight-semibold); }
+      .price small { display: inline; }
     }
   }
 }
