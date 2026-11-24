@@ -59,18 +59,7 @@ ion-content {
   position: relative;
   overflow: hidden;
 
-  /*
-   * The panel used to carry two large blurred circles — a 400px one bleeding
-   * off the top-right and a 300px one off the bottom-left, each behind a
-   * blur(50-60px) filter. Two things were wrong with them: they are the most
-   * recognisable stock flourish in this kind of layout, and each forced its
-   * own compositing layer for no information.
-   *
-   * Replaced with a single same-hue gradient. It runs only darker than the
-   * base teal, never lighter, so every contrast ratio measured against the
-   * flat colour holds or improves — a stop toward var(--ion-color-primary) would have taken
-   * the hero text to about 2.2:1.
-   */
+  /* A flat black gradient. Nothing lighter than the base, so hero text keeps its contrast. */
   background: linear-gradient(168deg, #171717 0%, #000000 100%);
 
   /*
@@ -100,13 +89,7 @@ ion-content {
   font-weight: 700;
   letter-spacing: 0.12em;
   text-transform: uppercase;
-  /*
-   * Was rgba(255,255,255,0.6), roughly 3.0:1 against the var(--ion-color-primary) panel at
-   * 11px — below the 4.5:1 required for text this size. var(--fv-surface-subtle) is the tint
-   * already used for the headline accent and measures about 4.86:1, so the
-   * panel now separates primary from secondary text by hue rather than by
-   * fading it towards the background.
-   */
+  /* Solid light tint rather than faded white, to stay readable at 11px. */
   color: var(--fv-n-100);
   margin: 0 0 0.75rem;
 }
