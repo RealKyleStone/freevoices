@@ -51,9 +51,9 @@
           <ion-label>Legal &amp; privacy</ion-label>
         </ion-item>
         <!-- Theme toggle in sidebar -->
-        <ion-item button (click)="toggleTheme()" detail="false">
-          <ion-icon [name]="isDarkMode ? 'sunny-outline' : 'moon-outline'" slot="start"></ion-icon>
-          <ion-label>{{ isDarkMode ? 'Light mode' : 'Dark mode' }}</ion-label>
+        <ion-item button (click)="toggleTheme()" detail="false" role="switch" [attr.aria-checked]="isDarkMode">
+          <ion-icon name="moon-outline" slot="start"></ion-icon>
+          <ion-label>Dark mode</ion-label>
           <span slot="end" class="theme-track" [class.on]="isDarkMode" aria-hidden="true"><span class="theme-knob"></span></span>
         </ion-item>
         <ion-item button (click)="logout()">
