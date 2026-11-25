@@ -115,11 +115,11 @@ export class ReportsPage implements OnInit, OnDestroy, AfterViewChecked {
    * rgba(0,0,0,0.1), which is low contrast on the light surface and close to
    * invisible on the #111111 dark one.
    */
-  /** "ZAR 20k" rather than "ZAR 20000", so axes stay short. */
+  /** "20k" rather than "20000". The currency is named in the section notes. */
   private axisLabel(value: string | number): string {
     const n = Number(value);
     const short = Math.abs(n) >= 1000 ? `${+(n / 1000).toFixed(1)}k` : `${n}`;
-    return `${this.selectedCurrency} ${short}`;
+    return short;
   }
 
   private themeColors() {
@@ -255,6 +255,7 @@ export class ReportsPage implements OnInit, OnDestroy, AfterViewChecked {
         maintainAspectRatio: false,
         plugins: { legend: { display: false } },
         scales: {
+          x: { ticks: { maxRotation: 0 } },
           y: { beginAtZero: true, ticks: { callback: v => this.axisLabel(v) } }
         }
       }
@@ -337,7 +338,7 @@ export class ReportsPage implements OnInit, OnDestroy, AfterViewChecked {
         plugins: { legend: { position: 'bottom' } },
         scales: {
           y: { beginAtZero: true, stacked: true, ticks: { callback: v => this.axisLabel(v) } },
-          x: { stacked: true }
+          x: { stacked: true, ticks: { maxRotation: 0 } }
         }
       }
     };

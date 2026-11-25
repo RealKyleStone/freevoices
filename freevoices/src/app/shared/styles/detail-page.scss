@@ -395,11 +395,40 @@
   padding-top: var(--fv-space-4);
   border-top: 1px solid var(--fv-border);
 
+  /* Same filled fields as the create and edit forms. */
   ion-item {
+    --background: transparent;
     --padding-start: 0;
     --inner-padding-end: 0;
-    --background: transparent;
+    --min-height: 0;
+    --border-width: 0;
+    --inner-border-width: 0;
+    --highlight-height: 0;
     margin-bottom: var(--fv-space-3);
+
+    ion-label[position="stacked"] {
+      margin-bottom: var(--fv-tight-gap);
+      font-size: var(--fv-text-2xs);
+      font-weight: var(--fv-weight-semibold);
+      letter-spacing: 0.05em;
+      text-transform: uppercase;
+      color: var(--ion-color-medium);
+      transform: none;
+    }
+
+    ion-input,
+    ion-select,
+    ion-textarea {
+      --background: var(--fv-surface-subtle);
+      --border-radius: var(--fv-radius-md);
+      --padding-start: 12px;
+      --padding-end: 12px;
+      --padding-top: 10px;
+      --padding-bottom: 10px;
+      --color: var(--ion-text-color);
+      font-size: var(--fv-text-base);
+      min-height: 44px;
+    }
   }
 
   .payment-submit-btn {

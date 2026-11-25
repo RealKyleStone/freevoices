@@ -26,7 +26,7 @@
   .auth-brand-icon-sm { width: 32px; height: 32px; border-radius: 8px; background: var(--fv-teal-tint); display: flex; align-items: center; justify-content: center; ion-icon { font-size: 18px; color: var(--fv-teal-text); } }
   .auth-brand-name-dark { font-size: 1rem; font-weight: 700; color: var(--ion-text-color); letter-spacing: -0.01em; }
 }
-.auth-field-input { --border-radius: 10px; --background: var(--ion-color-light); --padding-start: 12px; --padding-end: 12px; font-size: 0.875rem; width: 100%; }
+.auth-field-input { --border-radius: 10px; --background: var(--fv-surface-subtle); --padding-start: 12px; --padding-end: 12px; font-size: 0.875rem; width: 100%; }
 .auth-success-banner { background: var(--fv-success-bg); color: var(--fv-success-text); border-radius: 10px; padding: 10px 14px; font-size: 0.82rem; margin-bottom: 1rem; font-weight: 500; }
 .auth-section-title { font-size: 0.72rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.08em; color: var(--fv-teal-text); background: var(--fv-teal-tint); padding: 6px 10px; border-radius: 6px; margin: 1.25rem 0 0.75rem; }
 

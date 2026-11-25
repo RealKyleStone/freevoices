@@ -28,7 +28,7 @@
 }
 .auth-field-input {
   --border-radius: 10px;
-  --background: var(--ion-color-light);
+  --background: var(--fv-surface-subtle);
   --color: var(--ion-text-color);
   --placeholder-color: var(--ion-color-medium);
   --padding-start: 12px;
@@ -37,7 +37,7 @@
   width: 100%;
 }
 :host-context(.ion-palette-dark) .auth-field-input {
-  --background: var(--ion-card-background);
+  --background: var(--fv-surface-subtle);
   --color: #ffffff;
   --placeholder-color: var(--ion-color-medium);
   -webkit-text-fill-color: #ffffff;

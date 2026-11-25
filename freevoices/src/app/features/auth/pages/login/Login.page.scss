@@ -61,7 +61,7 @@
 }
 .auth-field-input {
   --border-radius: 10px;
-  --background: var(--ion-color-light);
+  --background: var(--fv-surface-subtle);
   --color: var(--ion-text-color);
   --placeholder-color: var(--ion-color-medium);
   --padding-start: 12px;
@@ -71,7 +71,7 @@
 }
 
 :host-context(.ion-palette-dark) .auth-field-input {
-  --background: var(--ion-card-background);
+  --background: var(--fv-surface-subtle);
   --color: #ffffff;
   --placeholder-color: var(--ion-color-medium);
   -webkit-text-fill-color: #ffffff;
@@ -90,8 +90,8 @@
 :host-context(.ion-palette-dark) ::ng-deep .auth-field-input input:-webkit-autofill:hover,
 :host-context(.ion-palette-dark) ::ng-deep .auth-field-input input:-webkit-autofill:focus {
   -webkit-text-fill-color: #ffffff;
-  -webkit-box-shadow: 0 0 0 1000px var(--ion-card-background) inset;
-  box-shadow: 0 0 0 1000px var(--ion-card-background) inset;
+  -webkit-box-shadow: 0 0 0 1000px var(--fv-surface-subtle) inset;
+  box-shadow: 0 0 0 1000px var(--fv-surface-subtle) inset;
   caret-color: #ffffff;
 }
 

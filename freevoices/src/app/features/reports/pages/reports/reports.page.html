@@ -51,7 +51,7 @@
         <section class="report report-wide">
           <div class="section-head">
             <h2 class="fv-section-label">Revenue by month</h2>
-            <p class="section-note">Payments received by month, including part payments</p>
+            <p class="section-note">Payments received by month in {{ selectedCurrency }}, including part payments</p>
           </div>
           <div class="panel panel-pad">
             <div class="chart-wrap">
@@ -75,7 +75,7 @@
         <section class="report">
           <div class="section-head">
             <h2 class="fv-section-label">Top customers</h2>
-            <p class="section-note">By payments received, all time</p>
+            <p class="section-note">By payments received in {{ selectedCurrency }}, all time</p>
           </div>
           <div class="panel panel-pad">
             <p *ngIf="topCustomers.length === 0" class="empty-msg">
@@ -91,7 +91,7 @@
           <div class="section-head section-head-action">
             <div>
               <h2 class="fv-section-label">VAT summary</h2>
-              <p class="section-note">Invoice basis: every issued invoice (sent, overdue or paid) by issue month, current year</p>
+              <p class="section-note">Invoice basis: every issued invoice (sent, overdue or paid) by issue month in {{ selectedCurrency }}, current year</p>
             </div>
             <ion-button size="small" fill="outline" [disabled]="vatRows.length === 0" (click)="exportVatCsv()">Export CSV</ion-button>
           </div>

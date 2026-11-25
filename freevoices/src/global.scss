@@ -626,6 +626,18 @@ ion-item.ion-focused {
   outline-offset: 2px;
 }
 
+/* Filter pills: the ring sits inside the pill so the scrolling track does not
+   clip it, and flips colour on the checked pill so it shows on black. */
+ion-segment-button.ion-focused {
+  outline: 2px solid var(--ion-color-primary);
+  outline-offset: -2px;
+  border-radius: var(--fv-radius-pill);
+}
+
+ion-segment-button.segment-button-checked.ion-focused {
+  outline-color: var(--ion-color-primary-contrast);
+}
+
 /*
  * Form fields focus on the field, not on the row.
  *
@@ -667,6 +679,24 @@ ion-item ion-select.select-expanded {
   outline: 2px solid var(--ion-color-primary);
   outline-offset: 0;
   border-radius: var(--fv-radius-md);
+}
+
+/* Sign-in and sign-up fields are the same filled fields as the rest of the
+   app, not Material's underlined solid fill. */
+ion-input.auth-field-input.input-fill-solid {
+  --background: var(--fv-surface-subtle);
+  --border-radius: var(--fv-radius-md);
+  --border-width: 0;
+  --highlight-height: 0;
+  --padding-top: 10px;
+  --padding-bottom: 10px;
+  min-height: 44px;
+
+  &.md .input-wrapper { border-radius: var(--fv-radius-md); }
+
+  &.auth-field-invalid .input-wrapper {
+    box-shadow: inset 0 0 0 2px var(--fv-danger-text);
+  }
 }
 
 /* Overlays sit on the card surface. They were taking the page ground, which

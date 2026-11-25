@@ -54,7 +54,7 @@
             [type]="showCurrentPassword ? 'text' : 'password'"
             placeholder="Current password"
           ></ion-input>
-          <ion-button fill="clear" slot="end" (click)="showCurrentPassword = !showCurrentPassword">
+          <ion-button fill="clear" slot="end" class="reveal" [attr.aria-label]="showCurrentPassword ? 'Hide current password' : 'Show current password'" (click)="showCurrentPassword = !showCurrentPassword">
             <ion-icon [name]="showCurrentPassword ? 'eye-off-outline' : 'eye-outline'"></ion-icon>
           </ion-button>
         </ion-item>
@@ -66,7 +66,7 @@
             [type]="showNewPassword ? 'text' : 'password'"
             placeholder="Minimum 8 characters"
           ></ion-input>
-          <ion-button fill="clear" slot="end" (click)="showNewPassword = !showNewPassword">
+          <ion-button fill="clear" slot="end" class="reveal" [attr.aria-label]="showNewPassword ? 'Hide new password' : 'Show new password'" (click)="showNewPassword = !showNewPassword">
             <ion-icon [name]="showNewPassword ? 'eye-off-outline' : 'eye-outline'"></ion-icon>
           </ion-button>
         </ion-item>

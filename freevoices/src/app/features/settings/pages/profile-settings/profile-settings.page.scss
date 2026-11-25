@@ -1,1 +1,22 @@
 @use '../settings-page';
+
+/* The reveal button sits inside its field, at the right edge, instead of
+   floating beside the label and field stack. */
+ion-item:has(.reveal) {
+  position: relative;
+
+  ion-input { --padding-end: 48px; }
+
+  .reveal {
+    position: absolute;
+    right: 4px;
+    bottom: 2px;
+    width: 40px;
+    height: 40px;
+    z-index: 3;
+    margin: 0;
+    --padding-start: 0;
+    --padding-end: 0;
+    --color: var(--ion-color-medium);
+  }
+}
