@@ -20,6 +20,8 @@ let nextId = 0;
 export class CataloguePickerComponent implements ControlValueAccessor, OnDestroy {
   @Input() kind: 'customer' | 'product' = 'customer';
   @Input() invalid = false;
+  /** For filters, where leaving the customer empty is valid. */
+  @Input() optional = false;
   @Output() customerChosen = new EventEmitter<Customer | null>();
   @Output() productChosen = new EventEmitter<Product | null>();
   @ViewChild('dialog', { static: true }) dialog!: ElementRef<HTMLDialogElement>;

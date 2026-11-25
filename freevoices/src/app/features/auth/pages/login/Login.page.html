@@ -4,7 +4,8 @@
   <button class="login-theme-btn" type="button"
           [attr.aria-label]="isDarkMode ? 'Switch to light mode' : 'Switch to dark mode'"
           (click)="toggleTheme()">
-    <ion-icon [name]="isDarkMode ? 'sunny-outline' : 'moon-outline'"></ion-icon>
+    <span class="theme-seg" [class.on]="!isDarkMode"><ion-icon name="sunny-outline"></ion-icon></span>
+    <span class="theme-seg" [class.on]="isDarkMode"><ion-icon name="moon-outline"></ion-icon></span>
   </button>
 
   <div class="auth-layout">

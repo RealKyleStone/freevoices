@@ -119,17 +119,18 @@ ion-label h3 {
 
 .activity-badge {
   display: inline-block;
-  padding: 2px 8px;
-  border-radius: 20px;
-  font-size: 0.7rem;
-  font-weight: 600;
+  min-width: 72px;
+  padding: 5px 11px;
+  border-radius: var(--fv-radius-pill);
+  font-size: var(--fv-text-2xs);
+  font-weight: var(--fv-weight-semibold);
+  letter-spacing: 0.04em;
+  text-align: center;
   white-space: nowrap;
 
-  &.badge-success { background: var(--fv-success-bg); color: var(--fv-success-text); }
-  &.badge-danger { background: var(--fv-danger-bg); color: var(--fv-danger-text); }
-  &.badge-warning { background: var(--fv-warning-bg); color: var(--fv-warning-text); }
-  &.badge-medium { background: var(--fv-medium-bg); color: var(--fv-medium-text); }
-  &.badge-primary { background: var(--fv-teal-tint); color: var(--fv-teal-text); }
+  &.badge-overdue { background: var(--fv-overdue); color: var(--fv-overdue-contrast); }
+  &.badge-paid    { background: var(--fv-paid);    color: var(--fv-paid-contrast); }
+  &.badge-muted   { background: var(--fv-medium-bg); color: var(--fv-medium-text); }
 }
 
 .empty-docs {

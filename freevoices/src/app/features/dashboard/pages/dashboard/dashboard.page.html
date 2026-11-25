@@ -51,7 +51,7 @@
          padding and pushed these out of line with the section below. -->
     <section class="stat-row">
 
-      <article class="stat">
+      <article class="stat stat-hero">
         <div class="stat-top">
           <p class="stat-label">Received this month</p>
         <span class="stat-mark teal"><ion-icon name="wallet-outline" aria-hidden="true"></ion-icon></span>
@@ -97,9 +97,9 @@
         <p class="balance-total">{{ summary.outstanding | currency:selectedCurrency:'symbol':'1.2-2' }} outstanding</p>
         <div class="ageing-grid" aria-label="Outstanding balance by age">
           <div><span>Current or no due date</span><strong>{{ summary.ageing.current | currency:selectedCurrency:'symbol':'1.2-2' }}</strong></div>
-          <div><span>1–30 days overdue</span><strong>{{ summary.ageing.days1to30 | currency:selectedCurrency:'symbol':'1.2-2' }}</strong></div>
-          <div><span>31–60 days overdue</span><strong>{{ summary.ageing.days31to60 | currency:selectedCurrency:'symbol':'1.2-2' }}</strong></div>
-          <div><span>61+ days overdue</span><strong>{{ summary.ageing.days61plus | currency:selectedCurrency:'symbol':'1.2-2' }}</strong></div>
+          <div [class.is-overdue]="summary.ageing.days1to30 > 0"><span>1-30 days overdue</span><strong>{{ summary.ageing.days1to30 | currency:selectedCurrency:'symbol':'1.2-2' }}</strong></div>
+          <div [class.is-overdue]="summary.ageing.days31to60 > 0"><span>31-60 days overdue</span><strong>{{ summary.ageing.days31to60 | currency:selectedCurrency:'symbol':'1.2-2' }}</strong></div>
+          <div [class.is-overdue]="summary.ageing.days61plus > 0"><span>61+ days overdue</span><strong>{{ summary.ageing.days61plus | currency:selectedCurrency:'symbol':'1.2-2' }}</strong></div>
         </div>
         <div *ngIf="summary.actionInvoices.length" class="action-invoices">
           <h3>Invoices to follow up</h3>

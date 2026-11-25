@@ -26,7 +26,7 @@
 }
 .auth-field-input {
   --border-radius: 10px;
-  --background: var(--ion-color-light);
+  --background: var(--fv-surface-subtle);
   --color: var(--ion-text-color);
   --placeholder-color: var(--ion-color-medium);
   --padding-start: 12px;
@@ -35,9 +35,9 @@
   width: 100%;
 }
 :host-context(.ion-palette-dark) .auth-field-input {
-  --background: #1e1e1e;
+  --background: var(--fv-surface-subtle);
   --color: #ffffff;
-  --placeholder-color: #6b7280;
+  --placeholder-color: var(--ion-color-medium);
   -webkit-text-fill-color: #ffffff;
 }
 .auth-field-hint { margin: 4px 0 0; font-size: 0.75rem; color: var(--ion-color-medium); }

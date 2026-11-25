@@ -48,7 +48,8 @@
         [routerLink]="['/invoices', invoice.id]"
         button
         detail="false"
-        class="list-row">
+        class="list-row"
+        [class.row-overdue]="invoice.status === 'OVERDUE'">
         <div slot="start" class="row-lead">
           <ion-icon name="document-text-outline" aria-hidden="true"></ion-icon>
         </div>

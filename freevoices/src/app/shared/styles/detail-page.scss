@@ -46,8 +46,7 @@
 
 .field-hint,
 .field-error {
-  margin: var(--fv-tight-gap, 4px) 0 0;
-  padding-inline-start: 4px;
+  margin: calc(var(--fv-space-3) * -1 + var(--fv-tight-gap)) 0 var(--fv-space-3);
   font-size: var(--fv-text-xs);
 }
 .field-hint  { color: var(--fv-medium-text); }
@@ -61,11 +60,11 @@
   font-weight: var(--fv-weight-semibold);
   white-space: nowrap;
 
-  &.badge-success { background: var(--fv-success-bg); color: var(--fv-success-text); }
-  &.badge-danger  { background: var(--fv-danger-bg);  color: var(--fv-danger-text); }
-  &.badge-warning { background: var(--fv-warning-bg); color: var(--fv-warning-text); }
-  &.badge-medium  { background: var(--fv-medium-bg);  color: var(--fv-medium-text); }
-  &.badge-primary { background: var(--fv-teal-tint);  color: var(--fv-teal-text); }
+  &.badge-overdue { background: var(--fv-overdue); color: var(--fv-overdue-contrast); }
+  &.badge-paid    { background: var(--fv-paid);    color: var(--fv-paid-contrast); }
+  &.badge-muted,
+  &.badge-warning,
+  &.badge-medium  { background: var(--fv-medium-bg); color: var(--fv-medium-text); }
 }
 
 /* ── Key facts ───────────────────────────────────────────────────── */
@@ -75,9 +74,10 @@
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 1px;
   margin: 0;
-  border: 1px solid var(--fv-border);
+  border: none;
   border-radius: var(--fv-radius-lg);
   background: var(--fv-border);
+  box-shadow: var(--fv-elevation);
   overflow: hidden;
 
   @media (min-width: 700px) {
@@ -150,9 +150,9 @@
 
   .items-header {
     display: grid;
-    grid-template-columns: minmax(6rem, 1fr) 2.5rem 5.5rem 5.5rem;
+    grid-template-columns: minmax(8rem, 1fr) 5rem 6.5rem 6.5rem;
     gap: var(--fv-space-2);
-    min-width: 22rem;
+    min-width: 30rem;
     padding-bottom: var(--fv-space-2);
     margin-bottom: var(--fv-space-2);
     border-bottom: 1px solid var(--fv-border);
@@ -165,9 +165,9 @@
 
   .item-row {
     display: grid;
-    grid-template-columns: minmax(6rem, 1fr) 2.5rem 5.5rem 5.5rem;
+    grid-template-columns: minmax(8rem, 1fr) 5rem 6.5rem 6.5rem;
     gap: var(--fv-space-2);
-    min-width: 22rem;
+    min-width: 30rem;
     padding: var(--fv-space-2) 0;
     border-bottom: 1px solid var(--fv-border);
 
@@ -178,6 +178,11 @@
       white-space: nowrap;
       font-variant-numeric: tabular-nums;
       text-align: right;
+    }
+    .price small {
+      display: block;
+      font-size: var(--fv-text-2xs);
+      color: var(--ion-color-medium);
     }
     .vat-note {
       display: block;
@@ -390,11 +395,40 @@
   padding-top: var(--fv-space-4);
   border-top: 1px solid var(--fv-border);
 
+  /* Same filled fields as the create and edit forms. */
   ion-item {
+    --background: transparent;
     --padding-start: 0;
     --inner-padding-end: 0;
-    --background: transparent;
+    --min-height: 0;
+    --border-width: 0;
+    --inner-border-width: 0;
+    --highlight-height: 0;
     margin-bottom: var(--fv-space-3);
+
+    ion-label[position="stacked"] {
+      margin-bottom: var(--fv-tight-gap);
+      font-size: var(--fv-text-2xs);
+      font-weight: var(--fv-weight-semibold);
+      letter-spacing: 0.05em;
+      text-transform: uppercase;
+      color: var(--ion-color-medium);
+      transform: none;
+    }
+
+    ion-input,
+    ion-select,
+    ion-textarea {
+      --background: var(--fv-surface-subtle);
+      --border-radius: var(--fv-radius-md);
+      --padding-start: 12px;
+      --padding-end: 12px;
+      --padding-top: 10px;
+      --padding-bottom: 10px;
+      --color: var(--ion-text-color);
+      font-size: var(--fv-text-base);
+      min-height: 44px;
+    }
   }
 
   .payment-submit-btn {

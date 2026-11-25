@@ -52,9 +52,9 @@
 }
 
 .list-toolbar ion-searchbar {
-  --background: var(--fv-surface-subtle);
-  --border-radius: var(--fv-radius-md);
-  --box-shadow: none;
+  --background: var(--ion-card-background);
+  --border-radius: var(--fv-radius-pill);
+  --box-shadow: var(--fv-elevation);
   --placeholder-color: var(--ion-color-medium);
   --color: var(--ion-text-color);
   --icon-color: var(--ion-color-medium);
@@ -72,8 +72,9 @@
 }
 
 .list-filter ion-segment {
-  --background: var(--fv-surface-subtle);
-  border-radius: var(--fv-radius-md);
+  --background: var(--ion-card-background);
+  border-radius: var(--fv-radius-pill);
+  box-shadow: var(--fv-elevation);
   padding: 3px;
   /*
    * Stacked mode: equal columns filling the row when the labels fit, and
@@ -88,7 +89,7 @@
   grid-auto-columns: minmax(max-content, 1fr);
 
   ion-segment-button {
-    --background-checked: var(--ion-card-background);
+    --background-checked: var(--ion-color-primary);
     /*
      * --ion-color-medium would be the obvious choice, but these labels sit
      * on the recessed track above rather than on the card, and grey on grey
@@ -98,10 +99,10 @@
      * of the scale.
      */
     --color: var(--fv-medium-text);
-    --color-checked: var(--ion-text-color);
+    --color-checked: var(--ion-color-primary-contrast);
     --indicator-color: transparent;
     --indicator-box-shadow: none;
-    --border-radius: var(--fv-radius-sm);
+    --border-radius: var(--fv-radius-pill);
     --padding-start: 14px;
     --padding-end: 14px;
     min-height: 32px;
@@ -145,9 +146,10 @@
 /* ── Rows ────────────────────────────────────────────────────────── */
 
 .list-rows {
-  border: 1px solid var(--fv-border);
+  border: none;
   border-radius: var(--fv-radius-lg);
   background: var(--ion-card-background);
+  box-shadow: var(--fv-elevation);
   overflow: hidden;
 }
 
@@ -181,6 +183,29 @@
   & + .list-row { border-top: 1px solid var(--fv-border); }
 
   ion-label { margin: 0; }
+}
+
+/* Overdue is the only row that gets marked. Paid is the normal state and
+   marking it too turns the colour into wallpaper. */
+.list-row.row-overdue {
+  --background: var(--fv-overdue-wash);
+  position: relative;
+
+  &::before {
+    content: '';
+    position: absolute;
+    left: 0;
+    top: 7px;
+    bottom: 7px;
+    width: 3px;
+    border-radius: 0 3px 3px 0;
+    background: var(--fv-overdue);
+    z-index: 1;
+  }
+
+  .row-amount { color: var(--fv-overdue); font-weight: var(--fv-weight-bold); }
+  .row-lead { background: var(--fv-overdue-tile); color: var(--fv-overdue); }
+  .row-lead ion-icon { color: var(--fv-overdue); }
 }
 
 /* The identifying mark. One size and shape whether it holds an icon or
@@ -249,17 +274,20 @@
 
 .row-status {
   display: inline-block;
-  padding: 2px 8px;
+  min-width: 72px;
+  padding: 5px 11px;
   border-radius: var(--fv-radius-pill);
   font-size: var(--fv-text-2xs);
   font-weight: var(--fv-weight-semibold);
+  letter-spacing: 0.04em;
+  text-align: center;
   white-space: nowrap;
 
-  &.badge-success { background: var(--fv-success-bg); color: var(--fv-success-text); }
-  &.badge-danger  { background: var(--fv-danger-bg);  color: var(--fv-danger-text); }
-  &.badge-warning { background: var(--fv-warning-bg); color: var(--fv-warning-text); }
-  &.badge-medium  { background: var(--fv-medium-bg);  color: var(--fv-medium-text); }
-  &.badge-primary { background: var(--fv-teal-tint);  color: var(--fv-teal-text); }
+  &.badge-overdue { background: var(--fv-overdue); color: var(--fv-overdue-contrast); }
+  &.badge-paid    { background: var(--fv-paid);    color: var(--fv-paid-contrast); }
+  &.badge-muted,
+  &.badge-warning,
+  &.badge-medium  { background: var(--fv-medium-bg); color: var(--fv-medium-text); }
 }
 
 .row-actions {

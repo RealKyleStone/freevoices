@@ -96,8 +96,9 @@ export class CustomerDetailPage implements OnInit {
 
   getStatusColor(status: string): string {
     const map: Record<string, string> = {
-      DRAFT: 'medium', SENT: 'primary', PAID: 'success', OVERDUE: 'danger', CANCELLED: 'medium'
+      PAID: 'paid', CREDITED: 'paid', ACCEPTED: 'paid', CONVERTED: 'paid',
+      OVERDUE: 'overdue'
     };
-    return map[status] ?? 'medium';
+    return map[status] ?? 'muted';
   }
 }

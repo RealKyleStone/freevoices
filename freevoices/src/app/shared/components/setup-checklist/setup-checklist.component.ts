@@ -23,17 +23,31 @@ import { businessSetup, SetupStep } from '../../utils/business-setup';
       </details>
     </section>`,
   styles: [`
-    .setup { border: 1px solid var(--ion-color-light-shade, #d1d5db); border-radius: 12px; padding: 20px; margin-bottom: 24px; background: var(--fv-surface-subtle, var(--ion-background-color, white)); }
-    summary { cursor: pointer; min-height: 44px; }
-    summary span { display: block; margin-top: 6px; }
-    progress { width: 100%; accent-color: var(--ion-color-primary, #0f766e); }
+    .setup {
+      border: none;
+      border-radius: var(--fv-radius-lg);
+      padding: var(--fv-space-5);
+      background: var(--ion-card-background);
+      box-shadow: var(--fv-elevation);
+    }
+    summary { cursor: pointer; min-height: 44px; font-size: var(--fv-text-md); font-weight: var(--fv-weight-semibold); }
+    summary span { display: block; margin-top: 6px; font-size: var(--fv-text-sm); font-weight: var(--fv-weight-regular); color: var(--ion-color-medium); }
+    progress { width: 100%; height: 4px; margin-top: var(--fv-space-3); accent-color: var(--ion-color-primary); }
     ul { list-style: none; padding: 0; margin-bottom: 0; }
-    li { display: flex; gap: 16px; padding: 12px 0; }
-    li + li { border-top: 1px solid var(--ion-color-light-shade, #d1d5db); }
-    a { display: inline-block; padding: 8px 0; color: var(--ion-color-primary, #0f766e); font-weight: 600; }
-    p { margin: 4px 0 12px; }
-    .status { min-width: 64px; font-size: .85rem; padding-top: 10px; }
-    .done { color: var(--fv-success-text, #166534); }
+    li { display: flex; gap: var(--fv-space-4); padding: var(--fv-space-3) 0; }
+    li + li { border-top: 1px solid var(--fv-border); }
+    a { display: inline-block; padding: var(--fv-space-2) 0; color: var(--ion-text-color); font-weight: var(--fv-weight-semibold); }
+    p { margin: 4px 0 12px; font-size: var(--fv-text-sm); color: var(--ion-color-medium); }
+    .status {
+      min-width: 64px;
+      padding-top: 10px;
+      font-size: var(--fv-text-2xs);
+      font-weight: var(--fv-weight-semibold);
+      letter-spacing: var(--fv-tracking-label);
+      text-transform: uppercase;
+      color: var(--ion-color-medium);
+    }
+    .done { color: var(--fv-paid); }
     button { min-height: 44px; padding: 8px 16px; }
   `]
 })

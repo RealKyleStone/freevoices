@@ -1,19 +1,36 @@
-// FreeVoices Theme — Primary: Teal #0f766e
+// FreeVoices Theme
 // For information on how to create your own theme, please see:
 // http://ionicframework.com/docs/theming/
 
 :root {
-  // ─── Primary (Teal) ───────────────────────────────────────────
-  --ion-color-primary: #0f766e;
-  --ion-color-primary-rgb: 15, 118, 110;
+  // ─── Neutral ramp ─────────────────────────────────────────────
+  // Every grey in the interface comes from here.
+  --fv-n-0: #ffffff;
+  --fv-n-50: #fafafa;
+  --fv-n-100: #f5f5f5;
+  --fv-n-200: #e5e5e5;
+  --fv-n-300: #d4d4d4;
+  --fv-n-400: #a3a3a3;
+  --fv-n-500: #737373;
+  --fv-n-600: #525252;
+  --fv-n-700: #404040;
+  --fv-n-800: #262626;
+  --fv-n-900: #171717;
+  --fv-n-950: #0a0a0a;
+  --fv-n-1000: #000000;
+
+  // ─── Primary ──────────────────────────────────────────────────
+  // The accent is the ground inverted: near-black on light, white on dark.
+  --ion-color-primary: #0a0a0a;
+  --ion-color-primary-rgb: 10, 10, 10;
   --ion-color-primary-contrast: #ffffff;
   --ion-color-primary-contrast-rgb: 255, 255, 255;
-  --ion-color-primary-shade: #0d6860;
-  --ion-color-primary-tint: #27847d;
+  --ion-color-primary-shade: #000000;
+  --ion-color-primary-tint: #262626;
 
   // Tint helpers used in stat cards and badges
-  --fv-teal-tint: #ccfbf1;
-  --fv-teal-text: #0f5e58;
+  --fv-teal-tint: #f5f5f5;
+  --fv-teal-text: #0a0a0a;
 
   // ─── Secondary ────────────────────────────────────────────────
   --ion-color-secondary: #0e9f6e;
@@ -42,13 +59,13 @@
   --ion-color-danger-shade: #b91c1c;
   --ion-color-danger-tint: #ef4444;
 
-  --ion-color-medium: #6b7280;
-  --ion-color-medium-rgb: 107, 114, 128;
+  --ion-color-medium: #525252;
+  --ion-color-medium-rgb: 82, 82, 82;
   --ion-color-medium-contrast: #ffffff;
-  --ion-color-medium-shade: #4b5563;
-  --ion-color-medium-tint: #9ca3af;
+  --ion-color-medium-shade: #404040;
+  --ion-color-medium-tint: #737373;
 
-  --ion-color-dark: #111827;
+  --ion-color-dark: #0a0a0a;
   --ion-color-dark-rgb: 17, 24, 39;
   --ion-color-dark-contrast: #ffffff;
   --ion-color-dark-shade: #030712;
@@ -60,17 +77,38 @@
   --ion-color-light-shade: #f3f4f6;
   --ion-color-light-tint: #ffffff;
 
-  // ─── Tint backgrounds for badges & stat icons ─────────────────
+  // ─── Status ───────────────────────────────────────────────────
+  // The only colour in the interface. Overdue carries the full row
+  // treatment, paid gets a badge, everything else is grey.
+  --fv-overdue: #d92d20;
+  --fv-overdue-contrast: #ffffff;
+  --fv-overdue-wash: rgba(217, 45, 32, 0.07);
+  --fv-overdue-tile: rgba(217, 45, 32, 0.10);
+  --fv-paid: #0a7d43;
+  --fv-paid-contrast: #ffffff;
+  --fv-paid-tile: rgba(10, 125, 67, 0.10);
+
+  // Chart series. Greyscale, strongest first, so a chart reads as shape
+  // rather than as a palette. Overdue is the one segment that keeps colour.
+  --fv-chart-1: #262626;
+  --fv-chart-2: #525252;
+  --fv-chart-3: #a3a3a3;
+  --fv-chart-4: #d4d4d4;
+
+  // ─── Tint pairs ───────────────────────────────────────────────
+  // Still a light background with dark text. Used by field errors, the
+  // paid line in totals, and anywhere a tinted surface is wanted. Status
+  // badges no longer use these; they use the solid tokens above.
   --fv-success-bg: #dcfce7;
   --fv-success-text: #166534;
-  --fv-warning-bg: #fef9c3;
-  --fv-warning-text: #854d0e;
+  --fv-warning-bg: #f5f5f5;
+  --fv-warning-text: #525252;
   --fv-danger-bg: #fee2e2;
   --fv-danger-text: #991b1b;
-  --fv-info-bg: #dbeafe;
-  --fv-info-text: #1e40af;
-  --fv-medium-bg: #f3f4f6;
-  --fv-medium-text: #374151;
+  --fv-info-bg: #f5f5f5;
+  --fv-info-text: #525252;
+  --fv-medium-bg: #f5f5f5;
+  --fv-medium-text: #525252;
 
   // ─── Surfaces ─────────────────────────────────────────────────
   // Page, raised (cards) and subtle (inputs, searchbars, chips).
@@ -80,9 +118,13 @@
   // That put near-white inputs on the dark page — and where the component
   // also set --color to --ion-text-color, the text matched its own
   // background exactly. A surface needs its own token so it can flip.
-  --fv-surface: #ffffff;
+  --fv-surface: #e5e5e5;
   --fv-surface-raised: #ffffff;
-  --fv-surface-subtle: #f3f4f6;
+  --fv-surface-subtle: #f5f5f5;
+
+  // Cards sit on a grey ground and lift with a soft shadow. In dark mode
+  // a shadow is invisible, so elevation becomes a hairline instead.
+  --fv-elevation: 0 1px 2px rgba(10, 10, 10, 0.04), 0 10px 30px -10px rgba(10, 10, 10, 0.14);
 
   // ─── Borders ──────────────────────────────────────────────────
   // Alpha over --ion-color-medium-rgb, following the pattern already used
@@ -92,10 +134,9 @@
   --fv-border-strong: rgba(var(--ion-color-medium-rgb), 0.32);
 
   // ─── Radius ───────────────────────────────────────────────────
-  // Three tiers plus a pill. Replaces the 4/6/8/10/12/14/16/20px spread.
-  --fv-radius-sm: 6px;   // badges, inline chips
-  --fv-radius-md: 10px;  // buttons, inputs, icon tiles
-  --fv-radius-lg: 14px;  // cards, panels, list containers
+  --fv-radius-sm: 10px;  // badges, inline chips
+  --fv-radius-md: 16px;  // buttons, inputs, icon tiles
+  --fv-radius-lg: 26px;  // cards, panels, list containers
   --fv-radius-pill: 999px;
 
   // ─── Spacing (4px base) ───────────────────────────────────────
@@ -120,7 +161,14 @@
   --fv-text-lg: 1.125rem;    // 18px — section and page titles
   --fv-text-xl: 1.375rem;    // 22px — toolbar titles, KPI values
   --fv-text-2xl: 1.75rem;    // 28px — the page head on a composed page
+  --fv-text-3xl: 2.25rem;    // 36px, page heads on composed screens
   --fv-text-display: 2.5rem; // 40px — auth hero only
+
+  // Display type is set light and tight. Labels run the other way: small,
+  // heavy and widely tracked.
+  --fv-weight-display: 300;
+  --fv-tracking-display: -0.025em;
+  --fv-tracking-label: 0.12em;
 
   // Poppins is self-hosted at 300/400/500/600/700 only. Nothing may ask
   // for 800: the browser would either snap to 700 or synthesise a smeared
@@ -208,20 +256,13 @@
 // Moving the selector (rather than deleting the block) keeps the intended
 // dark teal while making the user's explicit choice authoritative.
 .ion-palette-dark {
-  --ion-color-primary: #14b8a6;
-  --ion-color-primary-rgb: 20, 184, 166;
-  --ion-color-primary-shade: #0f9e8e;
-  --ion-color-primary-tint: #2ec4b3;
-  /*
-   * Dark mode's primary is a light teal, so white is the wrong thing to put
-   * on it. The contrast token was left at #ffffff, which meant every solid
-   * primary surface in dark mode carried white text at 2.49:1 — including
-   * the selected item in the navigation rail, the one row on screen whose
-   * job is to say which page you are on. A very dark teal rather than flat
-   * black, so the brand colour still reads in the pairing: 6.8:1.
-   */
-  --ion-color-primary-contrast: #04211f;
-  --ion-color-primary-contrast-rgb: 4, 33, 31;
+  --ion-color-primary: #fafafa;
+  --ion-color-primary-rgb: 250, 250, 250;
+  --ion-color-primary-shade: #e5e5e5;
+  --ion-color-primary-tint: #ffffff;
+  // Primary is near-white here, so what sits on it has to be near-black.
+  --ion-color-primary-contrast: #0a0a0a;
+  --ion-color-primary-contrast-rgb: 10, 10, 10;
 
   /*
    * Medium is the app's secondary text colour — field labels, row meta,
@@ -234,36 +275,46 @@
    * --fv-border derives from -rgb, so the hairlines lift with it; they were
    * mixing a near-black grey into a near-black surface.
    */
-  --ion-color-medium: #9ca3af;
-  --ion-color-medium-rgb: 156, 163, 175;
-  --ion-color-medium-contrast: #111111;
-  --ion-color-medium-shade: #7d838d;
-  --ion-color-medium-tint: #a6acb7;
+  --ion-color-medium: #a3a3a3;
+  --ion-color-medium-rgb: 163, 163, 163;
+  --ion-color-medium-contrast: #0a0a0a;
+  --ion-color-medium-shade: #8a8a8a;
+  --ion-color-medium-tint: #d4d4d4;
 
-  --fv-teal-tint: #042f2e;
-  --fv-teal-text: #5eead4;
+  // Lifted so they hold up on black, and carrying dark text as solid fills.
+  --fv-overdue: #ff5a47;
+  --fv-overdue-contrast: #210500;
+  --fv-overdue-wash: rgba(255, 90, 71, 0.12);
+  --fv-overdue-tile: rgba(255, 90, 71, 0.16);
+  --fv-paid: #12a15a;
+  --fv-paid-contrast: #00140a;
+  --fv-paid-tile: rgba(18, 161, 90, 0.16);
+
+  --fv-chart-1: #fafafa;
+  --fv-chart-2: #d4d4d4;
+  --fv-chart-3: #8a8a8a;
+  --fv-chart-4: #525252;
+
+  --fv-teal-tint: #262626;
+  --fv-teal-text: #fafafa;
 
   --fv-success-bg: #052e16;
   --fv-success-text: #4ade80;
-  --fv-warning-bg: #422006;
-  --fv-warning-text: #fbbf24;
+  --fv-warning-bg: #262626;
+  --fv-warning-text: #a3a3a3;
   --fv-danger-bg: #450a0a;
   --fv-danger-text: #f87171;
-  --fv-info-bg: #1e3a5f;
-  --fv-info-text: #93c5fd;
-  --fv-medium-bg: #1f2937;
-  --fv-medium-text: #9ca3af;
+  --fv-info-bg: #262626;
+  --fv-info-text: #a3a3a3;
+  --fv-medium-bg: #262626;
+  --fv-medium-text: #a3a3a3;
 
-  --fv-surface: #111111;
-  --fv-surface-raised: #1e1e1e;
-  /*
-   * A step above the card, not level with it. This was #1e1e1e, the same
-   * value as --ion-card-background, so every subtle surface drawn on a card
-   * in dark mode was invisible: the form fields, the share-link panel and
-   * the history icons all disappeared into the card behind them. #2a2a2a is
-   * --ion-color-step-100, so it stays on the palette's own scale.
-   */
-  --fv-surface-subtle: #2a2a2a;
+  --fv-surface: #000000;
+  --fv-surface-raised: #0a0a0a;
+  --fv-surface-subtle: #171717;
+
+  // A shadow does nothing on black, so elevation is a hairline ring.
+  --fv-elevation: 0 0 0 1px rgba(var(--ion-color-medium-rgb), 0.18);
 }
 /*
  * Edge-to-edge safe areas (Android 15 / API 35).

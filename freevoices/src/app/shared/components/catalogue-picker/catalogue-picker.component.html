@@ -1,6 +1,6 @@
 <div class="picker-field">
-  <span class="field-label">{{ kind === 'customer' ? 'Customer *' : 'Product (optional)' }}</span>
-  <button type="button" class="picker-trigger" [disabled]="disabled" [attr.aria-label]="'Choose ' + kind + (kind === 'customer' ? ' (required)' : '') + (selectedName ? ': ' + selectedName : '')"
+  <span class="field-label">{{ kind === 'customer' ? (optional ? 'Customer' : 'Customer *') : 'Product (optional)' }}</span>
+  <button type="button" class="picker-trigger" [disabled]="disabled" [attr.aria-label]="'Choose ' + kind + (kind === 'customer' && !optional ? ' (required)' : '') + (selectedName ? ': ' + selectedName : '')"
     [attr.aria-invalid]="invalid" aria-haspopup="dialog" (click)="open()">
     {{ selectedName || (kind === 'customer' ? 'Search or add a customer' : 'Custom item / search products') }}
   </button>
@@ -44,7 +44,7 @@
       <p>The invoice or quote's currency and VAT rate apply to this price.</p>
     </ng-container>
     <div class="picker-actions">
-      <button type="button" [disabled]="saving" (click)="saveNew()">{{ saving ? 'Adding...' : 'Add and select' }}</button>
+      <button type="button" class="primary" [disabled]="saving" (click)="saveNew()">{{ saving ? 'Adding...' : 'Add and select' }}</button>
       <button type="button" [disabled]="saving" (click)="backToSearch()">Back to search</button>
     </div>
   </div>

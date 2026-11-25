@@ -30,11 +30,11 @@ Chart.register(...registerables);
  * pages already apply (medium / primary / success / warning / danger).
  */
 const STATUS_TOKENS: Record<string, string> = {
-  DRAFT:     '--fv-medium-text',
-  SENT:      '--fv-teal-text',
-  PAID:      '--fv-success-text',
-  OVERDUE:   '--fv-warning-text',
-  CANCELLED: '--fv-danger-text'
+  PAID:      '--fv-chart-1',
+  SENT:      '--fv-chart-2',
+  DRAFT:     '--fv-chart-3',
+  CANCELLED: '--fv-chart-4',
+  OVERDUE:   '--fv-overdue'
 };
 
 const STATUS_LABELS: Record<string, string> = {
@@ -115,6 +115,13 @@ export class ReportsPage implements OnInit, OnDestroy, AfterViewChecked {
    * rgba(0,0,0,0.1), which is low contrast on the light surface and close to
    * invisible on the #111111 dark one.
    */
+  /** "20k" rather than "20000". The currency is named in the section notes. */
+  private axisLabel(value: string | number): string {
+    const n = Number(value);
+    const short = Math.abs(n) >= 1000 ? `${+(n / 1000).toFixed(1)}k` : `${n}`;
+    return short;
+  }
+
   private themeColors() {
     return {
       // --fv-medium-text and --ion-text-color-rgb both flip with the theme,
@@ -123,10 +130,10 @@ export class ReportsPage implements OnInit, OnDestroy, AfterViewChecked {
       // 10.5:1 in light and 6.6:1 in dark.
       text: this.token('--fv-medium-text', '#374151'),
       grid: `rgba(${this.token('--ion-text-color-rgb', '17, 24, 39')}, 0.12)`,
-      primary: this.token('--ion-color-primary', '#0f766e'),
-      accent: this.token('--fv-warning-text', '#854d0e'),
+      primary: this.token('--fv-chart-1', '#262626'),
+      accent: this.token('--fv-chart-3', '#a3a3a3'),
       status: (status: string) =>
-        this.token(STATUS_TOKENS[status] ?? '--fv-medium-text', '#6b7280')
+        this.token(STATUS_TOKENS[status] ?? '--fv-chart-3', '#a3a3a3')
     };
   }
 
@@ -248,7 +255,8 @@ export class ReportsPage implements OnInit, OnDestroy, AfterViewChecked {
         maintainAspectRatio: false,
         plugins: { legend: { display: false } },
         scales: {
-          y: { beginAtZero: true, ticks: { callback: v => `${this.selectedCurrency} ${v}` } }
+          x: { ticks: { maxRotation: 0 } },
+          y: { beginAtZero: true, ticks: { callback: v => this.axisLabel(v) } }
         }
       }
     };
@@ -294,7 +302,7 @@ export class ReportsPage implements OnInit, OnDestroy, AfterViewChecked {
         maintainAspectRatio: false,
         plugins: { legend: { display: false } },
         scales: {
-          x: { beginAtZero: true, ticks: { callback: v => `${this.selectedCurrency} ${v}` } }
+          x: { beginAtZero: true, ticks: { maxRotation: 0, maxTicksLimit: 6, callback: v => this.axisLabel(v) } }
         }
       }
     };
@@ -329,8 +337,8 @@ export class ReportsPage implements OnInit, OnDestroy, AfterViewChecked {
         maintainAspectRatio: false,
         plugins: { legend: { position: 'bottom' } },
         scales: {
-          y: { beginAtZero: true, stacked: true, ticks: { callback: v => `${this.selectedCurrency} ${v}` } },
-          x: { stacked: true }
+          y: { beginAtZero: true, stacked: true, ticks: { callback: v => this.axisLabel(v) } },
+          x: { stacked: true, ticks: { maxRotation: 0 } }
         }
       }
     };
